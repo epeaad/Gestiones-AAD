@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gestiones AAD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-left">
+    <div class="login-brand">
+      <img src="logo-epe.png" alt="EPE Santa Fe" class="brand-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+      <div class="login-mark" style="display:none;"></div>
+      <span>Gestiones AAD</span>
+    </div>
+    <div class="login-form-wrap">
+      <h1>Ingresar</h1>
+      <p class="login-sub">Seguimiento de trámites de contratación</p>
+      <form id="loginForm">
+        <label>Usuario
+          <input type="text" id="loginUsuario" autocomplete="username" required />
+        </label>
+        <label>Contraseña
+          <div class="password-field">
+            <input type="password" id="loginClave" autocomplete="current-password" required />
+            <button type="button" class="toggle-pass" id="togglePass" aria-label="Mantené presionado para ver la contraseña">
+              <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" hidden><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a21.6 21.6 0 0 1 5.06-5.94M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 7 11 7a21.6 21.6 0 0 1-2.61 3.53M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>
+            </button>
+          </div>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">Ingresar</button>
+        <div class="login-status" id="loginStatus" data-state="idle">
+          <span class="login-status-icon"></span>
+          <span class="login-status-text"></span>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="login-right">
+    <div class="login-right-inner">
+      <p class="login-right-eyebrow">Gestiones AAD</p>
+      <p class="login-right-title">La vida completa de cada trámite,<br/>en un solo lugar.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <img src="logo-epe.png" alt="EPE Santa Fe" class="brand-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+      <div class="brand-mark" style="display:none;"></div>
+      <span>Gestiones AAD</span>
+    </div>
+    <nav class="sidenav" id="sidenav">
+      <button class="nav-btn active" data-view="dashboard">
+        <span class="nav-icon">◆</span> Dashboard
+      </button>
+      <button class="nav-btn" data-view="registros">
+        <span class="nav-icon">▤</span> Registros
+      </button>
+      <button class="nav-btn" data-view="formulario">
+        <span class="nav-icon">＋</span> Nuevo trámite
+      </button>
+      <button class="nav-btn" data-view="proyectos">
+        <span class="nav-icon">◫</span> Proyectos
+      </button>
+      <button class="nav-btn" data-view="certificaciones">
+        <span class="nav-icon">✓</span> Certificaciones
+      </button>
+      <button class="nav-btn" data-view="aperturas">
+        <span class="nav-icon">▧</span> Aperturas
+      </button>
+      <button class="nav-btn" data-view="vencimientos">
+        <span class="nav-icon">▦</span> Vencimientos
+      </button>
+      <button class="nav-btn" data-view="usuarios" id="navUsuarios" hidden>
+        <span class="nav-icon">◍</span> Usuarios
+      </button>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-name" id="userName"></div>
+      <button id="logoutBtn" class="btn btn-ghost btn-block">Salir</button>
+    </div>
+  </aside>
+
+  <div class="main-area">
+    <div id="appError" class="app-error" hidden></div>
+    <main class="content">
+
+    <!-- ---------- DASHBOARD ---------- -->
+    <section id="view-dashboard" class="view">
+      <div class="view-header">
+        <h2>Seguimiento presupuestario y de ejecución</h2>
+        <div class="control-inline">
+          <label>Agrupar por
+            <select id="dashGroupBy">
+              <option value="sucursal">Sucursal</option>
+              <option value="pospre">PosPre</option>
+              <option value="nroPedidoCompras">Pedido de Compras</option>
+              <option value="adjudicatario">Contratista/Proveedor</option>
+            </select>
+          </label>
+          <button id="printDashboardBtn" class="btn btn-secondary">Imprimir a PDF</button>
+        </div>
+      </div>
+
+      <div class="filters-bar" id="dashFiltersBar">
+        <div class="filter-field">
+          <label>Año</label>
+          <div class="multiselect" data-dashfilter="anio"></div>
+        </div>
+        <div class="filter-field">
+          <label>Sucursal</label>
+          <div class="multiselect" data-dashfilter="sucursal"></div>
+        </div>
+        <div class="filter-field">
+          <label>Rubro</label>
+          <div class="multiselect" data-dashfilter="rubro"></div>
+        </div>
+        <div class="filter-field">
+          <label>Pospre</label>
+          <div class="multiselect" data-dashfilter="pospre"></div>
+        </div>
+        <div class="filter-field">
+          <label>N° Pedido de Compras</label>
+          <div class="multiselect" data-dashfilter="nroPedidoCompras"></div>
+        </div>
+        <div class="filter-field">
+          <label>Contratista/Proveedor</label>
+          <div class="multiselect" data-dashfilter="adjudicatario"></div>
+        </div>
+        <div class="filter-field">
+          <label>Estado</label>
+          <div class="multiselect" data-dashfilter="estado"></div>
+        </div>
+        <div class="filter-field">
+          <label>Fecha P.C. desde</label>
+          <input type="date" id="dashFechaPCDesde" />
+        </div>
+        <div class="filter-field">
+          <label>Fecha P.C. hasta</label>
+          <input type="date" id="dashFechaPCHasta" />
+        </div>
+        <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
+        <button id="dashClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+      </div>
+
+      <div class="print-header">
+        <p class="print-title">Gestiones AAD — Dashboard de seguimiento</p>
+        <p class="print-subtitle">Impreso el <span id="printDate"></span></p>
+      </div>
+
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div class="panel">
+        <h3>Presupuesto Oficial vs. Adjudicado vs. Certificación — por Sucursal (Pospre filtrada)</h3>
+        <canvas id="chartMontos" height="130"></canvas>
+      </div>
+      <div class="panel">
+        <h3>Adjudicado vs. Certificado por Sucursal — con % de Avance</h3>
+        <canvas id="chartAdjCertSucursal" height="130"></canvas>
+        <p class="table-note cert-nota-warning" id="chartAdjCertNota" hidden></p>
+      </div>
+      <div class="panel">
+        <h3>% de Certificación por Pedido de Compras</h3>
+        <canvas id="chartCertificacionPC" height="130"></canvas>
+      </div>
+      <div class="panel">
+        <div class="view-header" style="margin-bottom:14px;">
+          <h3 style="margin:0;">Resumen por Contratista</h3>
+          <div class="control-inline">
+            <button id="contratistaTop10Btn" class="btn btn-ghost btn-toggle-active" data-mode="top10">Top 10</button>
+            <button id="contratistaTodosBtn" class="btn btn-ghost" data-mode="todos">Todos</button>
+          </div>
+        </div>
+        <div class="contratista-grid" id="contratistaGrid"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Detalle por agrupación</h3>
+        <p class="table-note" id="dashTableNota" hidden></p>
+        <div class="table-wrap">
+          <table id="dashTable" class="data-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- REGISTROS ---------- -->
+    <section id="view-registros" class="view" hidden>
+      <div class="view-header">
+        <h2>Trámites cargados</h2>
+        <div class="control-inline">
+          <button id="exportBtn" class="btn btn-secondary">Exportar vida completa (Excel)</button>
+        </div>
+      </div>
+
+      <div class="filters-bar" id="filtersBar">
+        <div class="filter-field">
+          <label>Pospre</label>
+          <div class="multiselect" data-filter="pospre"></div>
+        </div>
+        <div class="filter-field">
+          <label>Expediente</label>
+          <input type="text" data-filter="expediente" placeholder="Buscar..." />
+        </div>
+        <div class="filter-field">
+          <label>Año</label>
+          <div class="multiselect" data-filter="anio"></div>
+        </div>
+        <div class="filter-field">
+          <label>Pedido de Compras</label>
+          <div class="multiselect" data-filter="nroPedidoCompras"></div>
+        </div>
+        <div class="filter-field">
+          <label>Contratista/Proveedor</label>
+          <div class="multiselect" data-filter="adjudicatario"></div>
+        </div>
+        <div class="filter-field">
+          <label>Sucursal</label>
+          <div class="multiselect" data-filter="sucursal"></div>
+        </div>
+        <div class="filter-field">
+          <label>Rubro</label>
+          <div class="multiselect" data-filter="rubro"></div>
+        </div>
+        <div class="filter-field">
+          <label>Estado</label>
+          <div class="multiselect" data-filter="estado"></div>
+        </div>
+        <button id="clearFilters" class="btn btn-ghost">Limpiar filtros</button>
+      </div>
+
+      <p class="results-count" id="resultsCount"></p>
+
+      <div class="scroll-top-bar" id="recordsScrollTop"><div class="scroll-top-inner" id="recordsScrollTopInner"></div></div>
+      <div class="table-wrap">
+        <table id="recordsTable" class="data-table"></table>
+      </div>
+    </section>
+
+    <!-- ---------- VENCIMIENTOS ---------- -->
+    <section id="view-vencimientos" class="view" hidden>
+      <div class="view-header">
+        <h2>Calendario de Vencimientos</h2>
+        <div class="control-inline">
+          <button id="calPrevBtn" class="btn btn-ghost">‹</button>
+          <span id="calMonthLabel" class="cal-month-label"></span>
+          <button id="calNextBtn" class="btn btn-ghost">›</button>
+          <button id="calTodayBtn" class="btn btn-ghost">Hoy</button>
+        </div>
+      </div>
+      <p class="table-note">Se basa en la Fecha Fin de Plazo Ampliada (o Fecha Fin de Contrato si no hay ampliación), excluye trámites Finalizados, y respeta los filtros que tengas aplicados en el Dashboard.</p>
+      <div class="panel">
+        <div class="calendar-weekdays">
+          <span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+        <div id="calendarDayDetail" class="calendar-day-detail" hidden></div>
+      </div>
+    </section>
+
+    <!-- ---------- APERTURAS ---------- -->
+    <section id="view-aperturas" class="view" hidden>
+      <div class="view-header">
+        <h2>Calendario de Aperturas</h2>
+        <div class="control-inline">
+          <button id="calAperturaPrevBtn" class="btn btn-ghost">‹</button>
+          <span id="calAperturaMonthLabel" class="cal-month-label"></span>
+          <button id="calAperturaNextBtn" class="btn btn-ghost">›</button>
+          <button id="calAperturaTodayBtn" class="btn btn-ghost">Hoy</button>
+        </div>
+      </div>
+      <p class="table-note">Se basa en la Fecha de Apertura de cada trámite, y respeta los filtros que tengas aplicados en el Dashboard. Junto con Vencimientos, muestra los dos extremos de la vida del trámite.</p>
+      <div class="panel">
+        <div class="calendar-weekdays">
+          <span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
+        </div>
+        <div class="calendar-grid" id="calendarAperturaGrid"></div>
+        <div id="calendarAperturaDayDetail" class="calendar-day-detail" hidden></div>
+      </div>
+    </section>
+
+    <!-- ---------- CERTIFICACIONES ---------- -->
+    <section id="view-certificaciones" class="view" hidden>
+      <div class="view-header">
+        <h2>Certificaciones</h2>
+      </div>
+
+      <div class="panel" id="certFormPanel">
+        <h3>Cargar certificación</h3>
+
+        <div class="field-grid">
+          <label class="span-2" style="position:relative;">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
+            <input type="text" id="certBuscarTramite" placeholder="Escribí para buscar..." autocomplete="off" />
+            <div id="certResultadosBusqueda" class="cert-search-results" hidden></div>
+          </label>
+        </div>
+
+        <div id="certTramiteSeleccionado" class="cert-tramite-chip" hidden></div>
+
+        <form id="certForm" hidden>
+          <div class="field-grid">
+            <label>Pospre <input type="text" id="certPospre" readonly /></label>
+            <label>Expediente <input type="text" id="certExpediente" readonly /></label>
+            <label>Pedido de Compras <input type="text" id="certPC" readonly /></label>
+            <label>Contratista <input type="text" id="certContratista" readonly /></label>
+            <label>Fecha de Inicio de Contrato <input type="text" id="certFechaInicio" readonly /></label>
+            <label>Número de Certificado <input type="text" name="numeroCertificado" /></label>
+            <label>Mes/Año de Certificación <input type="month" name="mesAnioCertificacion" /></label>
+            <label>IIBB Certificados <input type="number" step="any" name="iibbCertificados" /></label>
+            <label>$ Certificados <input type="number" step="any" name="montoCertificado" /></label>
+            <label>$ de Reconocimiento <input type="number" step="any" name="montoReconocimiento" /></label>
+            <label>$ Multas <input type="number" step="any" name="montoMultas" /></label>
+            <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
+          </div>
+          <div class="form-actions">
+            <p id="certFormMsg" class="form-msg" hidden></p>
+            <button type="button" id="certCancelarBtn" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar certificación</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="view-header" style="margin-bottom:14px;">
+          <h3 style="margin:0;">Certificaciones cargadas</h3>
+          <button id="certExportBtn" class="btn btn-secondary">Exportar a Excel</button>
+        </div>
+        <div class="filters-bar">
+          <div class="filter-field">
+            <label>Buscar</label>
+            <input type="text" id="certFiltroTexto" placeholder="Pospre, expediente, contratista..." />
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="certTable" class="data-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- PROYECTOS ---------- -->
+    <section id="view-proyectos" class="view" hidden>
+      <div class="view-header">
+        <h2>Proyectos</h2>
+      </div>
+
+      <div class="panel" id="proyFormPanel">
+        <h3>Cargar proyecto</h3>
+
+        <div class="field-grid">
+          <label class="span-2" style="position:relative;">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
+            <input type="text" id="proyBuscarTramite" placeholder="Escribí para buscar..." autocomplete="off" />
+            <div id="proyResultadosBusqueda" class="cert-search-results" hidden></div>
+          </label>
+        </div>
+
+        <div id="proyTramiteSeleccionado" class="cert-tramite-chip" hidden></div>
+
+        <form id="proyForm" hidden>
+          <div class="field-grid">
+            <label>Pospre <input type="text" id="proyPospre" readonly /></label>
+            <label>Sucursal <input type="text" id="proySucursal" readonly /></label>
+            <label>Pedido de Compras <input type="text" id="proyPC" readonly /></label>
+            <label>Contratista <input type="text" id="proyContratista" readonly /></label>
+            <label>N° de Expediente de Proyecto <input type="text" name="nroExpedienteProyecto" /></label>
+            <label>Número de Proyecto <input type="text" name="numeroProyecto" /></label>
+            <label>$ Km de LAMT <input type="number" step="any" name="montoKmLAMT" /></label>
+            <label>Mes/Año Km de LAMT <input type="month" name="mesAnioKmLAMT" /></label>
+            <label class="span-2">Descripción del Proyecto <textarea name="descripcionProyecto"></textarea></label>
+            <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" /></label>
+            <label>$ del Proyecto <input type="number" step="any" name="montoProyecto" /></label>
+            <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
+          </div>
+          <div class="form-actions">
+            <p id="proyFormMsg" class="form-msg" hidden></p>
+            <button type="button" id="proyCancelarBtn" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar proyecto</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="view-header" style="margin-bottom:14px;">
+          <h3 style="margin:0;">Proyectos cargados</h3>
+          <button id="proyExportBtn" class="btn btn-secondary">Exportar a Excel</button>
+        </div>
+        <div class="filters-bar">
+          <div class="filter-field">
+            <label>Buscar</label>
+            <input type="text" id="proyFiltroTexto" placeholder="Pospre, expediente, contratista..." />
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="proyTable" class="data-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- FORMULARIO (alta / edición) ---------- -->
+    <section id="view-formulario" class="view" hidden>
+      <div class="view-header">
+        <h2 id="formTitle">Nuevo trámite</h2>
+        <div class="control-inline">
+          <button id="formNewBtn" class="btn btn-ghost">Limpiar / nuevo</button>
+        </div>
+      </div>
+
+      <div class="lifeline" id="lifeline"></div>
+
+      <form id="recordForm">
+        <div id="stagePanels"></div>
+        <div class="form-actions">
+          <p id="formMsg" class="form-msg" hidden></p>
+          <button type="submit" class="btn btn-primary">Guardar trámite</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ---------- USUARIOS (admin) ---------- -->
+    <section id="view-usuarios" class="view" hidden>
+      <div class="view-header">
+        <h2>Usuarios con acceso</h2>
+      </div>
+      <div class="panel" style="max-width:420px">
+        <h3>Nuevo usuario</h3>
+        <form id="userForm">
+          <label>Usuario (login)
+            <input type="text" id="newUsuario" required />
+          </label>
+          <label>Nombre visible
+            <input type="text" id="newNombre" required />
+          </label>
+          <label>Contraseña
+            <input type="password" id="newClave" required />
+          </label>
+          <label>Rol
+            <select id="newRol">
+              <option value="editor">Editor (puede cargar y editar)</option>
+              <option value="consulta">Solo consulta (no puede editar)</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">Crear usuario</button>
+          <p id="userMsg" class="form-msg" hidden></p>
+        </form>
+      </div>
+      <div class="table-wrap">
+        <table id="usersTable" class="data-table"></table>
+      </div>
+
+      <div class="panel" style="max-width:640px">
+        <h3>Unificar valores duplicados</h3>
+        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
+          Busca variantes de escritura del mismo Pospre o la misma Sucursal (mayúsculas/minúsculas,
+          puntos, espacios de más, etc.) y te deja elegir cuál es la versión correcta para unificarlas.
+          No unifica nada automáticamente — vos revisás cada grupo antes de aplicar.
+        </p>
+        <div class="control-inline" style="margin-bottom:14px;">
+          <label>Campo
+            <select id="unificarCampo">
+              <option value="pospre">Pospre</option>
+              <option value="sucursal">Sucursal</option>
+            </select>
+          </label>
+          <button id="buscarDuplicadosBtn" class="btn btn-secondary">Buscar duplicados</button>
+        </div>
+        <div id="duplicadosResultado"></div>
+      </div>
+
+      <div class="panel" style="max-width:520px;border-color:#FCA5A5;">
+        <h3 style="color:var(--danger);">⚠ Corrección de IVA (una sola vez)</h3>
+        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
+          Divide por <strong>1,21</strong> los campos monetarios: $ Pres. Oficial Unitario,
+          $ Adjudicado Unitario, $ Km de Línea del PC, $ Proyectados Acumulados,
+          $ certificados por AAD y Sumatoria de Multas. En el mismo paso recalcula
+          Presupuesto Oficial, Total Adjudicado y % de Avance con esos valores ya corregidos.
+          <br/><strong>Usalo una sola vez.</strong> Ejecutarlo dos veces volvería a dividir datos
+          que ya están corregidos. Asegurate de tener una copia de seguridad del Sheet antes de usarlo
+          (Archivo → Hacer una copia).
+        </p>
+        <button id="corregirIvaBtn" class="btn" style="background:var(--danger);color:#fff;">Dividir valores monetarios por 1,21</button>
+        <p id="corregirIvaMsg" class="form-msg" hidden></p>
+      </div>
+
+      <div class="panel" style="max-width:520px">
+        <h3>Completar valores iniciales faltantes</h3>
+        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
+          Completa <strong>Cantidades/IIBB</strong> (= 1), <strong>$ Pres. Oficial Unitario</strong> y
+          <strong>$ Adjudicado Unitario</strong> (= Presupuesto Oficial ya cargado), y recalcula
+          <strong>$ Total Adjudicado</strong> — pero <u>solo</u> en los trámites donde esos 4 campos
+          estén vacíos. No pisa datos que ya existan. Usalo una sola vez para completar la base
+          original; después esos valores se cargan normalmente desde el formulario.
+        </p>
+        <button id="completarBtn" class="btn btn-secondary">Completar valores faltantes</button>
+        <p id="completarMsg" class="form-msg" hidden></p>
+      </div>
+
+      <div class="panel" style="max-width:520px">
+        <h3>Campos calculados</h3>
+        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
+          Presupuesto Oficial, Total Adjudicado, Fechas de fin de contrato y % de Avance de Certificación
+          se calculan solos en el formulario. Este botón vuelve a calcularlos para <strong>todos</strong>
+          los trámites ya cargados (útil si recién agregaste esta función).
+        </p>
+        <button id="recalcBtn" class="btn btn-secondary">Recalcular todos los trámites</button>
+        <p id="recalcMsg" class="form-msg" hidden></p>
+      </div>
+    </section>
+
+  </main>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
