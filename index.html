@@ -476,44 +476,6 @@
         <div id="duplicadosResultado"></div>
       </div>
 
-      <div class="panel" style="max-width:520px;border-color:#FCA5A5;">
-        <h3 style="color:var(--danger);">⚠ Corrección de IVA (una sola vez)</h3>
-        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
-          Divide por <strong>1,21</strong> los campos monetarios: $ Pres. Oficial Unitario,
-          $ Adjudicado Unitario, $ Km de Línea del PC, $ Proyectados Acumulados,
-          $ certificados por AAD y Sumatoria de Multas. En el mismo paso recalcula
-          Presupuesto Oficial, Total Adjudicado y % de Avance con esos valores ya corregidos.
-          <br/><strong>Usalo una sola vez.</strong> Ejecutarlo dos veces volvería a dividir datos
-          que ya están corregidos. Asegurate de tener una copia de seguridad del Sheet antes de usarlo
-          (Archivo → Hacer una copia).
-        </p>
-        <button id="corregirIvaBtn" class="btn" style="background:var(--danger);color:#fff;">Dividir valores monetarios por 1,21</button>
-        <p id="corregirIvaMsg" class="form-msg" hidden></p>
-      </div>
-
-      <div class="panel" style="max-width:520px">
-        <h3>Completar valores iniciales faltantes</h3>
-        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
-          Completa <strong>Cantidades/IIBB</strong> (= 1), <strong>$ Pres. Oficial Unitario</strong> y
-          <strong>$ Adjudicado Unitario</strong> (= Presupuesto Oficial ya cargado), y recalcula
-          <strong>$ Total Adjudicado</strong> — pero <u>solo</u> en los trámites donde esos 4 campos
-          estén vacíos. No pisa datos que ya existan. Usalo una sola vez para completar la base
-          original; después esos valores se cargan normalmente desde el formulario.
-        </p>
-        <button id="completarBtn" class="btn btn-secondary">Completar valores faltantes</button>
-        <p id="completarMsg" class="form-msg" hidden></p>
-      </div>
-
-      <div class="panel" style="max-width:520px">
-        <h3>Campos calculados</h3>
-        <p style="font-size:13px;color:var(--text-soft);margin:0 0 14px;">
-          Presupuesto Oficial, Total Adjudicado, Fechas de fin de contrato y % de Avance de Certificación
-          se calculan solos en el formulario. Este botón vuelve a calcularlos para <strong>todos</strong>
-          los trámites ya cargados (útil si recién agregaste esta función).
-        </p>
-        <button id="recalcBtn" class="btn btn-secondary">Recalcular todos los trámites</button>
-        <p id="recalcMsg" class="form-msg" hidden></p>
-      </div>
     </section>
 
   </main>

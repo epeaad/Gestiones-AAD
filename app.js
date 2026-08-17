@@ -1592,69 +1592,6 @@ document.getElementById('buscarDuplicadosBtn').addEventListener('click', () => {
   });
 });
 
-document.getElementById('corregirIvaBtn').addEventListener('click', async () => {
-  const msg = document.getElementById('corregirIvaMsg');
-  msg.hidden = true;
-  const c1 = confirm('Esto va a dividir por 1,21 los campos monetarios de TODOS los trámites (Pres. Oficial Unitario, Adjudicado Unitario, Km de Línea, Proyectados Acumulados, Certificados AAD y Multas), y va a recalcular Presupuesto Oficial, Total Adjudicado y % de Avance con esos valores corregidos.\n\n¿Ya hiciste una copia de seguridad del Google Sheet?');
-  if (!c1) return;
-  const c2 = confirm('Confirmación final: esta operación debe ejecutarse UNA SOLA VEZ. Si la corrés dos veces, va a dividir el IVA otra vez sobre datos que ya están corregidos.\n\n¿Confirmás que querés continuar ahora?');
-  if (!c2) return;
-  try {
-    const r = await apiCall('corregir_iva');
-    msg.textContent = 'Listo: se corrigieron ' + r.corregidos + ' trámites.';
-    msg.className = 'form-msg ok';
-    msg.hidden = false;
-    const data = await apiCall('listar');
-    state.registros = data.registros;
-    populateFilterOptions();
-  } catch (err) {
-    msg.textContent = 'Error: ' + err.message;
-    msg.className = 'form-msg err';
-    msg.hidden = false;
-  }
-});
-
-document.getElementById('completarBtn').addEventListener('click', async () => {
-  const msg = document.getElementById('completarMsg');
-  msg.hidden = true;
-  const confirmado = confirm('Esto va a completar Cantidades/IIBB, $ Pres. Oficial Unitario, $ Adjudicado Unitario y $ Total Adjudicado SOLO en los trámites donde esos 4 campos estén vacíos, usando el Presupuesto Oficial ya cargado. No modifica trámites que ya tengan esos datos. ¿Continuar?');
-  if (!confirmado) return;
-  try {
-    const r = await apiCall('completar_valores_iniciales');
-    msg.textContent = 'Listo: se completaron ' + r.completados + ' trámites.';
-    msg.className = 'form-msg ok';
-    msg.hidden = false;
-    const data = await apiCall('listar');
-    state.registros = data.registros;
-    populateFilterOptions();
-  } catch (err) {
-    msg.textContent = 'Error: ' + err.message;
-    msg.className = 'form-msg err';
-    msg.hidden = false;
-  }
-});
-
-// ---- Recalcular campos derivados de todos los trámites existentes ----
-document.getElementById('recalcBtn').addEventListener('click', async () => {
-  const msg = document.getElementById('recalcMsg');
-  msg.hidden = true;
-  const confirmado = confirm('Esto va a recalcular Presupuesto Oficial, Total Adjudicado, Fechas de fin y % de Avance para TODOS los trámites cargados, sobrescribiendo esos valores. ¿Continuar?');
-  if (!confirmado) return;
-  try {
-    const r = await apiCall('recalcular_todos');
-    msg.textContent = 'Listo: se recalcularon ' + r.actualizados + ' trámites.';
-    msg.className = 'form-msg ok';
-    msg.hidden = false;
-    const data = await apiCall('listar');
-    state.registros = data.registros;
-    populateFilterOptions();
-  } catch (err) {
-    msg.textContent = 'Error: ' + err.message;
-    msg.className = 'form-msg err';
-    msg.hidden = false;
-  }
-});
-
 // ============================================================
 // UTILIDADES
 // ============================================================
