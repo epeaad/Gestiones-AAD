@@ -430,6 +430,20 @@
       <div class="view-header">
         <h2>Usuarios con acceso</h2>
       </div>
+
+      <div class="panel" style="max-width:640px;border-color:#FCA5A5;background:#FEF2F2;">
+        <h3 style="color:var(--danger);">⚠ Inconsistencia voluntaria: "Fecha de Apertura"</h3>
+        <p style="font-size:13px;color:var(--text-soft);margin:0;">
+          El campo <strong>"Fecha de Apertura"</strong> del formulario se guarda, por decisión propia,
+          en la columna del Sheet que originalmente se llamaba <strong>"Fecha Pedido de Compras (SAP)"</strong>.
+          No se creó una columna nueva a propósito, para no modificar la estructura de la base.
+          Los trámites cargados antes de esta decisión pueden tener en ese campo una fecha real de
+          Pedido de Compras (no una fecha de apertura), y por eso pueden aparecer en el Calendario de
+          Apertura sin corresponder a una apertura real. De acá en adelante, todo lo que se cargue desde
+          el formulario en "Fecha de Apertura" es correcto.
+        </p>
+      </div>
+
       <div class="panel" style="max-width:420px">
         <h3>Nuevo usuario</h3>
         <form id="userForm">
