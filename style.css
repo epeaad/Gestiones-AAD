@@ -275,6 +275,10 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .filter-field input[type="date"]{
   padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text);
 }
+.filter-field-wide{ min-width:240px; }
+.filter-texto-group{ display:flex; gap:6px; }
+.filter-texto-group select{ flex:0 0 auto; }
+.filter-texto-group input{ flex:1; min-width:0; }
 
 /* ============ RIESGO POR PLAZO (botón toggle) ============ */
 .risk-toggle-btn{
@@ -356,6 +360,10 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.02em;
   border-bottom:1px solid var(--border); position:sticky; top:0;
 }
+.data-table th.sortable{ cursor:pointer; user-select:none; }
+.data-table th.sortable:hover{ color:var(--brand-dark); background:var(--brand-soft); }
+.data-table th.sortable.sort-active{ color:var(--brand-dark); }
+.sort-arrow{ font-size:9px; margin-left:3px; opacity:0.8; }
 .data-table td{ padding:9px 14px; border-bottom:1px solid var(--border); font-family:var(--font-mono); }
 .data-table tbody tr:hover{ background:var(--brand-soft); cursor:pointer; }
 .data-table.solo-consulta tbody tr:hover{ background:transparent; cursor:default; }
