@@ -2118,7 +2118,7 @@ function renderCertTable() {
         ${puedeEditar ? '<button class="icon-btn" data-action="editar" data-cert-id="' + c._id + '" title="Editar certificación">✏️</button>' : ''}
         <button class="icon-btn" data-action="copiar" data-cert-id="${c._id}" title="Copiar datos">📋</button>
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-cert-id="' + c._id + '" title="Clonar certificación">🧬</button>' : ''}
-        ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" data-cert-id="' + c._id + '" title="Eliminar certificación">🗑️</button>' : ''}
+        ${puedeEditar ? '<button class="icon-btn danger" data-action="eliminar" data-cert-id="' + c._id + '" title="Eliminar certificación">🗑️</button>' : ''}
       </td>` : '';
     return `<tr>${tds}<td>${escapeHtml(c.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
