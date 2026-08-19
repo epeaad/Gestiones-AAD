@@ -2040,6 +2040,15 @@ let proyCamposCache = [];              // metadatos de campos (para exportar con
 
 async function abrirVistaProyectos() {
   document.getElementById('proyFiltroTexto').value = '';
+  // Refresca los trámites (además de los proyectos): así el buscador de trámites siempre
+  // trabaja con los datos más recientes, incluso si el trámite se cargó hace un momento
+  // desde otra pestaña o sesión.
+  try {
+    const data = await apiCall('listar');
+    state.registros = data.registros;
+  } catch (err) {
+    showAppError('No se pudieron actualizar los trámites: ' + err.message);
+  }
   await cargarProyectos();
 
   const puedeEditar = state.session && state.session.rol !== 'consulta';
@@ -2088,16 +2097,29 @@ proyBuscarInput.addEventListener('input', () => {
   const resultados = document.getElementById('proyResultadosBusqueda');
   if (q.length < 2) { resultados.hidden = true; resultados.innerHTML = ''; return; }
 
-  const matches = state.registros.filter(r =>
-    isObraMenorPospre(r.pospre) && (
-      String(r.pospre || '').toLowerCase().includes(q) ||
-      String(r.expediente || '').toLowerCase().includes(q) ||
-      String(r.nroPedidoCompras || '').toLowerCase().includes(q)
-    )
-  ).slice(0, 20);
+  const coincideTexto = r =>
+    String(r.pospre || '').toLowerCase().includes(q) ||
+    String(r.expediente || '').toLowerCase().includes(q) ||
+    String(r.nroPedidoCompras || '').toLowerCase().includes(q);
+
+  const todasLasCoincidencias = state.registros.filter(coincideTexto);
+  const matches = todasLasCoincidencias.filter(r => isObraMenorPospre(r.pospre)).slice(0, 20);
 
   if (!matches.length) {
-    resultados.innerHTML = '<div class="cert-search-item">Sin resultados (Proyectos solo aplica a trámites con Pospre O.D.P. u O.D.S.)</div>';
+    if (todasLasCoincidencias.length) {
+      // Hay trámite(s) con ese Pospre/Expediente/PC, pero ninguno tiene Pospre Obra Menor (O.D.P. / O.D.S.):
+      // por eso no aparecen acá, aunque el trámite sí existe en Registros.
+      const ejemplos = todasLasCoincidencias.slice(0, 5).map(r =>
+        `${escapeHtml(r.pospre || '(sin pospre)')} — Exp. ${escapeHtml(r.expediente || '—')} — PC ${escapeHtml(r.nroPedidoCompras || '—')}`
+      ).join('<br/>');
+      resultados.innerHTML = `<div class="cert-search-item">
+          Encontré ${todasLasCoincidencias.length} trámite(s) con ese texto, pero ninguno tiene Pospre <strong>O.D.P.</strong> u <strong>O.D.S.</strong> (Obra Menor), que es el único tipo al que aplica el módulo de Proyectos:<br/>
+          <span class="small">${ejemplos}</span><br/>
+          Si corresponde, corregí el Pospre de ese trámite desde Registros para que incluya "O.D.P." u "O.D.S.".
+        </div>`;
+    } else {
+      resultados.innerHTML = '<div class="cert-search-item">Sin resultados: no encontré ningún trámite con ese Pospre, Expediente o N° de Pedido de Compras.</div>';
+    }
   } else {
     resultados.innerHTML = matches.map(r => `<div class="cert-search-item" data-id="${r._id}">
         ${escapeHtml(r.pospre || '(sin pospre)')} — Exp. ${escapeHtml(r.expediente || '—')} — PC ${escapeHtml(r.nroPedidoCompras || '—')}
@@ -2153,10 +2175,19 @@ function seleccionarTramiteParaProyecto(rec, proyectoExistente) {
     info.hidden = false;
     info.innerHTML = `<strong>$ Km de LAMT de este contrato:</strong> ${formatMoney(rec.kmLineaPC)}` +
       (rec.mmAAkmLAMT ? ` (Mes/Año de cálculo: ${escapeHtml(rec.mmAAkmLAMT)})` : '') +
-      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Con este valor se calcula automáticamente el <strong>$ del Proyecto</strong> a partir del IIBB cargado. Para corregirlo, editá el trámite directamente desde Registros.`;
+      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Con este valor se calcula automáticamente el <strong>$ del Proyecto</strong> a partir del IIBB cargado.` +
+      ` <button type="button" class="btn btn-ghost btn-mini" id="proyIrAEjecucionBtn">Editar $ Km de LAMT</button>`;
   } else {
     info.hidden = false;
-    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Cargalo desde Registros, en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras y se puede calcular el $ del Proyecto automáticamente. Mientras tanto, cargá el $ del Proyecto a mano.`;
+    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Se carga en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras y se puede calcular el $ del Proyecto automáticamente. Mientras tanto, cargá el $ del Proyecto a mano.` +
+      ` <button type="button" class="btn btn-ghost btn-mini" id="proyIrAEjecucionBtn">Cargar $ Km de LAMT ahora</button>`;
+  }
+  const btnIrAEjecucion = document.getElementById('proyIrAEjecucionBtn');
+  if (btnIrAEjecucion) {
+    btnIrAEjecucion.addEventListener('click', () => {
+      openRecordForEdit(rec);
+      setActiveStage('ejecucion');
+    });
   }
 
   const form = document.getElementById('proyForm');

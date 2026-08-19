@@ -497,6 +497,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 }
 .cert-nota p{ margin:0 0 10px; font-size:13px; color:var(--brand-dark); }
 .cert-nota p:last-child{ margin-bottom:0; }
+.btn-mini{ padding:3px 10px; font-size:12px; margin-left:4px; white-space:nowrap; vertical-align:baseline; }
 
 /* ============ MÓDULO CERTIFICACIONES ============ */
 .cert-search-results{
