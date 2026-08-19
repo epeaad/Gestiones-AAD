@@ -16,6 +16,7 @@ const DATE_FIELDS = new Set([
   'fechaInicioExpte','fechaPedidoCompras','fechaActoAdmin',
   'fechaInicioReal','fechaFinContrato','fechaFinPlazoAmpliada'
 ]);
+const MONTH_FIELDS = new Set(['mmAAkmLAMT']); // campos tipo "mes/año" (input type="month")
 const NUMBER_FIELDS = new Set([
   'anio','plazoEntrega','cantidadesIIBB','presOficialUnitario','presupuestoOficialRubro',
   'adjudicadoUnitario','totalAdjudicado','ampliacionPlazo','cantidadProyectos','kmLineaPC',
@@ -37,7 +38,7 @@ const DYNAMIC_SELECT_FIELDS = new Set(['pospre']);
 const LONG_FIELDS = new Set(['detalleRubro','observaciones']);
 
 // ---- Campos calculados automáticamente: no se editan a mano ----
-const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','kmLineaPC','mmAAkmLAMT','cantTotalIIBBProyectados','proyectadosAcumulados']);
+const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados']);
 // Campos "fuente" que, al cambiar, disparan el recálculo
 const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','adjudicadoUnitario','fechaInicioReal','plazoEntrega','ampliacionPlazo']);
 // Campos "acumulador": tienen un mini sumador al lado para ir agregando valores sin calcular a mano
@@ -52,13 +53,10 @@ const state = {
   etapas: [],
   registros: [],
   filtros: {},
-  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
+  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '' },
   riesgoPlazoActivo: false,
   editingId: null,
-  activeStage: null,
-  registrosSort: { key: null, dir: 1 },     // ordenamiento de la tabla de Registros
-  dashSort: { key: null, dir: -1 },         // ordenamiento de la tabla de detalle del Dashboard (agrupada)
-  dashDetalleSort: { key: null, dir: 1 }    // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
+  activeStage: null
 };
 
 const DASH_FILTER_KEYS = ['anio','sucursal','rubro','pospre','nroPedidoCompras','adjudicatario','estado'];
@@ -323,10 +321,29 @@ function buildForm(record) {
 
     const grid = document.createElement('div');
     grid.className = 'field-grid';
-    state.campos.filter(f => f.col >= etapa.from && f.col <= etapa.to).forEach(f => {
+    let camposEtapa = state.campos.filter(f => f.col >= etapa.from && f.col <= etapa.to);
+    // El $ Km de LAMT y su Mes/Año de cálculo viven físicamente en las columnas de "Proyectos" (cols 27-28),
+    // pero conceptualmente son un dato de Ejecución del contrato: se definen una sola vez y valen para
+    // todos los proyectos de ese Pedido de Compras. Por eso se muestran en el panel de Ejecución (editables,
+    // como cualquier otro campo) y se sacan del panel de Proyectos, que solo aplica a Pospre Obra Menor.
+    if (etapa.id === 'proyectos') camposEtapa = camposEtapa.filter(f => f.key !== 'kmLineaPC' && f.key !== 'mmAAkmLAMT');
+    if (etapa.id === 'ejecucion' && isOM) {
+      const kmLineaPCField = fieldByKey('kmLineaPC');
+      const mmAAkmLAMTField = fieldByKey('mmAAkmLAMT');
+      if (kmLineaPCField) camposEtapa = camposEtapa.concat([kmLineaPCField]);
+      if (mmAAkmLAMTField) camposEtapa = camposEtapa.concat([mmAAkmLAMTField]);
+    }
+    camposEtapa.forEach(f => {
       grid.appendChild(buildFieldInput(f, record));
     });
     panel.appendChild(grid);
+
+    if (etapa.id === 'ejecucion' && isOM) {
+      const notaKm = document.createElement('div');
+      notaKm.className = 'cert-nota';
+      notaKm.innerHTML = `<p>El <strong>$ Km de LAMT</strong> y su <strong>Mes/Año de cálculo</strong> se cargan una sola vez acá y aplican automáticamente a todos los proyectos de este Pedido de Compras (Obra Menor) — no hace falta volver a cargarlos en cada proyecto.</p>`;
+      panel.appendChild(notaKm);
+    }
 
     if (etapa.id === 'certificacion') {
       const nota = document.createElement('div');
@@ -349,17 +366,6 @@ function buildForm(record) {
         nota.innerHTML = `<p>Estos valores se calculan solos, sumando los proyectos que cargues en la pestaña <strong>Proyectos</strong>. Primero guardá este trámite; después vas a poder cargarle proyectos.</p>`;
       }
       panel.appendChild(nota);
-    }
-    // El $ Km de LAMT es un dato de contrato (se define una sola vez, junto con la Adjudicación), aunque
-    // técnicamente se carga desde la pestaña Proyectos: se muestra acá también, en modo lectura, para
-    // que quede siempre visible desde la etapa de Adjudicación sin tener que ir a buscarlo.
-    if (etapa.id === 'adjudicacion' && record._id && num(record.kmLineaPC) > 0) {
-      const notaKm = document.createElement('div');
-      notaKm.className = 'cert-nota';
-      notaKm.innerHTML = `<p><strong>$ Km de LAMT del contrato:</strong> ${formatMoney(record.kmLineaPC)}` +
-        (record.mmAAkmLAMT ? ` (cargado en ${escapeHtml(record.mmAAkmLAMT)})` : '') +
-        `. Es un valor único para todo el contrato, cargado desde la pestaña <strong>Proyectos</strong>.</p>`;
-      panel.appendChild(notaKm);
     }
 
     panelsWrap.appendChild(panel);
@@ -475,6 +481,8 @@ function buildFieldInput(f, record) {
     inputHtml = `<textarea name="${f.key}">${escapeHtml(value)}</textarea>`;
   } else if (DATE_FIELDS.has(f.key)) {
     inputHtml = `<input type="date" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
+  } else if (MONTH_FIELDS.has(f.key)) {
+    inputHtml = `<input type="month" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else if (NUMBER_FIELDS.has(f.key)) {
     inputHtml = `<input type="number" step="any" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else {
@@ -675,16 +683,8 @@ document.getElementById('dashClearFilters').addEventListener('click', () => {
   DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = []; });
   state.dashFiltros.fechaPCDesde = '';
   state.dashFiltros.fechaPCHasta = '';
-  state.dashFiltros.pctAvanceDesde = '';
-  state.dashFiltros.pctAvanceHasta = '';
-  state.dashFiltros.texto = '';
-  state.dashFiltros.textoModo = 'contiene';
   document.getElementById('dashFechaPCDesde').value = '';
   document.getElementById('dashFechaPCHasta').value = '';
-  document.getElementById('dashPctAvanceDesde').value = '';
-  document.getElementById('dashPctAvanceHasta').value = '';
-  document.getElementById('dashTextoBuscar').value = '';
-  document.getElementById('dashTextoModo').value = 'contiene';
   state.riesgoPlazoActivo = false;
   document.getElementById('riesgoPlazoBtn').classList.remove('active');
   populateFilterOptions();
@@ -697,22 +697,6 @@ document.getElementById('dashFechaPCDesde').addEventListener('change', (e) => {
 });
 document.getElementById('dashFechaPCHasta').addEventListener('change', (e) => {
   state.dashFiltros.fechaPCHasta = e.target.value;
-  renderDashboard();
-});
-document.getElementById('dashPctAvanceDesde').addEventListener('input', (e) => {
-  state.dashFiltros.pctAvanceDesde = e.target.value;
-  renderDashboard();
-});
-document.getElementById('dashPctAvanceHasta').addEventListener('input', (e) => {
-  state.dashFiltros.pctAvanceHasta = e.target.value;
-  renderDashboard();
-});
-document.getElementById('dashTextoBuscar').addEventListener('input', (e) => {
-  state.dashFiltros.texto = e.target.value;
-  renderDashboard();
-});
-document.getElementById('dashTextoModo').addEventListener('change', (e) => {
-  state.dashFiltros.textoModo = e.target.value;
   renderDashboard();
 });
 document.getElementById('riesgoPlazoBtn').addEventListener('click', () => {
@@ -911,18 +895,6 @@ function mostrarDetalleDiaApertura(eventos, fechaStr) {
   detailBox.hidden = false;
 }
 
-// ---- % de Avance de un trámite: Certificado / Adjudicado * 100 (misma fórmula que en toda la app) ----
-function pctAvanceTramite(r) {
-  const adj = num(r.totalAdjudicado);
-  return adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
-}
-
-// ---- Campos de texto sobre los que busca el filtro "Contiene / No contiene" del Dashboard ----
-const DASH_TEXTO_CAMPOS = [
-  'pospre', 'expediente', 'sucursal', 'rubro', 'detalleRubro', 'nroPedidoCompras',
-  'adjudicatario', 'estado', 'agenciaSector', 'observaciones'
-];
-
 function filteredForDashboardBase() {
   let rows = applyFilters(state.registros, state.dashFiltros, DASH_FILTER_KEYS);
   const desde = state.dashFiltros.fechaPCDesde;
@@ -936,27 +908,6 @@ function filteredForDashboardBase() {
       return true;
     });
   }
-
-  const pctDesde = state.dashFiltros.pctAvanceDesde;
-  const pctHasta = state.dashFiltros.pctAvanceHasta;
-  if (pctDesde !== '' && pctDesde != null || pctHasta !== '' && pctHasta != null) {
-    rows = rows.filter(r => {
-      const pct = pctAvanceTramite(r);
-      if (pctDesde !== '' && pctDesde != null && pct < parseFloat(pctDesde)) return false;
-      if (pctHasta !== '' && pctHasta != null && pct > parseFloat(pctHasta)) return false;
-      return true;
-    });
-  }
-
-  const texto = (state.dashFiltros.texto || '').trim().toLowerCase();
-  if (texto) {
-    const modo = state.dashFiltros.textoModo || 'contiene';
-    rows = rows.filter(r => {
-      const contiene = DASH_TEXTO_CAMPOS.some(k => String(r[k] || '').toLowerCase().includes(texto));
-      return modo === 'no_contiene' ? !contiene : contiene;
-    });
-  }
-
   return rows;
 }
 
@@ -999,76 +950,29 @@ const REGISTROS_COLS = [
   { key: 'estado', label: 'Estado' }
 ];
 
-// ============================================================
-// ORDENAMIENTO GENÉRICO DE TABLAS (por click en el encabezado)
-// ============================================================
-const MONEY_COL_KEYS = new Set(['presupuestoOficialRubro', 'totalAdjudicado', 'certificadosAAD']);
-
-// Valor "comparable" de un registro de trámite para una columna dada (usado para ordenar)
-function registroSortValue(r, key) {
-  if (key === 'pctAvance') return pctAvanceTramite(r);
-  if (MONEY_COL_KEYS.has(key) || key === 'anio') return num(r[key]);
-  return String(r[key] != null ? r[key] : '').toLowerCase();
-}
-
-// Compara dos valores ya extraídos (números entre sí, o texto entre sí con localeCompare en español)
-function compareValues(a, b) {
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a).localeCompare(String(b), 'es', { sensitivity: 'base', numeric: true });
-}
-
-// Genera el <thead> con encabezados clickeables y la flechita de orden activo
-function sortableTheadHtml(cols, sortState, extraThHtml) {
-  const ths = cols.map(c => {
-    const activo = sortState.key === c.key;
-    const flecha = activo ? '<span class="sort-arrow">' + (sortState.dir === 1 ? '▲' : '▼') + '</span>' : '';
-    return `<th class="sortable${activo ? ' sort-active' : ''}" data-sort-key="${c.key}">${c.label}${flecha}</th>`;
-  }).join('');
-  return '<thead><tr>' + ths + (extraThHtml || '') + '</tr></thead>';
-}
-
-// Conecta los clicks de los <th data-sort-key> de una tabla ya renderizada a un estado de orden dado
-function wireSortableHeaders(table, sortState, onChange) {
-  table.querySelectorAll('th.sortable[data-sort-key]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sortKey;
-      if (sortState.key === key) { sortState.dir = -sortState.dir; }
-      else { sortState.key = key; sortState.dir = 1; }
-      onChange();
-    });
-  });
-}
-
-// Genera las filas <td> de un registro de trámite según REGISTROS_COLS (reutilizado por Registros y Dashboard "Todos")
-function registroTdsHtml(r) {
-  return REGISTROS_COLS.map(c => {
-    if (c.key === 'estado') {
-      const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
-      return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
-    }
-    if (MONEY_COL_KEYS.has(c.key)) return `<td>${formatMoney(r[c.key])}</td>`;
-    if (c.key === 'pctAvance') return `<td>${pctAvanceTramite(r).toFixed(1)}%</td>`;
-    return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
-  }).join('');
-}
-
-function sortRows(rows, sortState, valueFn) {
-  if (!sortState.key) return rows;
-  const copy = rows.slice();
-  copy.sort((a, b) => compareValues(valueFn(a, sortState.key), valueFn(b, sortState.key)) * sortState.dir);
-  return copy;
-}
-
 function renderRegistros() {
-  let rows = filteredRecords();
-  rows = sortRows(rows, state.registrosSort, registroSortValue);
+  const rows = filteredRecords();
   document.getElementById('resultsCount').textContent = rows.length + ' trámite(s) encontrados de ' + state.registros.length + ' totales.';
   const table = document.getElementById('recordsTable');
   const isAdmin = state.session && state.session.rol === 'admin';
   const puedeEditar = state.session && state.session.rol !== 'consulta';
-  const thead = sortableTheadHtml(REGISTROS_COLS, state.registrosSort, '<th class="col-sticky">Acciones</th>');
+  const thead = '<thead><tr>' + REGISTROS_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th class="col-sticky">Acciones</th></tr></thead>';
   const tbody = '<tbody>' + rows.map(r => {
-    const tds = registroTdsHtml(r);
+    const tds = REGISTROS_COLS.map(c => {
+      if (c.key === 'estado') {
+        const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
+        return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
+      }
+      if (c.key === 'presupuestoOficialRubro' || c.key === 'totalAdjudicado' || c.key === 'certificadosAAD') {
+        return `<td>${formatMoney(r[c.key])}</td>`;
+      }
+      if (c.key === 'pctAvance') {
+        const adj = num(r.totalAdjudicado);
+        const avance = adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
+        return `<td>${avance.toFixed(1)}%</td>`;
+      }
+      return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
+    }).join('');
     const acciones = `<td class="row-actions col-sticky">
         <button class="icon-btn" data-action="copiar" title="Copiar datos">📋</button>
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" title="Clonar trámite">🧬</button>' : ''}
@@ -1079,7 +983,6 @@ function renderRegistros() {
   table.innerHTML = thead + tbody;
   table.classList.toggle('solo-consulta', !puedeEditar);
   setupScrollShadow(table.closest('.table-wrap'));
-  wireSortableHeaders(table, state.registrosSort, renderRegistros);
 
   table.querySelectorAll('tbody tr').forEach(tr => {
     tr.addEventListener('click', (e) => {
@@ -1299,6 +1202,12 @@ function renderDashboard() {
   // aplicada sobre los totales del filtro actual — para que coincida con el dato individual, no un promedio aparte.
   const avanceCertificacion = totalAdjudicado > 0 ? (totalCertificado / totalAdjudicado) * 100 : 0;
 
+  // ---- Desiertos vs. Adjudicados: sobre los trámites del filtro actual que ya tienen uno de estos dos estados ----
+  const cantDesiertos = rows.filter(r => r.estado === 'Desierto').length;
+  const cantAdjudicados = rows.filter(r => r.estado === 'Adjudicado').length;
+  const totalDesAdj = cantDesiertos + cantAdjudicados;
+  const pctDesiertos = totalDesAdj > 0 ? (cantDesiertos / totalDesAdj) * 100 : 0;
+
   const kpiRow = document.getElementById('kpiRow');
   kpiRow.innerHTML = [
     kpiCard('Trámites (filtro actual)', rows.length, 'de ' + state.registros.length + ' totales'),
@@ -1308,6 +1217,7 @@ function renderDashboard() {
     kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado'),
     kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial'),
     kpiCard('Multas acumuladas', formatMillions(totalMultas), 'sin IVA'),
+    kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
   ].join('');
 
 
@@ -1460,12 +1370,6 @@ function renderDashboard() {
   renderContratistaResumen(rows);
 
   // ---- Tabla de detalle (según "Agrupar por") ----
-  // "Todos": en vez de agrupar, se muestra el detalle completo de cada trámite que pasa los filtros actuales.
-  if (groupKey === 'todos') {
-    renderDashDetalleCompleto(rows);
-    return;
-  }
-
   const groups = {};
   rows.forEach(r => {
     const key = (r[groupKey] || '(sin dato)').toString().trim() || '(sin dato)';
@@ -1487,99 +1391,37 @@ function renderDashboard() {
     return arr.length <= max ? arr.join(', ') : arr.slice(0, max).join(', ') + ' (+' + (arr.length - max) + ')';
   };
 
-  const mostrarSucursalContratista = groupKey === 'nroPedidoCompras';
-
-  // Filas "planas" listas para ordenar por cualquier columna (por defecto: Pres. Oficial descendente, como antes)
-  let filas = Object.entries(groups).map(([k, v]) => ({
-    grupo: k,
-    n: v.n,
-    presOficial: v.presOficial,
-    adjudicado: v.adjudicado,
-    certificado: v.certificado,
-    avance: v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0,
-    certProcesados: v.certProcesados,
-    proyectos: v.proyectos,
-    pctIIBB: promedioPctIIBB(v),
-    sucursales: listaCorta(v.sucursales),
-    contratistas: listaCorta(v.contratistas)
-  }));
-
-  if (!state.dashSort.key) { state.dashSort.key = 'presOficial'; state.dashSort.dir = -1; }
-  const dashValueFn = (f, key) => {
-    if (['grupo','sucursales','contratistas'].includes(key)) return String(f[key] || '').toLowerCase();
-    return num(f[key]);
-  };
-  filas = sortRows(filas, state.dashSort, dashValueFn);
-
-  const allEntries = filas;
+  const allEntries = Object.entries(groups).sort((a,b) => b[1].presOficial - a[1].presOficial);
   const entries = allEntries.slice(0, 12);
   const hayMasGrupos = allEntries.length > entries.length;
+  const mostrarSucursalContratista = groupKey === 'nroPedidoCompras';
 
   // Totales sobre TODOS los grupos (no solo los 12 que se muestran), para que coincida con los KPIs de arriba
-  const totalGeneral = allEntries.reduce((acc, f) => {
-    acc.n += f.n; acc.presOficial += f.presOficial; acc.adjudicado += f.adjudicado; acc.certificado += f.certificado;
-    acc.certProcesados += f.certProcesados; acc.proyectos += f.proyectos; acc.pctIIBBSuma += f.pctIIBB; acc.cant++;
+  const totalGeneral = allEntries.reduce((acc, [, v]) => {
+    acc.n += v.n; acc.presOficial += v.presOficial; acc.adjudicado += v.adjudicado; acc.certificado += v.certificado;
+    acc.certProcesados += v.certProcesados; acc.proyectos += v.proyectos; acc.pctIIBBValores = acc.pctIIBBValores.concat(v.pctIIBBValores);
     return acc;
-  }, { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBSuma:0, cant:0 });
+  }, { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBValores:[] });
   const avanceGeneral = totalGeneral.adjudicado > 0 ? (totalGeneral.certificado / totalGeneral.adjudicado) * 100 : 0;
-  const promedioPctIIBBGeneral = totalGeneral.cant ? totalGeneral.pctIIBBSuma / totalGeneral.cant : 0;
+  const promedioPctIIBBGeneral = promedioPctIIBB(totalGeneral);
 
-  const dashCols = [{ key: 'grupo', label: labelForGroup(groupKey) }]
-    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }] : [])
-    .concat([
-      { key: 'n', label: 'Trámites' },
-      { key: 'presOficial', label: 'Pres. Oficial' },
-      { key: 'adjudicado', label: 'Total Adjudicado' },
-      { key: 'certificado', label: 'Certificado AAD' },
-      { key: 'avance', label: '% de Avance' },
-      { key: 'certProcesados', label: 'Cant. Certificados Proc.' },
-      { key: 'proyectos', label: 'Cant. Proyectos' },
-      { key: 'pctIIBB', label: '% IIBB Proyectados' }
-    ]);
-
+  const colExtra = mostrarSucursalContratista ? '<th>Sucursal</th><th>Contratista</th>' : '';
   const table = document.getElementById('dashTable');
-  table.innerHTML = sortableTheadHtml(dashCols, state.dashSort) +
-    '<tbody>' + entries.map(f => {
-      const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td>` : '';
-      return `<tr><td>${escapeHtml(f.grupo)}</td>${tdsExtra}<td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctIIBB.toFixed(1)}%</td></tr>`;
+  table.innerHTML = '<thead><tr><th>' + labelForGroup(groupKey) + '</th>' + colExtra + '<th>Trámites</th><th>Pres. Oficial</th><th>Total Adjudicado</th><th>Certificado AAD</th><th>% de Avance</th><th>Cant. Certificados Proc.</th><th>Cant. Proyectos</th><th>% IIBB Proyectados</th></tr></thead>' +
+    '<tbody>' + entries.map(([k, v]) => {
+      const avanceGrupo = v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0;
+      const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(listaCorta(v.sucursales))}</td><td>${escapeHtml(listaCorta(v.contratistas))}</td>` : '';
+      return `<tr><td>${escapeHtml(k)}</td>${tdsExtra}<td>${v.n}</td><td>${formatMillions(v.presOficial)}</td><td>${formatMillions(v.adjudicado)}</td><td>${formatMillions(v.certificado)}</td><td>${avanceGrupo.toFixed(1)}%</td><td>${v.certProcesados}</td><td>${v.proyectos}</td><td>${promedioPctIIBB(v).toFixed(1)}%</td></tr>`;
     }).join('') +
     `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}<td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td></tr>` +
     '</tbody>';
-  wireSortableHeaders(table, state.dashSort, renderDashboard);
-  setupScrollShadow(table.closest('.table-wrap'));
 
   const nota = document.getElementById('dashTableNota');
   if (nota) {
     nota.textContent = hayMasGrupos
-      ? `Se muestran los 12 grupos principales según el orden actual, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles. Hacé click en un encabezado para cambiar el orden.`
-      : 'Hacé click en un encabezado de la tabla para ordenar por esa columna.';
-    nota.hidden = false;
-  }
-}
-
-// ---- Tabla de detalle completo (modo "Todos" de "Agrupar por"): un renglón por trámite, sin agrupar ----
-function renderDashDetalleCompleto(rows) {
-  rows = sortRows(rows, state.dashDetalleSort, registroSortValue);
-  const table = document.getElementById('dashTable');
-  table.innerHTML = sortableTheadHtml(REGISTROS_COLS, state.dashDetalleSort) +
-    '<tbody>' + rows.map(r => `<tr data-id="${r._id}">${registroTdsHtml(r)}</tr>`).join('') + '</tbody>';
-  wireSortableHeaders(table, state.dashDetalleSort, renderDashboard);
-  setupScrollShadow(table.closest('.table-wrap'));
-
-  const puedeEditar = state.session && state.session.rol !== 'consulta';
-  if (puedeEditar) {
-    table.querySelectorAll('tbody tr').forEach(tr => {
-      tr.addEventListener('click', () => {
-        const rec = state.registros.find(r => r._id === tr.dataset.id);
-        if (rec) openRecordForEdit(rec);
-      });
-    });
-  }
-
-  const nota = document.getElementById('dashTableNota');
-  if (nota) {
-    nota.textContent = 'Detalle completo: ' + rows.length + ' trámite(s) según los filtros actuales del Dashboard. Hacé click en un encabezado para ordenar.';
-    nota.hidden = false;
+      ? `Se muestran los 12 grupos con mayor Presupuesto Oficial, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles.`
+      : '';
+    nota.hidden = !hayMasGrupos;
   }
 }
 
@@ -2001,7 +1843,6 @@ let proyTramitePreseleccionado = null; // seteado desde el botón "Ver / cargar 
 let proyTramiteActual = null;          // registro del trámite elegido en esta pestaña
 let proyListaCache = [];               // todos los proyectos ya cargados (para la tabla)
 let proyCamposCache = [];              // metadatos de campos (para exportar con etiquetas legibles)
-let proyEditingId = null;              // si no es null, el formulario está editando ese proyecto (en vez de crear uno nuevo)
 
 async function abrirVistaProyectos() {
   document.getElementById('proyFiltroTexto').value = '';
@@ -2018,7 +1859,6 @@ async function abrirVistaProyectos() {
     document.getElementById('proyTramiteSeleccionado').hidden = true;
     document.getElementById('proyForm').hidden = true;
     proyTramiteActual = null;
-    proyEditingId = null;
   }
 }
 
@@ -2087,50 +1927,17 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ---- $ Km de LAMT: es único por contrato/trámite. Una vez cargado en cualquier proyecto de ese trámite,
-//      no se vuelve a pedir: se muestra fijo (solo lectura) y se copia automáticamente a los proyectos nuevos.
-//      Para corregirlo hay que editar el proyecto donde se cargó (o cualquiera, con el botón ✏️ Editar).
-function configurarCamposKmLamt(rec, esEdicion) {
-  const inputMonto = document.querySelector('#proyForm [name="montoKmLAMT"]');
-  const inputMes = document.querySelector('#proyForm [name="mesAnioKmLAMT"]');
-  const info = document.getElementById('proyKmLamtInfo');
-  const yaCargado = !esEdicion && num(rec.kmLineaPC) > 0;
-
-  if (yaCargado) {
-    inputMonto.value = rec.kmLineaPC;
-    inputMes.value = rec.mmAAkmLAMT || '';
-    inputMonto.readOnly = true;
-    inputMes.readOnly = true;
-    info.hidden = false;
-    info.innerHTML = `<strong>$ Km de LAMT de este contrato:</strong> ${formatMoney(rec.kmLineaPC)}` +
-      (rec.mmAAkmLAMT ? ` (cargado en ${escapeHtml(rec.mmAAkmLAMT)})` : '') +
-      `. Ya fue cargado una vez para este Pedido de Compras y se toma automáticamente para los demás proyectos — no hace falta volver a cargarlo. Si necesitás corregirlo, editá el proyecto donde se cargó.`;
-  } else {
-    inputMonto.readOnly = false;
-    inputMes.readOnly = false;
-    if (esEdicion) {
-      info.hidden = false;
-      info.innerHTML = `Estás editando el $ Km de LAMT de este contrato: el cambio va a aplicar para todo el Pedido de Compras.`;
-    } else {
-      info.hidden = true;
-    }
-  }
-}
-
 function seleccionarTramiteParaProyecto(rec) {
   proyTramiteActual = rec;
-  proyEditingId = null;
-  document.getElementById('proyFormTitle').textContent = 'Cargar proyecto';
-  document.getElementById('proySubmitBtn').textContent = 'Guardar proyecto';
   const chip = document.getElementById('proyTramiteSeleccionado');
   chip.innerHTML = `<span><strong>${escapeHtml(rec.pospre || '')}</strong> — Exp. ${escapeHtml(rec.expediente || '—')} — PC ${escapeHtml(rec.nroPedidoCompras || '—')} — ${escapeHtml(rec.adjudicatario || '(sin contratista)')}</span>
     <button type="button" class="btn btn-ghost" id="proyCambiarTramiteBtn">Cambiar</button>`;
   chip.hidden = false;
   document.getElementById('proyCambiarTramiteBtn').addEventListener('click', () => {
     proyTramiteActual = null;
-    proyEditingId = null;
     chip.hidden = true;
     document.getElementById('proyForm').hidden = true;
+    document.getElementById('proyKmLamtInfo').hidden = true;
   });
 
   document.getElementById('proyPospre').value = rec.pospre || '';
@@ -2138,97 +1945,30 @@ function seleccionarTramiteParaProyecto(rec) {
   document.getElementById('proyPC').value = rec.nroPedidoCompras || '';
   document.getElementById('proyContratista').value = rec.adjudicatario || '';
 
+  // El $ Km de LAMT y su Mes/Año ya no se cargan acá: se definen una sola vez en la etapa
+  // Ejecución del trámite (Registros) y valen para todos los proyectos de este Pedido de Compras.
+  const info = document.getElementById('proyKmLamtInfo');
+  if (num(rec.kmLineaPC) > 0) {
+    info.hidden = false;
+    info.innerHTML = `<strong>$ Km de LAMT de este contrato:</strong> ${formatMoney(rec.kmLineaPC)}` +
+      (rec.mmAAkmLAMT ? ` (Mes/Año de cálculo: ${escapeHtml(rec.mmAAkmLAMT)})` : '') +
+      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Para corregirlo, editá el trámite directamente desde Registros.`;
+  } else {
+    info.hidden = false;
+    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Cargalo desde Registros, en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras.`;
+  }
+
   const form = document.getElementById('proyForm');
   form.reset();
-  configurarCamposKmLamt(rec, false);
-  recalcMontoProyecto();
   document.getElementById('proyFormMsg').hidden = true;
   form.hidden = false;
-}
-
-// ---- Editar: carga un proyecto ya existente en el formulario, en modo edición ----
-function editarProyecto(p) {
-  const rec = state.registros.find(r => r._id === p.idTramite);
-  if (!rec) { alert('No se encontró el trámite asociado a este proyecto.'); return; }
-  const puedeEditar = state.session && state.session.rol !== 'consulta';
-  if (!puedeEditar) return;
-
-  seleccionarTramiteParaProyecto(rec);
-  proyEditingId = p._id;
-  document.getElementById('proyFormTitle').textContent = 'Editar proyecto';
-  document.getElementById('proySubmitBtn').textContent = 'Guardar cambios';
-
-  document.querySelectorAll('#proyForm [name]').forEach(input => {
-    if (p[input.name] != null) input.value = p[input.name];
-  });
-  configurarCamposKmLamt(rec, true);
-  recalcMontoProyecto();
-  document.getElementById('proyFormMsg').hidden = true;
-  document.getElementById('proyFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-// ---- Copiar: pasa un resumen del proyecto al portapapeles ----
-function copiarProyecto(p, btn) {
-  const resumen = [
-    'Pospre: ' + (p.pospre || ''),
-    'Sucursal: ' + (p.sucursal || ''),
-    'Pedido de Compras: ' + (p.nroPedidoCompras || ''),
-    'Contratista: ' + (p.contratista || ''),
-    'N° de Expediente de Proyecto: ' + (p.nroExpedienteProyecto || ''),
-    'Número de Proyecto: ' + (p.numeroProyecto || ''),
-    '$ Km de LAMT: ' + formatMoney(p.montoKmLAMT),
-    'IIBB del Proyecto: ' + (p.iibbProyecto || ''),
-    '$ del Proyecto: ' + formatMoney(p.montoProyecto),
-  ].join('\n');
-
-  navigator.clipboard.writeText(resumen).then(() => {
-    const original = btn.textContent;
-    btn.textContent = '✅';
-    setTimeout(() => { btn.textContent = original; }, 1200);
-  }).catch(() => {
-    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
-  });
-}
-
-// ---- Clonar: crea un proyecto nuevo con los mismos datos ----
-async function clonarProyecto(p) {
-  const confirmado = confirm('¿Clonar este proyecto? Se va a crear un proyecto nuevo con los mismos datos (podés editarlo después).');
-  if (!confirmado) return;
-  const datos = {};
-  proyCamposCache.forEach(f => { if (f.key !== 'pctIIBBProyecto') datos[f.key] = p[f.key]; });
-  try {
-    await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: p.idTramite }, datos) });
-    const data = await apiCall('listar');
-    state.registros = data.registros;
-    await cargarProyectos();
-  } catch (err) {
-    alert('Error al clonar: ' + err.message);
-  }
 }
 
 document.getElementById('proyCancelarBtn').addEventListener('click', () => {
   document.getElementById('proyForm').hidden = true;
   document.getElementById('proyTramiteSeleccionado').hidden = true;
+  document.getElementById('proyKmLamtInfo').hidden = true;
   proyTramiteActual = null;
-  proyEditingId = null;
-});
-
-// ---- $ del Proyecto se calcula solo: IIBB del Proyecto × $ Adjudicado Unitario del trámite ----
-function getProyFormValue(name) {
-  const el = document.querySelector('#proyForm [name="' + name + '"]');
-  return el ? el.value : '';
-}
-function recalcMontoProyecto() {
-  const montoInput = document.querySelector('#proyForm [name="montoProyecto"]');
-  if (!montoInput) return;
-  if (!proyTramiteActual) { montoInput.value = ''; return; }
-  const iibb = parseFloat(getProyFormValue('iibbProyecto')) || 0;
-  const unitario = parseFloat(proyTramiteActual.adjudicadoUnitario) || 0;
-  const monto = iibb * unitario;
-  montoInput.value = monto ? monto.toFixed(2) : '';
-}
-document.getElementById('proyForm').addEventListener('input', (e) => {
-  if (e.target.name === 'iibbProyecto') recalcMontoProyecto();
 });
 
 document.getElementById('proyForm').addEventListener('submit', async (e) => {
@@ -2246,16 +1986,10 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
   document.querySelectorAll('#proyForm [name]').forEach(input => { datos[input.name] = input.value; });
 
   try {
-    if (proyEditingId) {
-      await apiCall('proyectos_actualizar', { id: proyEditingId, datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
-      msg.textContent = 'Proyecto actualizado correctamente.';
-    } else {
-      await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
-      msg.textContent = 'Proyecto guardado correctamente.';
-    }
+    await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
+    msg.textContent = 'Proyecto guardado correctamente.';
     msg.className = 'form-msg ok';
     msg.hidden = false;
-    proyEditingId = null;
     document.getElementById('proyForm').reset();
     seleccionarTramiteParaProyecto(proyTramiteActual); // limpia el form pero deja el trámite elegido para cargar otro
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
@@ -2277,8 +2011,6 @@ const PROY_TABLE_COLS = [
   { key: 'contratista', label: 'Contratista' },
   { key: 'nroExpedienteProyecto', label: 'Exp. Proyecto' },
   { key: 'numeroProyecto', label: 'N° Proyecto' },
-  { key: 'mesAnioKmLAMT', label: 'Mes/Año LAMT' },
-  { key: 'montoKmLAMT', label: '$ Km LAMT' },
   { key: 'iibbProyecto', label: 'IIBB Proyecto' },
   { key: 'montoProyecto', label: '$ Proyecto' },
   { key: 'pctIIBBProyecto', label: '% IIBB' },
@@ -2291,48 +2023,34 @@ function renderProyTable() {
     return ['pospre','nroPedidoCompras','contratista','numeroProyecto','nroExpedienteProyecto'].some(k =>
       String(p[k] || '').toLowerCase().includes(q)
     );
-  }).sort((a, b) => String(b.mesAnioKmLAMT || '').localeCompare(String(a.mesAnioKmLAMT || '')));
+  }).sort((a, b) => String(b.numeroProyecto || '').localeCompare(String(a.numeroProyecto || '')));
 
   const isAdmin = state.session && state.session.rol === 'admin';
-  const puedeEditar = state.session && state.session.rol !== 'consulta';
   const table = document.getElementById('proyTable');
-  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : '') + '</tr></thead>';
+  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + (isAdmin ? '<th>Acciones</th>' : '') + '</tr></thead>';
   const tbody = '<tbody>' + rows.map(p => {
     const tds = PROY_TABLE_COLS.map(col => {
-      if (['montoKmLAMT','montoProyecto'].includes(col.key)) return `<td>${formatMoney(p[col.key])}</td>`;
+      if (['montoProyecto'].includes(col.key)) return `<td>${formatMoney(p[col.key])}</td>`;
       if (col.key === 'pctIIBBProyecto') return `<td>${num(p.pctIIBBProyecto).toFixed(1)}%</td>`;
       return `<td>${escapeHtml(p[col.key] != null ? p[col.key] : '')}</td>`;
     }).join('');
-    const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
-        ${puedeEditar ? '<button class="icon-btn" data-action="editar" data-proy-id="' + p._id + '" title="Editar proyecto">✏️</button>' : ''}
-        <button class="icon-btn" data-action="copiar" data-proy-id="${p._id}" title="Copiar datos">📋</button>
-        ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-proy-id="' + p._id + '" title="Clonar proyecto">🧬</button>' : ''}
-        ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" data-proy-id="' + p._id + '" title="Eliminar proyecto">🗑️</button>' : ''}
-      </td>` : '';
+    const acciones = isAdmin ? `<td><button class="icon-btn danger" data-proy-id="${p._id}" title="Eliminar proyecto">🗑️</button></td>` : '';
     return `<tr>${tds}<td>${escapeHtml(p.descripcionProyecto || '')}</td><td>${escapeHtml(p.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
 
   table.querySelectorAll('[data-proy-id]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const p = proyListaCache.find(x => x._id === btn.dataset.proyId);
-      if (!p) return;
-      const accion = btn.dataset.action;
-      if (accion === 'copiar') { copiarProyecto(p, btn); return; }
-      if (accion === 'editar') { editarProyecto(p); return; }
-      if (accion === 'clonar') { await clonarProyecto(p); return; }
-      if (accion === 'eliminar') {
-        const confirmado = confirm('¿Eliminar este proyecto? El total del trámite se va a recalcular.');
-        if (!confirmado) return;
-        try {
-          await apiCall('proyectos_eliminar', { id: p._id });
-          const data = await apiCall('listar');
-          state.registros = data.registros;
-          await cargarProyectos();
-        } catch (err) {
-          alert('Error: ' + err.message);
-        }
+    btn.addEventListener('click', async () => {
+      const confirmado = confirm('¿Eliminar este proyecto? El total del trámite se va a recalcular.');
+      if (!confirmado) return;
+      try {
+        await apiCall('proyectos_eliminar', { id: btn.dataset.proyId });
+        const data = await apiCall('listar');
+        state.registros = data.registros;
+        await cargarProyectos();
+      } catch (err) {
+        alert('Error: ' + err.message);
       }
     });
   });

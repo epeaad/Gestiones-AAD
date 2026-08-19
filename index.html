@@ -107,7 +107,6 @@
               <option value="pospre">PosPre</option>
               <option value="nroPedidoCompras">Pedido de Compras</option>
               <option value="adjudicatario">Contratista/Proveedor</option>
-              <option value="todos">Todos (detalle completo)</option>
             </select>
           </label>
           <button id="printDashboardBtn" class="btn btn-secondary">Imprimir a PDF</button>
@@ -150,24 +149,6 @@
         <div class="filter-field">
           <label>Fecha P.C. hasta</label>
           <input type="date" id="dashFechaPCHasta" />
-        </div>
-        <div class="filter-field">
-          <label>% de Avance desde</label>
-          <input type="number" min="0" max="100" step="any" id="dashPctAvanceDesde" placeholder="0" />
-        </div>
-        <div class="filter-field">
-          <label>% de Avance hasta</label>
-          <input type="number" min="0" max="100" step="any" id="dashPctAvanceHasta" placeholder="100" />
-        </div>
-        <div class="filter-field filter-field-wide">
-          <label>Buscar palabra</label>
-          <div class="filter-texto-group">
-            <select id="dashTextoModo">
-              <option value="contiene">Contiene</option>
-              <option value="no_contiene">No contiene</option>
-            </select>
-            <input type="text" id="dashTextoBuscar" placeholder="Palabra o frase..." />
-          </div>
         </div>
         <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
         <button id="dashClearFilters" class="btn btn-ghost">Limpiar filtros</button>
@@ -373,7 +354,7 @@
       </div>
 
       <div class="panel" id="proyFormPanel">
-        <h3 id="proyFormTitle">Cargar proyecto</h3>
+        <h3>Cargar proyecto</h3>
 
         <div class="field-grid">
           <label class="span-2" style="position:relative;">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
@@ -383,9 +364,9 @@
         </div>
 
         <div id="proyTramiteSeleccionado" class="cert-tramite-chip" hidden></div>
+        <p id="proyKmLamtInfo" class="cert-nota" hidden></p>
 
         <form id="proyForm" hidden>
-          <p id="proyKmLamtInfo" class="cert-nota" hidden></p>
           <div class="field-grid">
             <label>Pospre <input type="text" id="proyPospre" readonly /></label>
             <label>Sucursal <input type="text" id="proySucursal" readonly /></label>
@@ -393,17 +374,15 @@
             <label>Contratista <input type="text" id="proyContratista" readonly /></label>
             <label>N° de Expediente de Proyecto <input type="text" name="nroExpedienteProyecto" /></label>
             <label>Número de Proyecto <input type="text" name="numeroProyecto" /></label>
-            <label>$ Km de LAMT <input type="number" step="any" name="montoKmLAMT" /></label>
-            <label>Mes/Año Km de LAMT <input type="month" name="mesAnioKmLAMT" /></label>
             <label class="span-2">Descripción del Proyecto <textarea name="descripcionProyecto"></textarea></label>
             <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" /></label>
-            <label>$ del Proyecto <span class="calc-badge">calculado</span> <input type="number" step="any" name="montoProyecto" readonly tabindex="-1" /></label>
+            <label>$ del Proyecto <input type="number" step="any" name="montoProyecto" /></label>
             <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
           </div>
           <div class="form-actions">
             <p id="proyFormMsg" class="form-msg" hidden></p>
             <button type="button" id="proyCancelarBtn" class="btn btn-ghost">Cancelar</button>
-            <button type="submit" class="btn btn-primary" id="proySubmitBtn">Guardar proyecto</button>
+            <button type="submit" class="btn btn-primary">Guardar proyecto</button>
           </div>
         </form>
       </div>
