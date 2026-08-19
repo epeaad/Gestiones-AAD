@@ -46,6 +46,10 @@ const SUM_HELPER_FIELDS = new Set([]);
 
 const FILTER_KEYS = ['pospre','expediente','anio','nroPedidoCompras','adjudicatario','sucursal','rubro','estado'];
 
+// Valor especial que representa "sin dato" dentro de un filtro de selección múltiple
+// (por ejemplo, Estado vacío = trámite todavía no adjudicado ni definido).
+const EMPTY_FILTER_VALUE = '(Vacío / No adjudicado)';
+
 // ---- Estado en memoria ----
 const state = {
   session: null,      // { usuario, nombre, rol, clave }
@@ -559,6 +563,16 @@ function uniqueValues(key) {
   return Array.from(set).sort();
 }
 
+// ---- Igual que uniqueValues, pero antepone la opción "(Vacío / No adjudicado)" si hay
+//      al menos un registro con ese campo sin cargar. Se usa en el filtro Estado del
+//      Dashboard, para que los trámites todavía no adjudicados (Estado vacío) puedan
+//      elegirse como una categoría más, en vez de quedar siempre excluidos al filtrar. ----
+function uniqueValuesConVacio(key) {
+  const opts = uniqueValues(key);
+  const hayVacios = state.registros.some(r => !String(r[key] || '').trim());
+  return hayVacios ? [EMPTY_FILTER_VALUE].concat(opts) : opts;
+}
+
 // ---- Componente de selección múltiple por tildado (checkboxes) ----
 function closeAllMultiselects(except) {
   document.querySelectorAll('.multiselect.open').forEach(ms => { if (ms !== except) ms.classList.remove('open'); });
@@ -662,7 +676,7 @@ function populateFilterOptions() {
   DASH_FILTER_KEYS.forEach(key => {
     const el = document.querySelector('#dashFiltersBar [data-dashfilter="' + key + '"]');
     if (!el) return;
-    const opts = uniqueValues(key);
+    const opts = key === 'estado' ? uniqueValuesConVacio(key) : uniqueValues(key);
     state.dashFiltros[key] = (state.dashFiltros[key] || []).filter(v => opts.includes(v));
     renderMultiselect(el, opts, state.dashFiltros[key], (vals) => {
       state.dashFiltros[key] = vals;
@@ -984,7 +998,8 @@ function applyFilters(rows, filtros, keys) {
         return String(r.expediente || '').toLowerCase().includes(String(fval).toLowerCase());
       }
       if (!fval || !fval.length) return true; // sin selección = sin filtro
-      const rval = String(r[k] || '').trim();
+      const rvalRaw = String(r[k] || '').trim();
+      const rval = rvalRaw === '' ? EMPTY_FILTER_VALUE : rvalRaw; // sin dato -> se compara contra la opción "(Vacío / No adjudicado)"
       return fval.includes(rval);
     });
   });
