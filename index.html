@@ -437,6 +437,10 @@
         </div>
       </div>
 
+      <div id="ampliacionBanner" class="cert-nota" hidden style="border-color:var(--stage-3);background:#FFFBEB;">
+        <p></p>
+      </div>
+
       <div class="lifeline" id="lifeline"></div>
 
       <form id="recordForm">
@@ -516,6 +520,57 @@
     </section>
 
   </main>
+  </div>
+</div>
+
+<!-- ---------- MODAL: origen del trámite (nuevo vs. ampliación) ---------- -->
+<div id="origenModalOverlay" class="modal-overlay" hidden>
+  <div class="modal-box">
+
+    <!-- Paso 1: elegir origen -->
+    <div id="origenPaso1">
+      <h3>¿Qué querés cargar?</h3>
+      <p class="modal-sub">Elegí si es un trámite completamente nuevo o la ampliación de un contrato que ya está cargado.</p>
+      <div class="origen-opciones">
+        <button type="button" class="origen-opcion-btn" id="origenNuevoBtn">
+          <span class="origen-opcion-title">Trámite nuevo</span>
+          <span class="origen-opcion-desc">Se carga todo desde cero.</span>
+        </button>
+        <button type="button" class="origen-opcion-btn" id="origenAmpliacionBtn">
+          <span class="origen-opcion-title">Ampliación de contrato</span>
+          <span class="origen-opcion-desc">Toma los datos de un Pedido de Compras ya cargado y los ajusta por un %.</span>
+        </button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="origenCancelarBtn1">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- Paso 2: datos de la ampliación -->
+    <div id="origenPaso2" hidden>
+      <h3>Ampliación de contrato</h3>
+      <p class="modal-sub">Ingresá el porcentaje de ampliación y elegí el Pedido de Compras sobre el que se aplica.</p>
+
+      <label class="modal-field">
+        % de ampliación de contrato
+        <input type="number" id="ampliacionPct" step="any" min="0.01" placeholder="Ej: 20" />
+      </label>
+
+      <label class="modal-field">
+        Pedido de Compras a ampliar
+        <input type="text" id="ampliacionBuscarPC" placeholder="Escribí el N° de Pedido de Compras..." autocomplete="off" />
+      </label>
+      <div id="ampliacionResultados" class="autocomplete-results" hidden></div>
+      <div id="ampliacionSeleccionado" class="ampliacion-seleccionado" hidden></div>
+
+      <p id="origenPaso2Msg" class="form-msg err" hidden></p>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="origenVolverBtn">Volver</button>
+        <button type="button" class="btn btn-primary" id="origenContinuarBtn" disabled>Continuar</button>
+      </div>
+    </div>
+
   </div>
 </div>
 

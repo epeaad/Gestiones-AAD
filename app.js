@@ -186,6 +186,11 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 document.getElementById('sidenav').addEventListener('click', (e) => {
   const btn = e.target.closest('.nav-btn');
   if (!btn) return;
+  if (btn.dataset.view === 'formulario' && !state.editingId) {
+    showView('formulario');
+    abrirSelectorOrigenTramite();
+    return;
+  }
   showView(btn.dataset.view);
 });
 
@@ -202,10 +207,176 @@ function showView(name) {
 }
 
 document.getElementById('formNewBtn').addEventListener('click', () => {
+  abrirSelectorOrigenTramite();
+});
+
+// ============================================================
+// ORIGEN DEL TRÁMITE: nuevo desde cero vs. ampliación de contrato
+// ============================================================
+// Campos numéricos "fuente" (no calculados, no el Año) que se ven afectados
+// por el % de ampliación al copiar los datos de un Pedido de Compras existente.
+const AMPLIACION_ESCALABLE_FIELDS = Array.from(NUMBER_FIELDS).filter(
+  k => k !== 'anio' && !DERIVED_FIELDS.has(k)
+);
+// Campos calculados que dependen de sub-módulos (Certificaciones / Proyectos): no se copian,
+// porque el trámite nuevo todavía no tiene certificaciones ni proyectos propios cargados.
+const AMPLIACION_BLANQUEAR_FIELDS = [
+  'certificadosAAD','pctAvanceCertificacion','sumatoriaMultas','cantidadCertificadosProcesados',
+  'cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados',
+  'presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada'
+];
+
+let ampliacionSeleccion = null; // registro elegido como base de la ampliación
+
+function abrirSelectorOrigenTramite() {
+  ampliacionSeleccion = null;
+  document.getElementById('ampliacionPct').value = '';
+  document.getElementById('ampliacionBuscarPC').value = '';
+  document.getElementById('ampliacionResultados').hidden = true;
+  document.getElementById('ampliacionSeleccionado').hidden = true;
+  document.getElementById('origenPaso2Msg').hidden = true;
+  document.getElementById('origenContinuarBtn').disabled = true;
+  document.getElementById('origenPaso1').hidden = false;
+  document.getElementById('origenPaso2').hidden = true;
+  document.getElementById('origenModalOverlay').hidden = false;
+}
+function cerrarSelectorOrigenTramite() {
+  document.getElementById('origenModalOverlay').hidden = true;
+}
+
+document.getElementById('origenModalOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'origenModalOverlay') cerrarSelectorOrigenTramite();
+});
+document.addEventListener('click', (e) => {
+  const resultadosBox = document.getElementById('ampliacionResultados');
+  if (!resultadosBox || resultadosBox.hidden) return;
+  if (!e.target.closest('#ampliacionBuscarPC') && !e.target.closest('#ampliacionResultados')) {
+    resultadosBox.hidden = true;
+  }
+});
+document.getElementById('origenCancelarBtn1').addEventListener('click', cerrarSelectorOrigenTramite);
+document.getElementById('origenVolverBtn').addEventListener('click', () => {
+  document.getElementById('origenPaso1').hidden = false;
+  document.getElementById('origenPaso2').hidden = true;
+});
+
+document.getElementById('origenNuevoBtn').addEventListener('click', () => {
+  cerrarSelectorOrigenTramite();
   state.editingId = null;
   document.getElementById('formTitle').textContent = 'Nuevo trámite';
+  document.getElementById('ampliacionBanner').hidden = true;
   buildForm({});
 });
+
+document.getElementById('origenAmpliacionBtn').addEventListener('click', () => {
+  document.getElementById('origenPaso1').hidden = true;
+  document.getElementById('origenPaso2').hidden = false;
+  document.getElementById('ampliacionBuscarPC').focus();
+});
+
+// ---- Buscador de Pedido de Compras (por número) ----
+document.getElementById('ampliacionBuscarPC').addEventListener('input', (e) => {
+  ampliacionSeleccion = null;
+  document.getElementById('ampliacionSeleccionado').hidden = true;
+  actualizarBotonContinuarAmpliacion();
+  const q = e.target.value.trim().toLowerCase();
+  const resultadosBox = document.getElementById('ampliacionResultados');
+  if (!q) { resultadosBox.hidden = true; resultadosBox.innerHTML = ''; return; }
+
+  // Un mismo N° de Pedido de Compras puede repetirse en varias filas (ampliaciones previas);
+  // mostramos todas las coincidencias, cada una con su Pospre/Adjudicatario para diferenciarlas.
+  const matches = state.registros
+    .filter(r => String(r.nroPedidoCompras || '').toLowerCase().includes(q))
+    .slice(0, 20);
+
+  if (!matches.length) {
+    resultadosBox.innerHTML = '<div class="autocomplete-empty">No se encontró ningún Pedido de Compras cargado con ese número.</div>';
+    resultadosBox.hidden = false;
+    return;
+  }
+  resultadosBox.innerHTML = matches.map((r, i) => `
+    <div class="autocomplete-item" data-idx="${i}">
+      <b>${escapeHtml(r.nroPedidoCompras || '(sin número)')}</b> — ${escapeHtml(r.pospre || '')}
+      <span class="ac-sub">${escapeHtml(r.expediente || '')}${r.adjudicatario ? ' · ' + escapeHtml(r.adjudicatario) : ''}</span>
+    </div>
+  `).join('');
+  resultadosBox.hidden = false;
+  resultadosBox.querySelectorAll('.autocomplete-item').forEach((el, i) => {
+    el.addEventListener('click', () => seleccionarPCAmpliacion(matches[i]));
+  });
+});
+
+function seleccionarPCAmpliacion(record) {
+  ampliacionSeleccion = record;
+  document.getElementById('ampliacionResultados').hidden = true;
+  document.getElementById('ampliacionBuscarPC').value = record.nroPedidoCompras || '';
+  const box = document.getElementById('ampliacionSeleccionado');
+  box.innerHTML = `<span>Seleccionado: <b>${escapeHtml(record.nroPedidoCompras || '')}</b> — ${escapeHtml(record.pospre || '')} (${escapeHtml(record.expediente || '')})</span>
+    <button type="button" id="ampliacionQuitarBtn">Quitar</button>`;
+  box.hidden = false;
+  document.getElementById('ampliacionQuitarBtn').addEventListener('click', () => {
+    ampliacionSeleccion = null;
+    box.hidden = true;
+    document.getElementById('ampliacionBuscarPC').value = '';
+    actualizarBotonContinuarAmpliacion();
+  });
+  actualizarBotonContinuarAmpliacion();
+}
+
+document.getElementById('ampliacionPct').addEventListener('input', actualizarBotonContinuarAmpliacion);
+function actualizarBotonContinuarAmpliacion() {
+  const pct = parseFloat(document.getElementById('ampliacionPct').value);
+  const ok = ampliacionSeleccion && !isNaN(pct) && pct > 0;
+  document.getElementById('origenContinuarBtn').disabled = !ok;
+}
+
+document.getElementById('origenContinuarBtn').addEventListener('click', () => {
+  const pct = parseFloat(document.getElementById('ampliacionPct').value);
+  const msg = document.getElementById('origenPaso2Msg');
+  if (!ampliacionSeleccion) {
+    msg.textContent = 'Elegí un Pedido de Compras de la lista.';
+    msg.hidden = false;
+    return;
+  }
+  if (isNaN(pct) || pct <= 0) {
+    msg.textContent = 'Ingresá un porcentaje de ampliación válido (mayor a 0).';
+    msg.hidden = false;
+    return;
+  }
+  msg.hidden = true;
+  iniciarAmpliacionContrato(ampliacionSeleccion, pct);
+  cerrarSelectorOrigenTramite();
+});
+
+// ---- Construye el registro "borrador" a partir de un Pedido de Compras existente,
+//      aplicando el % de ampliación a los campos numéricos que corresponde ----
+function iniciarAmpliacionContrato(base, pct) {
+  const factor = 1 + (pct / 100);
+  const draft = {};
+  state.campos.forEach(f => {
+    let v = base[f.key];
+    if (v == null) v = '';
+    if (AMPLIACION_BLANQUEAR_FIELDS.includes(f.key)) {
+      draft[f.key] = '';
+    } else if (AMPLIACION_ESCALABLE_FIELDS.includes(f.key)) {
+      const num = parseFloat(v);
+      draft[f.key] = isNaN(num) ? v : +(num * factor).toFixed(2);
+    } else {
+      draft[f.key] = v;
+    }
+  });
+  const nota = `Ampliación de contrato del Pedido de Compras Nº ${base.nroPedidoCompras || '(sin número)'} — se aplicó un +${pct}% sobre los valores cargados originalmente.`;
+  draft.observaciones = draft.observaciones ? (nota + '\n' + draft.observaciones) : nota;
+  // draft._id se deja sin definir a propósito: es un trámite NUEVO, no una edición del original.
+
+  state.editingId = null;
+  document.getElementById('formTitle').textContent = 'Nuevo trámite — Ampliación de contrato';
+  const banner = document.getElementById('ampliacionBanner');
+  banner.querySelector('p').textContent =
+    `Este formulario se completó automáticamente a partir del Pedido de Compras Nº ${base.nroPedidoCompras || ''} con un +${pct}% aplicado a los campos numéricos. Revisá los datos (fechas, expediente, etc.) antes de guardar.`;
+  banner.hidden = false;
+  buildForm(draft);
+}
 
 // ============================================================
 // ARRANQUE
@@ -555,6 +726,7 @@ document.getElementById('recordForm').addEventListener('submit', async (e) => {
 function openRecordForEdit(record) {
   state.editingId = record._id;
   document.getElementById('formTitle').textContent = 'Editar trámite — ' + (record.expediente || record.pospre || '');
+  document.getElementById('ampliacionBanner').hidden = true;
   buildForm(record);
   showView('formulario');
 }

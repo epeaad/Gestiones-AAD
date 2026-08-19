@@ -340,6 +340,50 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .ms-option input{ margin:0; flex-shrink:0; }
 .ms-empty{ padding:8px; font-size:12px; color:var(--text-soft); }
 
+/* ============ MODAL: origen del trámite ============ */
+.modal-overlay{
+  position:fixed; inset:0; z-index:100; background:rgba(11,20,26,0.55);
+  display:flex; align-items:center; justify-content:center; padding:16px;
+}
+.modal-box{
+  background:var(--surface); border-radius:var(--radius); padding:24px;
+  width:100%; max-width:480px; max-height:90vh; overflow-y:auto;
+  box-shadow:0 20px 60px rgba(3,20,28,0.3);
+}
+.modal-box h3{ margin:0 0 6px; font-size:17px; }
+.modal-sub{ margin:0 0 18px; font-size:13px; color:var(--text-soft); }
+.modal-field{ display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; color:var(--text-soft); margin-bottom:14px; }
+.modal-field input{
+  padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--text); font-weight:400;
+}
+.modal-field input:focus{ outline:2px solid var(--brand); outline-offset:1px; }
+.modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+.origen-opciones{ display:flex; flex-direction:column; gap:10px; }
+.origen-opcion-btn{
+  display:flex; flex-direction:column; gap:4px; text-align:left;
+  padding:14px 16px; border:1px solid var(--border); border-radius:9px; background:#fff; cursor:pointer;
+}
+.origen-opcion-btn:hover{ border-color:var(--brand); background:var(--brand-soft); }
+.origen-opcion-title{ font-size:14px; font-weight:600; color:var(--text); }
+.origen-opcion-desc{ font-size:12.5px; color:var(--text-soft); }
+
+.autocomplete-results{
+  margin:-8px 0 14px; border:1px solid var(--border); border-radius:8px; max-height:220px; overflow-y:auto; background:#fff;
+}
+.autocomplete-item{ padding:8px 10px; cursor:pointer; font-size:12.5px; border-bottom:1px solid var(--border); }
+.autocomplete-item:last-child{ border-bottom:none; }
+.autocomplete-item:hover{ background:var(--brand-soft); }
+.autocomplete-item b{ font-family:var(--font-mono); }
+.autocomplete-item .ac-sub{ color:var(--text-soft); display:block; margin-top:2px; }
+.autocomplete-empty{ padding:10px; font-size:12.5px; color:var(--text-soft); }
+
+.ampliacion-seleccionado{
+  margin:-8px 0 14px; padding:10px 12px; border:1px solid var(--stage-4); border-radius:8px;
+  background:#ECFDF5; font-size:12.5px; display:flex; justify-content:space-between; align-items:center; gap:8px;
+}
+.ampliacion-seleccionado button{ background:none; border:none; color:var(--danger); font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0; }
+
 /* ============ TABLE ============ */
 .table-wrap{ position:relative; overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
 .table-wrap::after{
