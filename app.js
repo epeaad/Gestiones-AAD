@@ -1816,6 +1816,8 @@ let certTramitePreseleccionado = null; // seteado desde el botón "Ver / cargar 
 let certTramiteActual = null;          // registro del trámite elegido en esta pestaña
 let certListaCache = [];               // todas las certificaciones ya cargadas (para la tabla)
 let certCamposCache = [];              // metadatos de campos (para exportar con etiquetas legibles)
+let certEditingId = null;              // si no es null, el formulario está editando esa certificación
+let certSort = { key: null, dir: 1 };  // ordenamiento de la tabla de Certificaciones cargadas
 
 async function abrirVistaCertificaciones() {
   document.getElementById('certFiltroTexto').value = '';
@@ -1832,6 +1834,7 @@ async function abrirVistaCertificaciones() {
     document.getElementById('certTramiteSeleccionado').hidden = true;
     document.getElementById('certForm').hidden = true;
     certTramiteActual = null;
+    certEditingId = null;
   }
 }
 
@@ -1901,12 +1904,16 @@ document.addEventListener('click', (e) => {
 
 function seleccionarTramiteParaCertificar(rec) {
   certTramiteActual = rec;
+  certEditingId = null;
+  document.getElementById('certFormTitle').textContent = 'Cargar certificación';
+  document.getElementById('certSubmitBtn').textContent = 'Guardar certificación';
   const chip = document.getElementById('certTramiteSeleccionado');
   chip.innerHTML = `<span><strong>${escapeHtml(rec.pospre || '')}</strong> — Exp. ${escapeHtml(rec.expediente || '—')} — PC ${escapeHtml(rec.nroPedidoCompras || '—')} — ${escapeHtml(rec.adjudicatario || '(sin contratista)')}</span>
     <button type="button" class="btn btn-ghost" id="certCambiarTramiteBtn">Cambiar</button>`;
   chip.hidden = false;
   document.getElementById('certCambiarTramiteBtn').addEventListener('click', () => {
     certTramiteActual = null;
+    certEditingId = null;
     chip.hidden = true;
     document.getElementById('certForm').hidden = true;
   });
@@ -1919,14 +1926,91 @@ function seleccionarTramiteParaCertificar(rec) {
 
   const form = document.getElementById('certForm');
   form.reset();
+  recalcIIBBCertificados();
   document.getElementById('certFormMsg').hidden = true;
   form.hidden = false;
+}
+
+// ---- Editar: carga una certificación ya existente en el formulario, en modo edición ----
+function editarCertificacion(c) {
+  const rec = state.registros.find(r => r._id === c.idTramite);
+  if (!rec) { alert('No se encontró el trámite asociado a esta certificación.'); return; }
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  if (!puedeEditar) return;
+
+  seleccionarTramiteParaCertificar(rec);
+  certEditingId = c._id;
+  document.getElementById('certFormTitle').textContent = 'Editar certificación';
+  document.getElementById('certSubmitBtn').textContent = 'Guardar cambios';
+
+  document.querySelectorAll('#certForm [name]').forEach(input => {
+    if (c[input.name] != null) input.value = c[input.name];
+  });
+  recalcIIBBCertificados();
+  document.getElementById('certFormMsg').hidden = true;
+  document.getElementById('certFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---- Copiar: pasa un resumen de la certificación al portapapeles ----
+function copiarCertificacion(c, btn) {
+  const resumen = [
+    'Pospre: ' + (c.pospre || ''),
+    'Expediente: ' + (c.expediente || ''),
+    'Pedido de Compras: ' + (c.nroPedidoCompras || ''),
+    'Contratista: ' + (c.contratista || ''),
+    'Expediente de Certificación: ' + (c.expedienteCertificacion || ''),
+    'N° de Certificado: ' + (c.numeroCertificado || ''),
+    'Mes/Año: ' + (c.mesAnioCertificacion || ''),
+    '$ Certificado: ' + formatMoney(c.montoCertificado),
+    'IIBB Certificados: ' + (c.iibbCertificados || ''),
+    '$ Multas: ' + formatMoney(c.montoMultas),
+  ].join('\n');
+
+  navigator.clipboard.writeText(resumen).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '✅';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  }).catch(() => {
+    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
+  });
+}
+
+// ---- Clonar: crea una certificación nueva con los mismos datos ----
+async function clonarCertificacion(c) {
+  const confirmado = confirm('¿Clonar esta certificación? Se va a crear una nueva con los mismos datos (podés editarla después).');
+  if (!confirmado) return;
+  const datos = {};
+  certCamposCache.forEach(f => { if (f.key !== 'pctAvance' && f.key !== 'iibbCertificados') datos[f.key] = c[f.key]; });
+  try {
+    await apiCall('certificaciones_crear', { datos: Object.assign({ idTramite: c.idTramite }, datos) });
+    const data = await apiCall('listar');
+    state.registros = data.registros;
+    await cargarCertificaciones();
+  } catch (err) {
+    alert('Error al clonar: ' + err.message);
+  }
 }
 
 document.getElementById('certCancelarBtn').addEventListener('click', () => {
   document.getElementById('certForm').hidden = true;
   document.getElementById('certTramiteSeleccionado').hidden = true;
   certTramiteActual = null;
+  certEditingId = null;
+});
+
+// ---- IIBB Certificados se calcula solo: $ Certificados / $ Adjudicado Unitario del trámite ----
+function recalcIIBBCertificados() {
+  const iibbInput = document.querySelector('#certForm [name="iibbCertificados"]');
+  if (!iibbInput) return;
+  if (!certTramiteActual) { iibbInput.value = ''; return; }
+  const montoInput = document.querySelector('#certForm [name="montoCertificado"]');
+  const monto = montoInput ? (parseFloat(montoInput.value) || 0) : 0;
+  const unitario = parseFloat(certTramiteActual.adjudicadoUnitario) || 0;
+  const iibb = unitario > 0 ? monto / unitario : 0;
+  iibbInput.value = iibb ? iibb.toFixed(2) : '';
+}
+document.getElementById('certForm').addEventListener('input', (e) => {
+  if (e.target.name === 'montoCertificado') recalcIIBBCertificados();
 });
 
 document.getElementById('certForm').addEventListener('submit', async (e) => {
@@ -1945,10 +2029,16 @@ document.getElementById('certForm').addEventListener('submit', async (e) => {
   document.querySelectorAll('#certForm [name]').forEach(input => { datos[input.name] = input.value; });
 
   try {
-    await apiCall('certificaciones_crear', { datos: Object.assign({ idTramite: certTramiteActual._id }, datos) });
-    msg.textContent = 'Certificación guardada correctamente.';
+    if (certEditingId) {
+      await apiCall('certificaciones_actualizar', { id: certEditingId, datos: Object.assign({ idTramite: certTramiteActual._id }, datos) });
+      msg.textContent = 'Certificación actualizada correctamente.';
+    } else {
+      await apiCall('certificaciones_crear', { datos: Object.assign({ idTramite: certTramiteActual._id }, datos) });
+      msg.textContent = 'Certificación guardada correctamente.';
+    }
     msg.className = 'form-msg ok';
     msg.hidden = false;
+    certEditingId = null;
     document.getElementById('certForm').reset();
     seleccionarTramiteParaCertificar(certTramiteActual); // limpia el form pero deja el trámite elegido para cargar otra
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
@@ -1971,47 +2061,74 @@ const CERT_TABLE_COLS = [
   { key: 'expedienteCertificacion', label: 'Exp. Certificación' },
   { key: 'numeroCertificado', label: 'N° Certificado' },
   { key: 'mesAnioCertificacion', label: 'Mes/Año' },
+  { key: 'iibbCertificados', label: 'IIBB Certificados' },
   { key: 'montoCertificado', label: '$ Certificado' },
   { key: 'montoReconocimiento', label: '$ Reconocimiento' },
   { key: 'montoMultas', label: '$ Multas' },
   { key: 'pctAvance', label: '% Avance' },
 ];
+const CERT_MONEY_COLS = new Set(['montoCertificado', 'montoReconocimiento', 'montoMultas']);
+
+function certSortValue(c, key) {
+  if (key === 'pctAvance' || key === 'iibbCertificados' || CERT_MONEY_COLS.has(key)) return num(c[key]);
+  return String(c[key] != null ? c[key] : '').toLowerCase();
+}
 
 function renderCertTable() {
   const q = document.getElementById('certFiltroTexto').value.trim().toLowerCase();
-  const rows = certListaCache.filter(c => {
+  let rows = certListaCache.filter(c => {
     if (!q) return true;
-    return ['pospre','expediente','nroPedidoCompras','contratista','numeroCertificado'].some(k =>
+    return ['pospre','expediente','nroPedidoCompras','contratista','numeroCertificado','expedienteCertificacion'].some(k =>
       String(c[k] || '').toLowerCase().includes(q)
     );
-  }).sort((a, b) => String(b.mesAnioCertificacion || '').localeCompare(String(a.mesAnioCertificacion || '')));
+  });
+  if (certSort.key) {
+    rows = sortRows(rows, certSort, certSortValue);
+  } else {
+    rows = rows.slice().sort((a, b) => String(b.mesAnioCertificacion || '').localeCompare(String(a.mesAnioCertificacion || '')));
+  }
 
   const isAdmin = state.session && state.session.rol === 'admin';
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
   const table = document.getElementById('certTable');
-  const thead = '<thead><tr>' + CERT_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Observaciones</th>' + (isAdmin ? '<th>Acciones</th>' : '') + '</tr></thead>';
+  const thead = sortableTheadHtml(CERT_TABLE_COLS, certSort, '<th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
   const tbody = '<tbody>' + rows.map(c => {
     const tds = CERT_TABLE_COLS.map(col => {
-      if (['montoCertificado','montoReconocimiento','montoMultas'].includes(col.key)) return `<td>${formatMoney(c[col.key])}</td>`;
+      if (CERT_MONEY_COLS.has(col.key)) return `<td>${formatMoney(c[col.key])}</td>`;
       if (col.key === 'pctAvance') return `<td>${num(c.pctAvance).toFixed(1)}%</td>`;
       return `<td>${escapeHtml(c[col.key] != null ? c[col.key] : '')}</td>`;
     }).join('');
-    const acciones = isAdmin ? `<td><button class="icon-btn danger" data-cert-id="${c._id}" title="Eliminar certificación">🗑️</button></td>` : '';
+    const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
+        ${puedeEditar ? '<button class="icon-btn" data-action="editar" data-cert-id="' + c._id + '" title="Editar certificación">✏️</button>' : ''}
+        <button class="icon-btn" data-action="copiar" data-cert-id="${c._id}" title="Copiar datos">📋</button>
+        ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-cert-id="' + c._id + '" title="Clonar certificación">🧬</button>' : ''}
+        ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" data-cert-id="' + c._id + '" title="Eliminar certificación">🗑️</button>' : ''}
+      </td>` : '';
     return `<tr>${tds}<td>${escapeHtml(c.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
+  wireSortableHeaders(table, certSort, renderCertTable);
 
   table.querySelectorAll('[data-cert-id]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const confirmado = confirm('¿Eliminar esta certificación? El total del trámite se va a recalcular.');
-      if (!confirmado) return;
-      try {
-        await apiCall('certificaciones_eliminar', { id: btn.dataset.certId });
-        const data = await apiCall('listar');
-        state.registros = data.registros;
-        await cargarCertificaciones();
-      } catch (err) {
-        alert('Error: ' + err.message);
+      const c = certListaCache.find(x => x._id === btn.dataset.certId);
+      if (!c) return;
+      const accion = btn.dataset.action;
+      if (accion === 'copiar') { copiarCertificacion(c, btn); return; }
+      if (accion === 'editar') { editarCertificacion(c); return; }
+      if (accion === 'clonar') { await clonarCertificacion(c); return; }
+      if (accion === 'eliminar') {
+        const confirmado = confirm('¿Eliminar esta certificación? El total del trámite se va a recalcular.');
+        if (!confirmado) return;
+        try {
+          await apiCall('certificaciones_eliminar', { id: c._id });
+          const data = await apiCall('listar');
+          state.registros = data.registros;
+          await cargarCertificaciones();
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
       }
     });
   });
