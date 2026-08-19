@@ -53,10 +53,14 @@ const state = {
   etapas: [],
   registros: [],
   filtros: {},
-  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '' },
+  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', avanceDesde: '', avanceHasta: '', textoModo: 'contiene', textoBusqueda: '' },
   riesgoPlazoActivo: false,
   editingId: null,
-  activeStage: null
+  activeStage: null,
+  proyEditingId: null,      // id del proyecto en edición (null = alta nueva)
+  regSort: { key: null, dir: 1 },       // orden de la tabla de Registros
+  dashSort: { key: null, dir: 1 },      // orden de la tabla "Detalle por agrupación" (agrupada)
+  dashDetalleSort: { key: null, dir: 1 } // orden de la tabla "Detalle por agrupación" en modo "Todos"
 };
 
 const DASH_FILTER_KEYS = ['anio','sucursal','rubro','pospre','nroPedidoCompras','adjudicatario','estado'];
@@ -683,8 +687,16 @@ document.getElementById('dashClearFilters').addEventListener('click', () => {
   DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = []; });
   state.dashFiltros.fechaPCDesde = '';
   state.dashFiltros.fechaPCHasta = '';
+  state.dashFiltros.avanceDesde = '';
+  state.dashFiltros.avanceHasta = '';
+  state.dashFiltros.textoModo = 'contiene';
+  state.dashFiltros.textoBusqueda = '';
   document.getElementById('dashFechaPCDesde').value = '';
   document.getElementById('dashFechaPCHasta').value = '';
+  document.getElementById('dashAvanceDesde').value = '';
+  document.getElementById('dashAvanceHasta').value = '';
+  document.getElementById('dashTextoModo').value = 'contiene';
+  document.getElementById('dashTextoBusqueda').value = '';
   state.riesgoPlazoActivo = false;
   document.getElementById('riesgoPlazoBtn').classList.remove('active');
   populateFilterOptions();
@@ -697,6 +709,22 @@ document.getElementById('dashFechaPCDesde').addEventListener('change', (e) => {
 });
 document.getElementById('dashFechaPCHasta').addEventListener('change', (e) => {
   state.dashFiltros.fechaPCHasta = e.target.value;
+  renderDashboard();
+});
+document.getElementById('dashAvanceDesde').addEventListener('input', (e) => {
+  state.dashFiltros.avanceDesde = e.target.value;
+  renderDashboard();
+});
+document.getElementById('dashAvanceHasta').addEventListener('input', (e) => {
+  state.dashFiltros.avanceHasta = e.target.value;
+  renderDashboard();
+});
+document.getElementById('dashTextoModo').addEventListener('change', (e) => {
+  state.dashFiltros.textoModo = e.target.value;
+  renderDashboard();
+});
+document.getElementById('dashTextoBusqueda').addEventListener('input', (e) => {
+  state.dashFiltros.textoBusqueda = e.target.value;
   renderDashboard();
 });
 document.getElementById('riesgoPlazoBtn').addEventListener('click', () => {
@@ -908,7 +936,38 @@ function filteredForDashboardBase() {
       return true;
     });
   }
+
+  // ---- Filtro por % de Avance (Certificado / Adjudicado * 100) ----
+  const avDesde = state.dashFiltros.avanceDesde !== '' && state.dashFiltros.avanceDesde != null ? parseFloat(state.dashFiltros.avanceDesde) : null;
+  const avHasta = state.dashFiltros.avanceHasta !== '' && state.dashFiltros.avanceHasta != null ? parseFloat(state.dashFiltros.avanceHasta) : null;
+  if ((avDesde != null && !isNaN(avDesde)) || (avHasta != null && !isNaN(avHasta))) {
+    rows = rows.filter(r => {
+      const p = pctAvanceRow(r);
+      if (avDesde != null && !isNaN(avDesde) && p < avDesde) return false;
+      if (avHasta != null && !isNaN(avHasta) && p > avHasta) return false;
+      return true;
+    });
+  }
+
+  // ---- Filtro de texto libre: "contiene" (todas las palabras deben aparecer) / "no contiene" (ninguna debe aparecer) ----
+  const texto = (state.dashFiltros.textoBusqueda || '').trim().toLowerCase();
+  if (texto) {
+    const palabras = texto.split(/\s+/).filter(Boolean);
+    const noContiene = state.dashFiltros.textoModo === 'no_contiene';
+    rows = rows.filter(r => {
+      const t = textoBusquedaRow(r);
+      if (noContiene) return !palabras.some(p => t.includes(p));
+      return palabras.every(p => t.includes(p));
+    });
+  }
+
   return rows;
+}
+
+// ---- Concatena los campos de texto relevantes de un trámite, para el filtro "contiene / no contiene" ----
+const TEXTO_BUSQUEDA_KEYS = ['pospre', 'expediente', 'anio', 'sucursal', 'rubro', 'detalleRubro', 'nroPedidoCompras', 'adjudicatario', 'estado', 'observaciones'];
+function textoBusquedaRow(r) {
+  return TEXTO_BUSQUEDA_KEYS.map(k => (r[k] != null ? String(r[k]) : '')).join(' ').toLowerCase();
 }
 
 function filteredForDashboard() {
@@ -935,6 +994,48 @@ function filteredRecords() {
   return applyFilters(state.registros, state.filtros, FILTER_KEYS);
 }
 
+// ---- % de Avance de un trámite (Certificado / Adjudicado * 100) ----
+function pctAvanceRow(r) {
+  const adj = num(r.totalAdjudicado);
+  return adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
+}
+
+// ---- Ordenamiento genérico de tablas por columna (Registros y Dashboard) ----
+const NUMERIC_SORT_KEYS = new Set(['anio', 'presupuestoOficialRubro', 'totalAdjudicado', 'certificadosAAD', 'pctAvance', 'n', 'presOficial', 'adjudicado', 'certificado', 'avance', 'certProcesados', 'proyectos', 'pctIIBB']);
+function valueForSort(r, key) {
+  if (key === 'pctAvance') return pctAvanceRow(r);
+  return r[key];
+}
+function sortRows(rows, sortState) {
+  if (!sortState || !sortState.key) return rows.slice();
+  const key = sortState.key, dir = sortState.dir || 1;
+  const numeric = NUMERIC_SORT_KEYS.has(key);
+  return rows.slice().sort((a, b) => {
+    let va = valueForSort(a, key), vb = valueForSort(b, key);
+    if (numeric) return (num(va) - num(vb)) * dir;
+    va = String(va != null ? va : '').toLowerCase();
+    vb = String(vb != null ? vb : '').toLowerCase();
+    return va.localeCompare(vb, 'es') * dir;
+  });
+}
+function sortArrow(sortState, key) {
+  if (!sortState || sortState.key !== key) return '<span class="sort-arrow">↕</span>';
+  return '<span class="sort-arrow">' + (sortState.dir === 1 ? '▲' : '▼') + '</span>';
+}
+function sortableTh(sortState, key, label) {
+  return `<th class="sortable${sortState && sortState.key === key ? ' sort-active' : ''}" data-sort-key="${key}">${escapeHtml(label)} ${sortArrow(sortState, key)}</th>`;
+}
+function wireSortableHeaders(table, sortState, onSort) {
+  table.querySelectorAll('thead th[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (sortState.key === key) sortState.dir = -sortState.dir;
+      else { sortState.key = key; sortState.dir = 1; }
+      onSort();
+    });
+  });
+}
+
 const REGISTROS_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
@@ -950,29 +1051,30 @@ const REGISTROS_COLS = [
   { key: 'estado', label: 'Estado' }
 ];
 
+// ---- Genera el contenido de una celda para una fila de trámite, según la columna (reutilizado por Registros y por el detalle "Todos" del Dashboard) ----
+function renderRegistroCell(r, c) {
+  if (c.key === 'estado') {
+    const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
+    return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
+  }
+  if (c.key === 'presupuestoOficialRubro' || c.key === 'totalAdjudicado' || c.key === 'certificadosAAD') {
+    return `<td>${formatMoney(r[c.key])}</td>`;
+  }
+  if (c.key === 'pctAvance') {
+    return `<td>${pctAvanceRow(r).toFixed(1)}%</td>`;
+  }
+  return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
+}
+
 function renderRegistros() {
-  const rows = filteredRecords();
+  const rows = sortRows(filteredRecords(), state.regSort);
   document.getElementById('resultsCount').textContent = rows.length + ' trámite(s) encontrados de ' + state.registros.length + ' totales.';
   const table = document.getElementById('recordsTable');
   const isAdmin = state.session && state.session.rol === 'admin';
   const puedeEditar = state.session && state.session.rol !== 'consulta';
-  const thead = '<thead><tr>' + REGISTROS_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th class="col-sticky">Acciones</th></tr></thead>';
+  const thead = '<thead><tr>' + REGISTROS_COLS.map(c => sortableTh(state.regSort, c.key, c.label)).join('') + '<th class="col-sticky">Acciones</th></tr></thead>';
   const tbody = '<tbody>' + rows.map(r => {
-    const tds = REGISTROS_COLS.map(c => {
-      if (c.key === 'estado') {
-        const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
-        return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
-      }
-      if (c.key === 'presupuestoOficialRubro' || c.key === 'totalAdjudicado' || c.key === 'certificadosAAD') {
-        return `<td>${formatMoney(r[c.key])}</td>`;
-      }
-      if (c.key === 'pctAvance') {
-        const adj = num(r.totalAdjudicado);
-        const avance = adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
-        return `<td>${avance.toFixed(1)}%</td>`;
-      }
-      return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
-    }).join('');
+    const tds = REGISTROS_COLS.map(c => renderRegistroCell(r, c)).join('');
     const acciones = `<td class="row-actions col-sticky">
         <button class="icon-btn" data-action="copiar" title="Copiar datos">📋</button>
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" title="Clonar trámite">🧬</button>' : ''}
@@ -983,6 +1085,7 @@ function renderRegistros() {
   table.innerHTML = thead + tbody;
   table.classList.toggle('solo-consulta', !puedeEditar);
   setupScrollShadow(table.closest('.table-wrap'));
+  wireSortableHeaders(table, state.regSort, renderRegistros);
 
   table.querySelectorAll('tbody tr').forEach(tr => {
     tr.addEventListener('click', (e) => {
@@ -1370,6 +1473,15 @@ function renderDashboard() {
   renderContratistaResumen(rows);
 
   // ---- Tabla de detalle (según "Agrupar por") ----
+  const tituloTabla = document.getElementById('dashTableTitle');
+  if (groupKey === '__todos__') {
+    // "Todos": detalle fila por fila de todos los trámites que pasan los filtros actuales (sin agrupar)
+    if (tituloTabla) tituloTabla.textContent = 'Detalle de todos los trámites';
+    renderDashDetalleTodos(rows);
+    return;
+  }
+  if (tituloTabla) tituloTabla.textContent = 'Detalle por agrupación';
+
   const groups = {};
   rows.forEach(r => {
     const key = (r[groupKey] || '(sin dato)').toString().trim() || '(sin dato)';
@@ -1392,8 +1504,6 @@ function renderDashboard() {
   };
 
   const allEntries = Object.entries(groups).sort((a,b) => b[1].presOficial - a[1].presOficial);
-  const entries = allEntries.slice(0, 12);
-  const hayMasGrupos = allEntries.length > entries.length;
   const mostrarSucursalContratista = groupKey === 'nroPedidoCompras';
 
   // Totales sobre TODOS los grupos (no solo los 12 que se muestran), para que coincida con los KPIs de arriba
@@ -1405,23 +1515,79 @@ function renderDashboard() {
   const avanceGeneral = totalGeneral.adjudicado > 0 ? (totalGeneral.certificado / totalGeneral.adjudicado) * 100 : 0;
   const promedioPctIIBBGeneral = promedioPctIIBB(totalGeneral);
 
+  // ---- Orden por columna (por defecto: mayor Presupuesto Oficial primero) ----
+  function dashEntryValue(entry, key) {
+    const [k, v] = entry;
+    switch (key) {
+      case 'grupo': return k;
+      case 'n': return v.n;
+      case 'presOficial': return v.presOficial;
+      case 'adjudicado': return v.adjudicado;
+      case 'certificado': return v.certificado;
+      case 'avance': return v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0;
+      case 'certProcesados': return v.certProcesados;
+      case 'proyectos': return v.proyectos;
+      case 'pctIIBB': return promedioPctIIBB(v);
+      default: return '';
+    }
+  }
+  let allEntriesOrdenadas = allEntries;
+  if (state.dashSort.key) {
+    const sk = state.dashSort.key, sd = state.dashSort.dir || 1;
+    allEntriesOrdenadas = allEntries.slice().sort((a, b) => {
+      const va = dashEntryValue(a, sk), vb = dashEntryValue(b, sk);
+      if (sk === 'grupo') return String(va).localeCompare(String(vb), 'es') * sd;
+      return (num(va) - num(vb)) * sd;
+    });
+  }
+  const entries = allEntriesOrdenadas.slice(0, 12);
+  const hayMasGrupos = allEntriesOrdenadas.length > entries.length;
+
   const colExtra = mostrarSucursalContratista ? '<th>Sucursal</th><th>Contratista</th>' : '';
   const table = document.getElementById('dashTable');
-  table.innerHTML = '<thead><tr><th>' + labelForGroup(groupKey) + '</th>' + colExtra + '<th>Trámites</th><th>Pres. Oficial</th><th>Total Adjudicado</th><th>Certificado AAD</th><th>% de Avance</th><th>Cant. Certificados Proc.</th><th>Cant. Proyectos</th><th>% IIBB Proyectados</th></tr></thead>' +
+  table.innerHTML = '<thead><tr>' +
+      sortableTh(state.dashSort, 'grupo', labelForGroup(groupKey)) + colExtra +
+      sortableTh(state.dashSort, 'n', 'Trámites') +
+      sortableTh(state.dashSort, 'presOficial', 'Pres. Oficial') +
+      sortableTh(state.dashSort, 'adjudicado', 'Total Adjudicado') +
+      sortableTh(state.dashSort, 'certificado', 'Certificado AAD') +
+      sortableTh(state.dashSort, 'avance', '% de Avance') +
+      sortableTh(state.dashSort, 'certProcesados', 'Cant. Certificados Proc.') +
+      sortableTh(state.dashSort, 'proyectos', 'Cant. Proyectos') +
+      sortableTh(state.dashSort, 'pctIIBB', '% IIBB Proyectados') +
+    '</tr></thead>' +
     '<tbody>' + entries.map(([k, v]) => {
       const avanceGrupo = v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0;
       const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(listaCorta(v.sucursales))}</td><td>${escapeHtml(listaCorta(v.contratistas))}</td>` : '';
       return `<tr><td>${escapeHtml(k)}</td>${tdsExtra}<td>${v.n}</td><td>${formatMillions(v.presOficial)}</td><td>${formatMillions(v.adjudicado)}</td><td>${formatMillions(v.certificado)}</td><td>${avanceGrupo.toFixed(1)}%</td><td>${v.certProcesados}</td><td>${v.proyectos}</td><td>${promedioPctIIBB(v).toFixed(1)}%</td></tr>`;
     }).join('') +
-    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}<td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td></tr>` +
+    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntriesOrdenadas.length + ' grupos)' : ''}</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}<td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td></tr>` +
     '</tbody>';
+  wireSortableHeaders(table, state.dashSort, renderDashboard);
+  setupScrollShadow(table.closest('.table-wrap'));
 
   const nota = document.getElementById('dashTableNota');
   if (nota) {
     nota.textContent = hayMasGrupos
-      ? `Se muestran los 12 grupos con mayor Presupuesto Oficial, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles.`
+      ? `Se muestran los 12 grupos con mayor Presupuesto Oficial, de ${allEntriesOrdenadas.length} en total. La fila TOTAL suma los ${allEntriesOrdenadas.length}, no solo los 12 visibles.`
       : '';
     nota.hidden = !hayMasGrupos;
+  }
+}
+
+// ---- Dashboard: modo "Todos" en Agrupar por — detalle fila por fila de todos los trámites filtrados ----
+function renderDashDetalleTodos(rows) {
+  const table = document.getElementById('dashTable');
+  const ordenadas = sortRows(rows, state.dashDetalleSort);
+  table.innerHTML = '<thead><tr>' + REGISTROS_COLS.map(c => sortableTh(state.dashDetalleSort, c.key, c.label)).join('') + '</tr></thead>' +
+    '<tbody>' + ordenadas.map(r => '<tr>' + REGISTROS_COLS.map(c => renderRegistroCell(r, c)).join('') + '</tr>').join('') + '</tbody>';
+  wireSortableHeaders(table, state.dashDetalleSort, () => renderDashDetalleTodos(rows));
+  setupScrollShadow(table.closest('.table-wrap'));
+
+  const nota = document.getElementById('dashTableNota');
+  if (nota) {
+    nota.textContent = `Se muestran los ${ordenadas.length} trámite(s) que pasan los filtros actuales del Dashboard (detalle completo, sin agrupar).`;
+    nota.hidden = false;
   }
 }
 
@@ -1851,6 +2017,7 @@ async function abrirVistaProyectos() {
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   document.getElementById('proyFormPanel').hidden = !puedeEditar;
 
+  state.proyEditingId = null;
   if (proyTramitePreseleccionado) {
     const rec = state.registros.find(r => r._id === proyTramitePreseleccionado);
     proyTramitePreseleccionado = null;
@@ -1927,7 +2094,9 @@ document.addEventListener('click', (e) => {
   }
 });
 
-function seleccionarTramiteParaProyecto(rec) {
+// ---- Selecciona el trámite sobre el que se va a cargar (o editar) un proyecto.
+//      Si se pasa "proyectoExistente", el formulario se precarga en modo edición. ----
+function seleccionarTramiteParaProyecto(rec, proyectoExistente) {
   proyTramiteActual = rec;
   const chip = document.getElementById('proyTramiteSeleccionado');
   chip.innerHTML = `<span><strong>${escapeHtml(rec.pospre || '')}</strong> — Exp. ${escapeHtml(rec.expediente || '—')} — PC ${escapeHtml(rec.nroPedidoCompras || '—')} — ${escapeHtml(rec.adjudicatario || '(sin contratista)')}</span>
@@ -1935,9 +2104,11 @@ function seleccionarTramiteParaProyecto(rec) {
   chip.hidden = false;
   document.getElementById('proyCambiarTramiteBtn').addEventListener('click', () => {
     proyTramiteActual = null;
+    state.proyEditingId = null;
     chip.hidden = true;
     document.getElementById('proyForm').hidden = true;
     document.getElementById('proyKmLamtInfo').hidden = true;
+    resetProyFormTitulo();
   });
 
   document.getElementById('proyPospre').value = rec.pospre || '';
@@ -1947,21 +2118,56 @@ function seleccionarTramiteParaProyecto(rec) {
 
   // El $ Km de LAMT y su Mes/Año ya no se cargan acá: se definen una sola vez en la etapa
   // Ejecución del trámite (Registros) y valen para todos los proyectos de este Pedido de Compras.
+  // Ese valor es, a su vez, la tarifa ($ por IIBB) con la que se calcula automáticamente el $ del Proyecto.
+  const kmRate = num(rec.kmLineaPC);
   const info = document.getElementById('proyKmLamtInfo');
-  if (num(rec.kmLineaPC) > 0) {
+  if (kmRate > 0) {
     info.hidden = false;
     info.innerHTML = `<strong>$ Km de LAMT de este contrato:</strong> ${formatMoney(rec.kmLineaPC)}` +
       (rec.mmAAkmLAMT ? ` (Mes/Año de cálculo: ${escapeHtml(rec.mmAAkmLAMT)})` : '') +
-      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Para corregirlo, editá el trámite directamente desde Registros.`;
+      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Con este valor se calcula automáticamente el <strong>$ del Proyecto</strong> a partir del IIBB cargado. Para corregirlo, editá el trámite directamente desde Registros.`;
   } else {
     info.hidden = false;
-    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Cargalo desde Registros, en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras.`;
+    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Cargalo desde Registros, en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras y se puede calcular el $ del Proyecto automáticamente. Mientras tanto, cargá el $ del Proyecto a mano.`;
   }
 
   const form = document.getElementById('proyForm');
   form.reset();
   document.getElementById('proyFormMsg').hidden = true;
   form.hidden = false;
+
+  // ---- $ del Proyecto = IIBB del Proyecto × $ Km de LAMT del contrato (si ya está cargado) ----
+  const iibbInput = document.getElementById('proyIIBBProyectoInput');
+  const montoInput = document.getElementById('proyMontoProyectoInput');
+  const badge = document.getElementById('proyMontoCalcBadge');
+  function recalcMontoProyecto() {
+    const iibb = num(iibbInput.value);
+    montoInput.value = iibb ? (iibb * kmRate).toFixed(2) : '';
+  }
+  montoInput.readOnly = kmRate > 0;
+  badge.hidden = kmRate <= 0;
+  iibbInput.oninput = kmRate > 0 ? recalcMontoProyecto : null;
+
+  if (proyectoExistente) {
+    state.proyEditingId = proyectoExistente._id;
+    form.elements['nroExpedienteProyecto'].value = proyectoExistente.nroExpedienteProyecto || '';
+    form.elements['numeroProyecto'].value = proyectoExistente.numeroProyecto || '';
+    form.elements['descripcionProyecto'].value = proyectoExistente.descripcionProyecto || '';
+    form.elements['iibbProyecto'].value = proyectoExistente.iibbProyecto || '';
+    form.elements['montoProyecto'].value = proyectoExistente.montoProyecto || '';
+    form.elements['observaciones'].value = proyectoExistente.observaciones || '';
+    if (kmRate > 0) recalcMontoProyecto(); // recalcula por si la tarifa cambió desde que se cargó
+    document.getElementById('proyFormTitle').textContent = 'Editar proyecto';
+    document.getElementById('proySubmitBtn').textContent = 'Guardar cambios';
+  } else {
+    state.proyEditingId = null;
+    resetProyFormTitulo();
+  }
+}
+
+function resetProyFormTitulo() {
+  document.getElementById('proyFormTitle').textContent = 'Cargar proyecto';
+  document.getElementById('proySubmitBtn').textContent = 'Guardar proyecto';
 }
 
 document.getElementById('proyCancelarBtn').addEventListener('click', () => {
@@ -1969,7 +2175,61 @@ document.getElementById('proyCancelarBtn').addEventListener('click', () => {
   document.getElementById('proyTramiteSeleccionado').hidden = true;
   document.getElementById('proyKmLamtInfo').hidden = true;
   proyTramiteActual = null;
+  state.proyEditingId = null;
+  resetProyFormTitulo();
 });
+
+// ---- Editar: precarga el formulario con los datos de un proyecto ya cargado ----
+function abrirProyectoParaEditar(p) {
+  const rec = state.registros.find(r => r._id === p.idTramite);
+  if (!rec) { alert('No se encontró el trámite asociado a este proyecto.'); return; }
+  seleccionarTramiteParaProyecto(rec, p);
+  document.getElementById('proyFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---- Copiar: pasa un resumen del proyecto al portapapeles ----
+function copiarProyecto(p, btn) {
+  const resumen = [
+    'Pospre: ' + (p.pospre || ''),
+    'Sucursal: ' + (p.sucursal || ''),
+    'Pedido de Compras: ' + (p.nroPedidoCompras || ''),
+    'Contratista: ' + (p.contratista || ''),
+    'N° de Expediente de Proyecto: ' + (p.nroExpedienteProyecto || ''),
+    'Número de Proyecto: ' + (p.numeroProyecto || ''),
+    'Descripción: ' + (p.descripcionProyecto || ''),
+    'IIBB del Proyecto: ' + (p.iibbProyecto || ''),
+    '$ del Proyecto: ' + formatMoney(p.montoProyecto),
+    '% IIBB Proyectados: ' + num(p.pctIIBBProyecto).toFixed(1) + '%',
+  ].join('\n');
+
+  navigator.clipboard.writeText(resumen).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '✅';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  }).catch(() => {
+    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
+  });
+}
+
+// ---- Clonar: crea un proyecto nuevo con los mismos datos, para el mismo trámite ----
+async function clonarProyecto(p) {
+  const confirmado = confirm('¿Clonar este proyecto? Se va a crear un proyecto nuevo con los mismos datos, para el mismo trámite (podés editarlo después).');
+  if (!confirmado) return;
+  const datos = {
+    pospre: p.pospre || '', sucursal: p.sucursal || '', nroPedidoCompras: p.nroPedidoCompras || '', contratista: p.contratista || '',
+    nroExpedienteProyecto: p.nroExpedienteProyecto || '', numeroProyecto: p.numeroProyecto || '',
+    descripcionProyecto: p.descripcionProyecto || '', iibbProyecto: p.iibbProyecto || '', montoProyecto: p.montoProyecto || '',
+    observaciones: p.observaciones || ''
+  };
+  try {
+    await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: p.idTramite }, datos) });
+    const data = await apiCall('listar');
+    state.registros = data.registros;
+    await cargarProyectos();
+  } catch (err) {
+    alert('Error al clonar: ' + err.message);
+  }
+}
 
 document.getElementById('proyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1986,10 +2246,16 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
   document.querySelectorAll('#proyForm [name]').forEach(input => { datos[input.name] = input.value; });
 
   try {
-    await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
-    msg.textContent = 'Proyecto guardado correctamente.';
+    if (state.proyEditingId) {
+      await apiCall('proyectos_actualizar', { id: state.proyEditingId, datos });
+      msg.textContent = 'Proyecto actualizado correctamente.';
+    } else {
+      await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
+      msg.textContent = 'Proyecto guardado correctamente.';
+    }
     msg.className = 'form-msg ok';
     msg.hidden = false;
+    state.proyEditingId = null;
     document.getElementById('proyForm').reset();
     seleccionarTramiteParaProyecto(proyTramiteActual); // limpia el form pero deja el trámite elegido para cargar otro
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
@@ -2026,31 +2292,47 @@ function renderProyTable() {
   }).sort((a, b) => String(b.numeroProyecto || '').localeCompare(String(a.numeroProyecto || '')));
 
   const isAdmin = state.session && state.session.rol === 'admin';
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  const mostrarAcciones = isAdmin || puedeEditar;
   const table = document.getElementById('proyTable');
-  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + (isAdmin ? '<th>Acciones</th>' : '') + '</tr></thead>';
+  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + (mostrarAcciones ? '<th class="col-sticky">Acciones</th>' : '') + '</tr></thead>';
   const tbody = '<tbody>' + rows.map(p => {
     const tds = PROY_TABLE_COLS.map(col => {
       if (['montoProyecto'].includes(col.key)) return `<td>${formatMoney(p[col.key])}</td>`;
       if (col.key === 'pctIIBBProyecto') return `<td>${num(p.pctIIBBProyecto).toFixed(1)}%</td>`;
       return `<td>${escapeHtml(p[col.key] != null ? p[col.key] : '')}</td>`;
     }).join('');
-    const acciones = isAdmin ? `<td><button class="icon-btn danger" data-proy-id="${p._id}" title="Eliminar proyecto">🗑️</button></td>` : '';
+    const acciones = mostrarAcciones ? `<td class="row-actions col-sticky">
+        <button class="icon-btn" data-proy-action="copiar" data-proy-id="${p._id}" title="Copiar datos">📋</button>
+        ${puedeEditar ? `<button class="icon-btn" data-proy-action="editar" data-proy-id="${p._id}" title="Editar proyecto">✏️</button>` : ''}
+        ${puedeEditar ? `<button class="icon-btn" data-proy-action="clonar" data-proy-id="${p._id}" title="Clonar proyecto">🧬</button>` : ''}
+        ${isAdmin ? `<button class="icon-btn danger" data-proy-action="eliminar" data-proy-id="${p._id}" title="Eliminar proyecto">🗑️</button>` : ''}
+      </td>` : '';
     return `<tr>${tds}<td>${escapeHtml(p.descripcionProyecto || '')}</td><td>${escapeHtml(p.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
 
-  table.querySelectorAll('[data-proy-id]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const confirmado = confirm('¿Eliminar este proyecto? El total del trámite se va a recalcular.');
-      if (!confirmado) return;
-      try {
-        await apiCall('proyectos_eliminar', { id: btn.dataset.proyId });
-        const data = await apiCall('listar');
-        state.registros = data.registros;
-        await cargarProyectos();
-      } catch (err) {
-        alert('Error: ' + err.message);
+  table.querySelectorAll('[data-proy-action]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const p = proyListaCache.find(x => x._id === btn.dataset.proyId);
+      if (!p) return;
+      const accion = btn.dataset.proyAction;
+      if (accion === 'copiar') { copiarProyecto(p, btn); return; }
+      if (accion === 'editar') { abrirProyectoParaEditar(p); return; }
+      if (accion === 'clonar') { clonarProyecto(p); return; }
+      if (accion === 'eliminar') {
+        const confirmado = confirm('¿Eliminar este proyecto? El total del trámite se va a recalcular.');
+        if (!confirmado) return;
+        try {
+          await apiCall('proyectos_eliminar', { id: p._id });
+          const data = await apiCall('listar');
+          state.registros = data.registros;
+          await cargarProyectos();
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
       }
     });
   });

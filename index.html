@@ -103,6 +103,7 @@
         <div class="control-inline">
           <label>Agrupar por
             <select id="dashGroupBy">
+              <option value="__todos__">Todos (detalle completo)</option>
               <option value="sucursal">Sucursal</option>
               <option value="pospre">PosPre</option>
               <option value="nroPedidoCompras">Pedido de Compras</option>
@@ -150,6 +151,24 @@
           <label>Fecha P.C. hasta</label>
           <input type="date" id="dashFechaPCHasta" />
         </div>
+        <div class="filter-field">
+          <label>% Avance desde</label>
+          <input type="number" id="dashAvanceDesde" min="0" max="100" step="1" placeholder="0" />
+        </div>
+        <div class="filter-field">
+          <label>% Avance hasta</label>
+          <input type="number" id="dashAvanceHasta" min="0" max="100" step="1" placeholder="100" />
+        </div>
+        <div class="filter-field filter-field-texto">
+          <label>Buscar texto</label>
+          <div class="texto-filter-group">
+            <select id="dashTextoModo">
+              <option value="contiene">Contiene</option>
+              <option value="no_contiene">No contiene</option>
+            </select>
+            <input type="text" id="dashTextoBusqueda" placeholder="Palabras..." />
+          </div>
+        </div>
         <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
         <button id="dashClearFilters" class="btn btn-ghost">Limpiar filtros</button>
       </div>
@@ -186,7 +205,7 @@
       </div>
 
       <div class="panel">
-        <h3>Detalle por agrupación</h3>
+        <h3 id="dashTableTitle">Detalle por agrupación</h3>
         <p class="table-note" id="dashTableNota" hidden></p>
         <div class="table-wrap">
           <table id="dashTable" class="data-table"></table>
@@ -354,7 +373,7 @@
       </div>
 
       <div class="panel" id="proyFormPanel">
-        <h3>Cargar proyecto</h3>
+        <h3 id="proyFormTitle">Cargar proyecto</h3>
 
         <div class="field-grid">
           <label class="span-2" style="position:relative;">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
@@ -375,14 +394,14 @@
             <label>N° de Expediente de Proyecto <input type="text" name="nroExpedienteProyecto" /></label>
             <label>Número de Proyecto <input type="text" name="numeroProyecto" /></label>
             <label class="span-2">Descripción del Proyecto <textarea name="descripcionProyecto"></textarea></label>
-            <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" /></label>
-            <label>$ del Proyecto <input type="number" step="any" name="montoProyecto" /></label>
+            <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" id="proyIIBBProyectoInput" /></label>
+            <label>$ del Proyecto <span class="calc-badge" id="proyMontoCalcBadge" hidden>calculado</span> <input type="number" step="any" name="montoProyecto" id="proyMontoProyectoInput" /></label>
             <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
           </div>
           <div class="form-actions">
             <p id="proyFormMsg" class="form-msg" hidden></p>
             <button type="button" id="proyCancelarBtn" class="btn btn-ghost">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Guardar proyecto</button>
+            <button type="submit" class="btn btn-primary" id="proySubmitBtn">Guardar proyecto</button>
           </div>
         </form>
       </div>

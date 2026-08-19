@@ -275,6 +275,12 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .filter-field input[type="date"]{
   padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text);
 }
+.filter-field input[type="number"]{ width:90px; }
+
+.filter-field-texto{ min-width:230px; }
+.texto-filter-group{ display:flex; gap:6px; }
+.texto-filter-group select{ flex:0 0 112px; padding:7px 6px; border:1px solid var(--border); border-radius:7px; background:#fff; font-size:12.5px; }
+.texto-filter-group input{ flex:1; min-width:100px; }
 
 /* ============ RIESGO POR PLAZO (botón toggle) ============ */
 .risk-toggle-btn{
@@ -362,6 +368,12 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .data-table tr.dash-table-total{ font-weight:700; background:#F8FAFB; }
 .data-table tr.dash-table-total td{ border-top:2px solid var(--border); cursor:default; }
 .data-table tr.dash-table-total:hover{ background:#F8FAFB; }
+
+.data-table th.sortable{ cursor:pointer; user-select:none; }
+.data-table th.sortable:hover{ background:var(--brand-soft); }
+.data-table th.sortable .sort-arrow{ font-size:9px; opacity:0.45; margin-left:4px; }
+.data-table th.sortable.sort-active{ color:var(--brand); }
+.data-table th.sortable.sort-active .sort-arrow{ opacity:1; }
 .table-note{ font-size:11.5px; color:var(--text-soft); margin:0 0 8px; }
 .cert-nota-warning{ margin:12px 0 0; color:#7C3AED; font-weight:500; }
 
