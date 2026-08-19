@@ -46,10 +46,6 @@ const SUM_HELPER_FIELDS = new Set([]);
 
 const FILTER_KEYS = ['pospre','expediente','anio','nroPedidoCompras','adjudicatario','sucursal','rubro','estado'];
 
-// Valor especial que representa "sin dato" dentro de un filtro de selección múltiple
-// (por ejemplo, Estado vacío = trámite todavía no adjudicado ni definido).
-const EMPTY_FILTER_VALUE = '(Vacío / No adjudicado)';
-
 // ---- Estado en memoria ----
 const state = {
   session: null,      // { usuario, nombre, rol, clave }
@@ -57,14 +53,13 @@ const state = {
   etapas: [],
   registros: [],
   filtros: {},
-  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', avanceDesde: '', avanceHasta: '', textoModo: 'contiene', textoBusqueda: '' },
+  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
   riesgoPlazoActivo: false,
   editingId: null,
   activeStage: null,
-  proyEditingId: null,      // id del proyecto en edición (null = alta nueva)
-  regSort: { key: null, dir: 1 },       // orden de la tabla de Registros
-  dashSort: { key: null, dir: 1 },      // orden de la tabla "Detalle por agrupación" (agrupada)
-  dashDetalleSort: { key: null, dir: 1 } // orden de la tabla "Detalle por agrupación" en modo "Todos"
+  registrosSort: { key: null, dir: 1 },     // ordenamiento de la tabla de Registros
+  dashSort: { key: null, dir: -1 },         // ordenamiento de la tabla de detalle del Dashboard (agrupada)
+  dashDetalleSort: { key: null, dir: 1 }    // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
 };
 
 const DASH_FILTER_KEYS = ['anio','sucursal','rubro','pospre','nroPedidoCompras','adjudicatario','estado'];
@@ -284,12 +279,10 @@ function stageColorVar(idx) {
   return 'var(--stage-' + (idx + 1) + ')';
 }
 
-// ---- Un Pospre corresponde a Obra Menor si es (o contiene) "OBRAS MENORES".
-//      También se sigue reconociendo O.D.P. / O.D.S. por compatibilidad con trámites
-//      viejos que quedaron cargados con esos códigos, antes de unificar el Pospre. ----
+// ---- Un Pospre corresponde a Obra Menor si contiene O.D.P o O.D.S (con o sin puntos) ----
 function isObraMenorPospre(val) {
   const v = (val || '').toLowerCase();
-  return v.includes('obras menores') || v.includes('o.d.s') || v.includes('o.d.p') || v.includes('ods') || v.includes('odp');
+  return v.includes('o.d.s') || v.includes('o.d.p') || v.includes('ods') || v.includes('odp');
 }
 
 function buildForm(record) {
@@ -326,18 +319,21 @@ function buildForm(record) {
     const title = document.createElement('div');
     title.className = 'stage-panel-title';
     title.innerHTML = `<span class="dot" style="background:${stageColorVar(idx)}"></span> ${etapa.label}` +
-      (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre "Obras Menores")</span>' : '');
+      (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre O.D.P. / O.D.S. — Obra Menor)</span>' : '');
     panel.appendChild(title);
 
     const grid = document.createElement('div');
     grid.className = 'field-grid';
-    let camposEtapa = state.campos.filter(f => f.col >= etapa.from && f.col <= etapa.to);
+    // Cada etapa puede tener uno o varios rangos de columnas (por ejemplo, "Certificación" agrupa
+    // los campos de Ejecución y los de Certificación propiamente dicha, aunque no son columnas contiguas).
+    let camposEtapa = (etapa.ranges || [[etapa.from, etapa.to]])
+      .reduce((acc, [from, to]) => acc.concat(state.campos.filter(f => f.col >= from && f.col <= to)), []);
     // El $ Km de LAMT y su Mes/Año de cálculo viven físicamente en las columnas de "Proyectos" (cols 27-28),
     // pero conceptualmente son un dato de Ejecución del contrato: se definen una sola vez y valen para
-    // todos los proyectos de ese Pedido de Compras. Por eso se muestran en el panel de Ejecución (editables,
-    // como cualquier otro campo) y se sacan del panel de Proyectos, que solo aplica a Pospre Obra Menor.
+    // todos los proyectos de ese Pedido de Compras. Por eso se muestran en el panel de Certificación
+    // (editables, como cualquier otro campo) y se sacan del panel de Proyectos, que solo aplica a Obra Menor.
     if (etapa.id === 'proyectos') camposEtapa = camposEtapa.filter(f => f.key !== 'kmLineaPC' && f.key !== 'mmAAkmLAMT');
-    if (etapa.id === 'ejecucion' && isOM) {
+    if (etapa.id === 'certificacion' && isOM) {
       const kmLineaPCField = fieldByKey('kmLineaPC');
       const mmAAkmLAMTField = fieldByKey('mmAAkmLAMT');
       if (kmLineaPCField) camposEtapa = camposEtapa.concat([kmLineaPCField]);
@@ -348,7 +344,7 @@ function buildForm(record) {
     });
     panel.appendChild(grid);
 
-    if (etapa.id === 'ejecucion' && isOM) {
+    if (etapa.id === 'certificacion' && isOM) {
       const notaKm = document.createElement('div');
       notaKm.className = 'cert-nota';
       notaKm.innerHTML = `<p>El <strong>$ Km de LAMT</strong> y su <strong>Mes/Año de cálculo</strong> se cargan una sola vez acá y aplican automáticamente a todos los proyectos de este Pedido de Compras (Obra Menor) — no hace falta volver a cargarlos en cada proyecto.</p>`;
@@ -396,7 +392,7 @@ function buildForm(record) {
     });
   }
 
-  // Si cambia el Pospre elegido, re-evaluar si Proyectos aplica (solo Pospre "Obras Menores")
+  // Si cambia el Pospre elegido, re-evaluar si Proyectos aplica (solo O.D.P / O.D.S = Obra Menor)
   const pospreInput = panelsWrap.querySelector('[name="pospre"]');
   if (pospreInput) {
     pospreInput.addEventListener('change', () => {
@@ -565,16 +561,6 @@ function uniqueValues(key) {
   return Array.from(set).sort();
 }
 
-// ---- Igual que uniqueValues, pero antepone la opción "(Vacío / No adjudicado)" si hay
-//      al menos un registro con ese campo sin cargar. Se usa en el filtro Estado del
-//      Dashboard, para que los trámites todavía no adjudicados (Estado vacío) puedan
-//      elegirse como una categoría más, en vez de quedar siempre excluidos al filtrar. ----
-function uniqueValuesConVacio(key) {
-  const opts = uniqueValues(key);
-  const hayVacios = state.registros.some(r => !String(r[key] || '').trim());
-  return hayVacios ? [EMPTY_FILTER_VALUE].concat(opts) : opts;
-}
-
 // ---- Componente de selección múltiple por tildado (checkboxes) ----
 function closeAllMultiselects(except) {
   document.querySelectorAll('.multiselect.open').forEach(ms => { if (ms !== except) ms.classList.remove('open'); });
@@ -678,7 +664,7 @@ function populateFilterOptions() {
   DASH_FILTER_KEYS.forEach(key => {
     const el = document.querySelector('#dashFiltersBar [data-dashfilter="' + key + '"]');
     if (!el) return;
-    const opts = key === 'estado' ? uniqueValuesConVacio(key) : uniqueValues(key);
+    const opts = uniqueValues(key);
     state.dashFiltros[key] = (state.dashFiltros[key] || []).filter(v => opts.includes(v));
     renderMultiselect(el, opts, state.dashFiltros[key], (vals) => {
       state.dashFiltros[key] = vals;
@@ -703,16 +689,16 @@ document.getElementById('dashClearFilters').addEventListener('click', () => {
   DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = []; });
   state.dashFiltros.fechaPCDesde = '';
   state.dashFiltros.fechaPCHasta = '';
-  state.dashFiltros.avanceDesde = '';
-  state.dashFiltros.avanceHasta = '';
+  state.dashFiltros.pctAvanceDesde = '';
+  state.dashFiltros.pctAvanceHasta = '';
+  state.dashFiltros.texto = '';
   state.dashFiltros.textoModo = 'contiene';
-  state.dashFiltros.textoBusqueda = '';
   document.getElementById('dashFechaPCDesde').value = '';
   document.getElementById('dashFechaPCHasta').value = '';
-  document.getElementById('dashAvanceDesde').value = '';
-  document.getElementById('dashAvanceHasta').value = '';
+  document.getElementById('dashPctAvanceDesde').value = '';
+  document.getElementById('dashPctAvanceHasta').value = '';
+  document.getElementById('dashTextoBuscar').value = '';
   document.getElementById('dashTextoModo').value = 'contiene';
-  document.getElementById('dashTextoBusqueda').value = '';
   state.riesgoPlazoActivo = false;
   document.getElementById('riesgoPlazoBtn').classList.remove('active');
   populateFilterOptions();
@@ -727,20 +713,20 @@ document.getElementById('dashFechaPCHasta').addEventListener('change', (e) => {
   state.dashFiltros.fechaPCHasta = e.target.value;
   renderDashboard();
 });
-document.getElementById('dashAvanceDesde').addEventListener('input', (e) => {
-  state.dashFiltros.avanceDesde = e.target.value;
+document.getElementById('dashPctAvanceDesde').addEventListener('input', (e) => {
+  state.dashFiltros.pctAvanceDesde = e.target.value;
   renderDashboard();
 });
-document.getElementById('dashAvanceHasta').addEventListener('input', (e) => {
-  state.dashFiltros.avanceHasta = e.target.value;
+document.getElementById('dashPctAvanceHasta').addEventListener('input', (e) => {
+  state.dashFiltros.pctAvanceHasta = e.target.value;
+  renderDashboard();
+});
+document.getElementById('dashTextoBuscar').addEventListener('input', (e) => {
+  state.dashFiltros.texto = e.target.value;
   renderDashboard();
 });
 document.getElementById('dashTextoModo').addEventListener('change', (e) => {
   state.dashFiltros.textoModo = e.target.value;
-  renderDashboard();
-});
-document.getElementById('dashTextoBusqueda').addEventListener('input', (e) => {
-  state.dashFiltros.textoBusqueda = e.target.value;
   renderDashboard();
 });
 document.getElementById('riesgoPlazoBtn').addEventListener('click', () => {
@@ -939,6 +925,18 @@ function mostrarDetalleDiaApertura(eventos, fechaStr) {
   detailBox.hidden = false;
 }
 
+// ---- % de Avance de un trámite: Certificado / Adjudicado * 100 (misma fórmula que en toda la app) ----
+function pctAvanceTramite(r) {
+  const adj = num(r.totalAdjudicado);
+  return adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
+}
+
+// ---- Campos de texto sobre los que busca el filtro "Contiene / No contiene" del Dashboard ----
+const DASH_TEXTO_CAMPOS = [
+  'pospre', 'expediente', 'sucursal', 'rubro', 'detalleRubro', 'nroPedidoCompras',
+  'adjudicatario', 'estado', 'agenciaSector', 'observaciones'
+];
+
 function filteredForDashboardBase() {
   let rows = applyFilters(state.registros, state.dashFiltros, DASH_FILTER_KEYS);
   const desde = state.dashFiltros.fechaPCDesde;
@@ -953,37 +951,27 @@ function filteredForDashboardBase() {
     });
   }
 
-  // ---- Filtro por % de Avance (Certificado / Adjudicado * 100) ----
-  const avDesde = state.dashFiltros.avanceDesde !== '' && state.dashFiltros.avanceDesde != null ? parseFloat(state.dashFiltros.avanceDesde) : null;
-  const avHasta = state.dashFiltros.avanceHasta !== '' && state.dashFiltros.avanceHasta != null ? parseFloat(state.dashFiltros.avanceHasta) : null;
-  if ((avDesde != null && !isNaN(avDesde)) || (avHasta != null && !isNaN(avHasta))) {
+  const pctDesde = state.dashFiltros.pctAvanceDesde;
+  const pctHasta = state.dashFiltros.pctAvanceHasta;
+  if ((pctDesde !== '' && pctDesde != null) || (pctHasta !== '' && pctHasta != null)) {
     rows = rows.filter(r => {
-      const p = pctAvanceRow(r);
-      if (avDesde != null && !isNaN(avDesde) && p < avDesde) return false;
-      if (avHasta != null && !isNaN(avHasta) && p > avHasta) return false;
+      const pct = pctAvanceTramite(r);
+      if (pctDesde !== '' && pctDesde != null && pct < parseFloat(pctDesde)) return false;
+      if (pctHasta !== '' && pctHasta != null && pct > parseFloat(pctHasta)) return false;
       return true;
     });
   }
 
-  // ---- Filtro de texto libre: "contiene" (todas las palabras deben aparecer) / "no contiene" (ninguna debe aparecer) ----
-  const texto = (state.dashFiltros.textoBusqueda || '').trim().toLowerCase();
+  const texto = (state.dashFiltros.texto || '').trim().toLowerCase();
   if (texto) {
-    const palabras = texto.split(/\s+/).filter(Boolean);
-    const noContiene = state.dashFiltros.textoModo === 'no_contiene';
+    const modo = state.dashFiltros.textoModo || 'contiene';
     rows = rows.filter(r => {
-      const t = textoBusquedaRow(r);
-      if (noContiene) return !palabras.some(p => t.includes(p));
-      return palabras.every(p => t.includes(p));
+      const contiene = DASH_TEXTO_CAMPOS.some(k => String(r[k] || '').toLowerCase().includes(texto));
+      return modo === 'no_contiene' ? !contiene : contiene;
     });
   }
 
   return rows;
-}
-
-// ---- Concatena los campos de texto relevantes de un trámite, para el filtro "contiene / no contiene" ----
-const TEXTO_BUSQUEDA_KEYS = ['pospre', 'expediente', 'anio', 'sucursal', 'rubro', 'detalleRubro', 'nroPedidoCompras', 'adjudicatario', 'estado', 'observaciones'];
-function textoBusquedaRow(r) {
-  return TEXTO_BUSQUEDA_KEYS.map(k => (r[k] != null ? String(r[k]) : '')).join(' ').toLowerCase();
 }
 
 function filteredForDashboard() {
@@ -1000,8 +988,7 @@ function applyFilters(rows, filtros, keys) {
         return String(r.expediente || '').toLowerCase().includes(String(fval).toLowerCase());
       }
       if (!fval || !fval.length) return true; // sin selección = sin filtro
-      const rvalRaw = String(r[k] || '').trim();
-      const rval = rvalRaw === '' ? EMPTY_FILTER_VALUE : rvalRaw; // sin dato -> se compara contra la opción "(Vacío / No adjudicado)"
+      const rval = String(r[k] || '').trim();
       return fval.includes(rval);
     });
   });
@@ -1009,48 +996,6 @@ function applyFilters(rows, filtros, keys) {
 
 function filteredRecords() {
   return applyFilters(state.registros, state.filtros, FILTER_KEYS);
-}
-
-// ---- % de Avance de un trámite (Certificado / Adjudicado * 100) ----
-function pctAvanceRow(r) {
-  const adj = num(r.totalAdjudicado);
-  return adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
-}
-
-// ---- Ordenamiento genérico de tablas por columna (Registros y Dashboard) ----
-const NUMERIC_SORT_KEYS = new Set(['anio', 'presupuestoOficialRubro', 'totalAdjudicado', 'certificadosAAD', 'pctAvance', 'n', 'presOficial', 'adjudicado', 'certificado', 'avance', 'certProcesados', 'proyectos', 'pctIIBB']);
-function valueForSort(r, key) {
-  if (key === 'pctAvance') return pctAvanceRow(r);
-  return r[key];
-}
-function sortRows(rows, sortState) {
-  if (!sortState || !sortState.key) return rows.slice();
-  const key = sortState.key, dir = sortState.dir || 1;
-  const numeric = NUMERIC_SORT_KEYS.has(key);
-  return rows.slice().sort((a, b) => {
-    let va = valueForSort(a, key), vb = valueForSort(b, key);
-    if (numeric) return (num(va) - num(vb)) * dir;
-    va = String(va != null ? va : '').toLowerCase();
-    vb = String(vb != null ? vb : '').toLowerCase();
-    return va.localeCompare(vb, 'es') * dir;
-  });
-}
-function sortArrow(sortState, key) {
-  if (!sortState || sortState.key !== key) return '<span class="sort-arrow">↕</span>';
-  return '<span class="sort-arrow">' + (sortState.dir === 1 ? '▲' : '▼') + '</span>';
-}
-function sortableTh(sortState, key, label) {
-  return `<th class="sortable${sortState && sortState.key === key ? ' sort-active' : ''}" data-sort-key="${key}">${escapeHtml(label)} ${sortArrow(sortState, key)}</th>`;
-}
-function wireSortableHeaders(table, sortState, onSort) {
-  table.querySelectorAll('thead th[data-sort-key]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sortKey;
-      if (sortState.key === key) sortState.dir = -sortState.dir;
-      else { sortState.key = key; sortState.dir = 1; }
-      onSort();
-    });
-  });
 }
 
 const REGISTROS_COLS = [
@@ -1068,30 +1013,76 @@ const REGISTROS_COLS = [
   { key: 'estado', label: 'Estado' }
 ];
 
-// ---- Genera el contenido de una celda para una fila de trámite, según la columna (reutilizado por Registros y por el detalle "Todos" del Dashboard) ----
-function renderRegistroCell(r, c) {
-  if (c.key === 'estado') {
-    const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
-    return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
-  }
-  if (c.key === 'presupuestoOficialRubro' || c.key === 'totalAdjudicado' || c.key === 'certificadosAAD') {
-    return `<td>${formatMoney(r[c.key])}</td>`;
-  }
-  if (c.key === 'pctAvance') {
-    return `<td>${pctAvanceRow(r).toFixed(1)}%</td>`;
-  }
-  return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
+// ============================================================
+// ORDENAMIENTO GENÉRICO DE TABLAS (por click en el encabezado)
+// ============================================================
+const MONEY_COL_KEYS = new Set(['presupuestoOficialRubro', 'totalAdjudicado', 'certificadosAAD']);
+
+// Valor "comparable" de un registro de trámite para una columna dada (usado para ordenar)
+function registroSortValue(r, key) {
+  if (key === 'pctAvance') return pctAvanceTramite(r);
+  if (MONEY_COL_KEYS.has(key) || key === 'anio') return num(r[key]);
+  return String(r[key] != null ? r[key] : '').toLowerCase();
+}
+
+// Compara dos valores ya extraídos (números entre sí, o texto entre sí con localeCompare en español)
+function compareValues(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), 'es', { sensitivity: 'base', numeric: true });
+}
+
+// Genera el <thead> con encabezados clickeables y la flechita de orden activo
+function sortableTheadHtml(cols, sortState, extraThHtml) {
+  const ths = cols.map(c => {
+    const activo = sortState.key === c.key;
+    const flecha = activo ? '<span class="sort-arrow">' + (sortState.dir === 1 ? '▲' : '▼') + '</span>' : '';
+    return `<th class="sortable${activo ? ' sort-active' : ''}" data-sort-key="${c.key}">${c.label}${flecha}</th>`;
+  }).join('');
+  return '<thead><tr>' + ths + (extraThHtml || '') + '</tr></thead>';
+}
+
+// Conecta los clicks de los <th data-sort-key> de una tabla ya renderizada a un estado de orden dado
+function wireSortableHeaders(table, sortState, onChange) {
+  table.querySelectorAll('th.sortable[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (sortState.key === key) { sortState.dir = -sortState.dir; }
+      else { sortState.key = key; sortState.dir = 1; }
+      onChange();
+    });
+  });
+}
+
+// Genera las filas <td> de un registro de trámite según REGISTROS_COLS (reutilizado por Registros y Dashboard "Todos")
+function registroTdsHtml(r) {
+  return REGISTROS_COLS.map(c => {
+    if (c.key === 'estado') {
+      const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
+      return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
+    }
+    if (MONEY_COL_KEYS.has(c.key)) return `<td>${formatMoney(r[c.key])}</td>`;
+    if (c.key === 'pctAvance') return `<td>${pctAvanceTramite(r).toFixed(1)}%</td>`;
+    return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
+  }).join('');
+}
+
+function sortRows(rows, sortState, valueFn) {
+  if (!sortState.key) return rows;
+  const copy = rows.slice();
+  copy.sort((a, b) => compareValues(valueFn(a, sortState.key), valueFn(b, sortState.key)) * sortState.dir);
+  return copy;
 }
 
 function renderRegistros() {
-  const rows = sortRows(filteredRecords(), state.regSort);
+  let rows = filteredRecords();
+  rows = sortRows(rows, state.registrosSort, registroSortValue);
   document.getElementById('resultsCount').textContent = rows.length + ' trámite(s) encontrados de ' + state.registros.length + ' totales.';
   const table = document.getElementById('recordsTable');
   const isAdmin = state.session && state.session.rol === 'admin';
   const puedeEditar = state.session && state.session.rol !== 'consulta';
-  const thead = '<thead><tr>' + REGISTROS_COLS.map(c => sortableTh(state.regSort, c.key, c.label)).join('') + '<th class="col-sticky">Acciones</th></tr></thead>';
+  const thead = sortableTheadHtml(REGISTROS_COLS, state.registrosSort, '<th class="col-sticky">Acciones</th>');
   const tbody = '<tbody>' + rows.map(r => {
-    const tds = REGISTROS_COLS.map(c => renderRegistroCell(r, c)).join('');
+    const tds = registroTdsHtml(r);
     const acciones = `<td class="row-actions col-sticky">
         <button class="icon-btn" data-action="copiar" title="Copiar datos">📋</button>
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" title="Clonar trámite">🧬</button>' : ''}
@@ -1102,7 +1093,7 @@ function renderRegistros() {
   table.innerHTML = thead + tbody;
   table.classList.toggle('solo-consulta', !puedeEditar);
   setupScrollShadow(table.closest('.table-wrap'));
-  wireSortableHeaders(table, state.regSort, renderRegistros);
+  wireSortableHeaders(table, state.registrosSort, renderRegistros);
 
   table.querySelectorAll('tbody tr').forEach(tr => {
     tr.addEventListener('click', (e) => {
@@ -1490,14 +1481,11 @@ function renderDashboard() {
   renderContratistaResumen(rows);
 
   // ---- Tabla de detalle (según "Agrupar por") ----
-  const tituloTabla = document.getElementById('dashTableTitle');
-  if (groupKey === '__todos__') {
-    // "Todos": detalle fila por fila de todos los trámites que pasan los filtros actuales (sin agrupar)
-    if (tituloTabla) tituloTabla.textContent = 'Detalle de todos los trámites';
-    renderDashDetalleTodos(rows);
+  // "Todos": en vez de agrupar, se muestra el detalle completo de cada trámite que pasa los filtros actuales.
+  if (groupKey === 'todos') {
+    renderDashDetalleCompleto(rows);
     return;
   }
-  if (tituloTabla) tituloTabla.textContent = 'Detalle por agrupación';
 
   const groups = {};
   rows.forEach(r => {
@@ -1520,65 +1508,63 @@ function renderDashboard() {
     return arr.length <= max ? arr.join(', ') : arr.slice(0, max).join(', ') + ' (+' + (arr.length - max) + ')';
   };
 
-  const allEntries = Object.entries(groups).sort((a,b) => b[1].presOficial - a[1].presOficial);
   const mostrarSucursalContratista = groupKey === 'nroPedidoCompras';
 
+  // Filas "planas" listas para ordenar por cualquier columna (por defecto: Pres. Oficial descendente, como antes)
+  let filas = Object.entries(groups).map(([k, v]) => ({
+    grupo: k,
+    n: v.n,
+    presOficial: v.presOficial,
+    adjudicado: v.adjudicado,
+    certificado: v.certificado,
+    avance: v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0,
+    certProcesados: v.certProcesados,
+    proyectos: v.proyectos,
+    pctIIBB: promedioPctIIBB(v),
+    sucursales: listaCorta(v.sucursales),
+    contratistas: listaCorta(v.contratistas)
+  }));
+
+  if (!state.dashSort.key) { state.dashSort.key = 'presOficial'; state.dashSort.dir = -1; }
+  const dashValueFn = (f, key) => {
+    if (['grupo','sucursales','contratistas'].includes(key)) return String(f[key] || '').toLowerCase();
+    return num(f[key]);
+  };
+  filas = sortRows(filas, state.dashSort, dashValueFn);
+
+  const allEntries = filas;
+  const entries = allEntries.slice(0, 12);
+  const hayMasGrupos = allEntries.length > entries.length;
+
   // Totales sobre TODOS los grupos (no solo los 12 que se muestran), para que coincida con los KPIs de arriba
-  const totalGeneral = allEntries.reduce((acc, [, v]) => {
-    acc.n += v.n; acc.presOficial += v.presOficial; acc.adjudicado += v.adjudicado; acc.certificado += v.certificado;
-    acc.certProcesados += v.certProcesados; acc.proyectos += v.proyectos; acc.pctIIBBValores = acc.pctIIBBValores.concat(v.pctIIBBValores);
+  const totalGeneral = allEntries.reduce((acc, f) => {
+    acc.n += f.n; acc.presOficial += f.presOficial; acc.adjudicado += f.adjudicado; acc.certificado += f.certificado;
+    acc.certProcesados += f.certProcesados; acc.proyectos += f.proyectos; acc.pctIIBBSuma += f.pctIIBB; acc.cant++;
     return acc;
-  }, { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBValores:[] });
+  }, { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBSuma:0, cant:0 });
   const avanceGeneral = totalGeneral.adjudicado > 0 ? (totalGeneral.certificado / totalGeneral.adjudicado) * 100 : 0;
-  const promedioPctIIBBGeneral = promedioPctIIBB(totalGeneral);
+  const promedioPctIIBBGeneral = totalGeneral.cant ? totalGeneral.pctIIBBSuma / totalGeneral.cant : 0;
 
-  // ---- Orden por columna (por defecto: mayor Presupuesto Oficial primero) ----
-  function dashEntryValue(entry, key) {
-    const [k, v] = entry;
-    switch (key) {
-      case 'grupo': return k;
-      case 'n': return v.n;
-      case 'presOficial': return v.presOficial;
-      case 'adjudicado': return v.adjudicado;
-      case 'certificado': return v.certificado;
-      case 'avance': return v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0;
-      case 'certProcesados': return v.certProcesados;
-      case 'proyectos': return v.proyectos;
-      case 'pctIIBB': return promedioPctIIBB(v);
-      default: return '';
-    }
-  }
-  let allEntriesOrdenadas = allEntries;
-  if (state.dashSort.key) {
-    const sk = state.dashSort.key, sd = state.dashSort.dir || 1;
-    allEntriesOrdenadas = allEntries.slice().sort((a, b) => {
-      const va = dashEntryValue(a, sk), vb = dashEntryValue(b, sk);
-      if (sk === 'grupo') return String(va).localeCompare(String(vb), 'es') * sd;
-      return (num(va) - num(vb)) * sd;
-    });
-  }
-  const entries = allEntriesOrdenadas.slice(0, 12);
-  const hayMasGrupos = allEntriesOrdenadas.length > entries.length;
+  const dashCols = [{ key: 'grupo', label: labelForGroup(groupKey) }]
+    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }] : [])
+    .concat([
+      { key: 'n', label: 'Trámites' },
+      { key: 'presOficial', label: 'Pres. Oficial' },
+      { key: 'adjudicado', label: 'Total Adjudicado' },
+      { key: 'certificado', label: 'Certificado AAD' },
+      { key: 'avance', label: '% de Avance' },
+      { key: 'certProcesados', label: 'Cant. Certificados Proc.' },
+      { key: 'proyectos', label: 'Cant. Proyectos' },
+      { key: 'pctIIBB', label: '% IIBB Proyectados' }
+    ]);
 
-  const colExtra = mostrarSucursalContratista ? '<th>Sucursal</th><th>Contratista</th>' : '';
   const table = document.getElementById('dashTable');
-  table.innerHTML = '<thead><tr>' +
-      sortableTh(state.dashSort, 'grupo', labelForGroup(groupKey)) + colExtra +
-      sortableTh(state.dashSort, 'n', 'Trámites') +
-      sortableTh(state.dashSort, 'presOficial', 'Pres. Oficial') +
-      sortableTh(state.dashSort, 'adjudicado', 'Total Adjudicado') +
-      sortableTh(state.dashSort, 'certificado', 'Certificado AAD') +
-      sortableTh(state.dashSort, 'avance', '% de Avance') +
-      sortableTh(state.dashSort, 'certProcesados', 'Cant. Certificados Proc.') +
-      sortableTh(state.dashSort, 'proyectos', 'Cant. Proyectos') +
-      sortableTh(state.dashSort, 'pctIIBB', '% IIBB Proyectados') +
-    '</tr></thead>' +
-    '<tbody>' + entries.map(([k, v]) => {
-      const avanceGrupo = v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0;
-      const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(listaCorta(v.sucursales))}</td><td>${escapeHtml(listaCorta(v.contratistas))}</td>` : '';
-      return `<tr><td>${escapeHtml(k)}</td>${tdsExtra}<td>${v.n}</td><td>${formatMillions(v.presOficial)}</td><td>${formatMillions(v.adjudicado)}</td><td>${formatMillions(v.certificado)}</td><td>${avanceGrupo.toFixed(1)}%</td><td>${v.certProcesados}</td><td>${v.proyectos}</td><td>${promedioPctIIBB(v).toFixed(1)}%</td></tr>`;
+  table.innerHTML = sortableTheadHtml(dashCols, state.dashSort) +
+    '<tbody>' + entries.map(f => {
+      const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td>` : '';
+      return `<tr><td>${escapeHtml(f.grupo)}</td>${tdsExtra}<td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctIIBB.toFixed(1)}%</td></tr>`;
     }).join('') +
-    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntriesOrdenadas.length + ' grupos)' : ''}</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}<td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td></tr>` +
+    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}<td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td></tr>` +
     '</tbody>';
   wireSortableHeaders(table, state.dashSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
@@ -1586,27 +1572,25 @@ function renderDashboard() {
   const nota = document.getElementById('dashTableNota');
   if (nota) {
     nota.textContent = hayMasGrupos
-      ? `Se muestran los 12 grupos con mayor Presupuesto Oficial, de ${allEntriesOrdenadas.length} en total. La fila TOTAL suma los ${allEntriesOrdenadas.length}, no solo los 12 visibles.`
-      : '';
-    nota.hidden = !hayMasGrupos;
+      ? `Se muestran los 12 grupos principales según el orden actual, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles. Hacé click en un encabezado para cambiar el orden.`
+      : 'Hacé click en un encabezado de la tabla para ordenar por esa columna.';
+    nota.hidden = false;
   }
 }
 
-// ---- Dashboard: modo "Todos" en Agrupar por — detalle fila por fila de todos los trámites filtrados ----
-function renderDashDetalleTodos(rows) {
+// ---- Tabla de detalle completo (modo "Todos" de "Agrupar por"): un renglón por trámite, sin agrupar ----
+function renderDashDetalleCompleto(rows) {
+  rows = sortRows(rows, state.dashDetalleSort, registroSortValue);
   const table = document.getElementById('dashTable');
-  const ordenadas = sortRows(rows, state.dashDetalleSort);
-  const puedeEditar = state.session && state.session.rol !== 'consulta'; // mismo criterio que Registros: "solo consulta" no abre el formulario
-  table.innerHTML = '<thead><tr>' + REGISTROS_COLS.map(c => sortableTh(state.dashDetalleSort, c.key, c.label)).join('') + '</tr></thead>' +
-    '<tbody>' + ordenadas.map(r => `<tr data-id="${r._id}">` + REGISTROS_COLS.map(c => renderRegistroCell(r, c)).join('') + '</tr>').join('') + '</tbody>';
-  wireSortableHeaders(table, state.dashDetalleSort, () => renderDashDetalleTodos(rows));
+  table.innerHTML = sortableTheadHtml(REGISTROS_COLS, state.dashDetalleSort) +
+    '<tbody>' + rows.map(r => `<tr data-id="${r._id}">${registroTdsHtml(r)}</tr>`).join('') + '</tbody>';
+  wireSortableHeaders(table, state.dashDetalleSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
-  table.classList.toggle('solo-consulta', !puedeEditar);
 
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
   if (puedeEditar) {
     table.querySelectorAll('tbody tr').forEach(tr => {
-      tr.addEventListener('click', (e) => {
-        if (e.target.closest('th')) return; // por si algún click cae sobre el encabezado ordenable
+      tr.addEventListener('click', () => {
         const rec = state.registros.find(r => r._id === tr.dataset.id);
         if (rec) openRecordForEdit(rec);
       });
@@ -1615,8 +1599,7 @@ function renderDashDetalleTodos(rows) {
 
   const nota = document.getElementById('dashTableNota');
   if (nota) {
-    nota.textContent = `Se muestran los ${ordenadas.length} trámite(s) que pasan los filtros actuales del Dashboard (detalle completo, sin agrupar).` +
-      (puedeEditar ? ' Tocá una fila para ver el trámite completo en "Nuevo trámite".' : '');
+    nota.textContent = 'Detalle completo: ' + rows.length + ' trámite(s) según los filtros actuales del Dashboard. Hacé click en un encabezado para ordenar.';
     nota.hidden = false;
   }
 }
@@ -1895,6 +1878,7 @@ certBuscarInput.addEventListener('input', () => {
     resultados.innerHTML = matches.map(r => `<div class="cert-search-item" data-id="${r._id}">
         ${escapeHtml(r.pospre || '(sin pospre)')} — Exp. ${escapeHtml(r.expediente || '—')} — PC ${escapeHtml(r.nroPedidoCompras || '—')}
         <span class="small">${escapeHtml(r.sucursal || '')} · ${escapeHtml(r.adjudicatario || '(sin contratista)')}</span>
+        ${r.detalleRubro ? `<span class="small">${escapeHtml(r.detalleRubro)}</span>` : ''}
       </div>`).join('');
   }
   resultados.hidden = false;
@@ -1984,6 +1968,7 @@ const CERT_TABLE_COLS = [
   { key: 'expediente', label: 'Expediente' },
   { key: 'nroPedidoCompras', label: 'PC' },
   { key: 'contratista', label: 'Contratista' },
+  { key: 'expedienteCertificacion', label: 'Exp. Certificación' },
   { key: 'numeroCertificado', label: 'N° Certificado' },
   { key: 'mesAnioCertificacion', label: 'Mes/Año' },
   { key: 'montoCertificado', label: '$ Certificado' },
@@ -2039,24 +2024,15 @@ let proyTramitePreseleccionado = null; // seteado desde el botón "Ver / cargar 
 let proyTramiteActual = null;          // registro del trámite elegido en esta pestaña
 let proyListaCache = [];               // todos los proyectos ya cargados (para la tabla)
 let proyCamposCache = [];              // metadatos de campos (para exportar con etiquetas legibles)
+let proyEditingId = null;              // si no es null, el formulario está editando ese proyecto (en vez de crear uno nuevo)
 
 async function abrirVistaProyectos() {
   document.getElementById('proyFiltroTexto').value = '';
-  // Refresca los trámites (además de los proyectos): así el buscador de trámites siempre
-  // trabaja con los datos más recientes, incluso si el trámite se cargó hace un momento
-  // desde otra pestaña o sesión.
-  try {
-    const data = await apiCall('listar');
-    state.registros = data.registros;
-  } catch (err) {
-    showAppError('No se pudieron actualizar los trámites: ' + err.message);
-  }
   await cargarProyectos();
 
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   document.getElementById('proyFormPanel').hidden = !puedeEditar;
 
-  state.proyEditingId = null;
   if (proyTramitePreseleccionado) {
     const rec = state.registros.find(r => r._id === proyTramitePreseleccionado);
     proyTramitePreseleccionado = null;
@@ -2065,6 +2041,7 @@ async function abrirVistaProyectos() {
     document.getElementById('proyTramiteSeleccionado').hidden = true;
     document.getElementById('proyForm').hidden = true;
     proyTramiteActual = null;
+    proyEditingId = null;
   }
 }
 
@@ -2099,29 +2076,16 @@ proyBuscarInput.addEventListener('input', () => {
   const resultados = document.getElementById('proyResultadosBusqueda');
   if (q.length < 2) { resultados.hidden = true; resultados.innerHTML = ''; return; }
 
-  const coincideTexto = r =>
-    String(r.pospre || '').toLowerCase().includes(q) ||
-    String(r.expediente || '').toLowerCase().includes(q) ||
-    String(r.nroPedidoCompras || '').toLowerCase().includes(q);
-
-  const todasLasCoincidencias = state.registros.filter(coincideTexto);
-  const matches = todasLasCoincidencias.filter(r => isObraMenorPospre(r.pospre)).slice(0, 20);
+  const matches = state.registros.filter(r =>
+    isObraMenorPospre(r.pospre) && (
+      String(r.pospre || '').toLowerCase().includes(q) ||
+      String(r.expediente || '').toLowerCase().includes(q) ||
+      String(r.nroPedidoCompras || '').toLowerCase().includes(q)
+    )
+  ).slice(0, 20);
 
   if (!matches.length) {
-    if (todasLasCoincidencias.length) {
-      // Hay trámite(s) con ese Pospre/Expediente/PC, pero ninguno tiene Pospre "Obras Menores":
-      // por eso no aparecen acá, aunque el trámite sí existe en Registros.
-      const ejemplos = todasLasCoincidencias.slice(0, 5).map(r =>
-        `${escapeHtml(r.pospre || '(sin pospre)')} — Exp. ${escapeHtml(r.expediente || '—')} — PC ${escapeHtml(r.nroPedidoCompras || '—')}`
-      ).join('<br/>');
-      resultados.innerHTML = `<div class="cert-search-item">
-          Encontré ${todasLasCoincidencias.length} trámite(s) con ese texto, pero ninguno tiene Pospre <strong>"Obras Menores"</strong>, que es el único tipo al que aplica el módulo de Proyectos:<br/>
-          <span class="small">${ejemplos}</span><br/>
-          Si corresponde, corregí el Pospre de ese trámite desde Registros para que sea "Obras Menores".
-        </div>`;
-    } else {
-      resultados.innerHTML = '<div class="cert-search-item">Sin resultados: no encontré ningún trámite con ese Pospre, Expediente o N° de Pedido de Compras.</div>';
-    }
+    resultados.innerHTML = '<div class="cert-search-item">Sin resultados (Proyectos solo aplica a trámites con Pospre O.D.P. u O.D.S.)</div>';
   } else {
     resultados.innerHTML = matches.map(r => `<div class="cert-search-item" data-id="${r._id}">
         ${escapeHtml(r.pospre || '(sin pospre)')} — Exp. ${escapeHtml(r.expediente || '—')} — PC ${escapeHtml(r.nroPedidoCompras || '—')}
@@ -2146,21 +2110,21 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ---- Selecciona el trámite sobre el que se va a cargar (o editar) un proyecto.
-//      Si se pasa "proyectoExistente", el formulario se precarga en modo edición. ----
-function seleccionarTramiteParaProyecto(rec, proyectoExistente) {
+function seleccionarTramiteParaProyecto(rec) {
   proyTramiteActual = rec;
+  proyEditingId = null;
+  document.getElementById('proyFormTitle').textContent = 'Cargar proyecto';
+  document.getElementById('proySubmitBtn').textContent = 'Guardar proyecto';
   const chip = document.getElementById('proyTramiteSeleccionado');
   chip.innerHTML = `<span><strong>${escapeHtml(rec.pospre || '')}</strong> — Exp. ${escapeHtml(rec.expediente || '—')} — PC ${escapeHtml(rec.nroPedidoCompras || '—')} — ${escapeHtml(rec.adjudicatario || '(sin contratista)')}</span>
     <button type="button" class="btn btn-ghost" id="proyCambiarTramiteBtn">Cambiar</button>`;
   chip.hidden = false;
   document.getElementById('proyCambiarTramiteBtn').addEventListener('click', () => {
     proyTramiteActual = null;
-    state.proyEditingId = null;
+    proyEditingId = null;
     chip.hidden = true;
     document.getElementById('proyForm').hidden = true;
     document.getElementById('proyKmLamtInfo').hidden = true;
-    resetProyFormTitulo();
   });
 
   document.getElementById('proyPospre').value = rec.pospre || '';
@@ -2170,81 +2134,41 @@ function seleccionarTramiteParaProyecto(rec, proyectoExistente) {
 
   // El $ Km de LAMT y su Mes/Año ya no se cargan acá: se definen una sola vez en la etapa
   // Ejecución del trámite (Registros) y valen para todos los proyectos de este Pedido de Compras.
-  // Ese valor es, a su vez, la tarifa ($ por IIBB) con la que se calcula automáticamente el $ del Proyecto.
-  const kmRate = num(rec.kmLineaPC);
   const info = document.getElementById('proyKmLamtInfo');
-  if (kmRate > 0) {
+  if (num(rec.kmLineaPC) > 0) {
     info.hidden = false;
     info.innerHTML = `<strong>$ Km de LAMT de este contrato:</strong> ${formatMoney(rec.kmLineaPC)}` +
       (rec.mmAAkmLAMT ? ` (Mes/Año de cálculo: ${escapeHtml(rec.mmAAkmLAMT)})` : '') +
-      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Con este valor se calcula automáticamente el <strong>$ del Proyecto</strong> a partir del IIBB cargado.` +
-      ` <button type="button" class="btn btn-ghost btn-mini" id="proyIrAEjecucionBtn">Editar $ Km de LAMT</button>`;
+      `. Se definió en la etapa <strong>Ejecución</strong> del trámite y aplica a todos los proyectos de este Pedido de Compras. Para corregirlo, editá el trámite directamente desde Registros.`;
   } else {
     info.hidden = false;
-    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Se carga en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras y se puede calcular el $ del Proyecto automáticamente. Mientras tanto, cargá el $ del Proyecto a mano.` +
-      ` <button type="button" class="btn btn-ghost btn-mini" id="proyIrAEjecucionBtn">Cargar $ Km de LAMT ahora</button>`;
-  }
-  const btnIrAEjecucion = document.getElementById('proyIrAEjecucionBtn');
-  if (btnIrAEjecucion) {
-    btnIrAEjecucion.addEventListener('click', () => {
-      openRecordForEdit(rec);
-      setActiveStage('ejecucion');
-    });
+    info.innerHTML = `Todavía no se cargó el <strong>$ Km de LAMT</strong> de este contrato. Cargalo desde Registros, en la etapa <strong>Ejecución</strong> del trámite — así queda disponible para todos los proyectos de este Pedido de Compras.`;
   }
 
   const form = document.getElementById('proyForm');
   form.reset();
+  recalcMontoProyecto();
   document.getElementById('proyFormMsg').hidden = true;
   form.hidden = false;
-
-  // ---- $ del Proyecto = IIBB del Proyecto × $ Km de LAMT del contrato (si ya está cargado) ----
-  const iibbInput = document.getElementById('proyIIBBProyectoInput');
-  const montoInput = document.getElementById('proyMontoProyectoInput');
-  const badge = document.getElementById('proyMontoCalcBadge');
-  function recalcMontoProyecto() {
-    const iibb = num(iibbInput.value);
-    montoInput.value = iibb ? (iibb * kmRate).toFixed(2) : '';
-  }
-  montoInput.readOnly = kmRate > 0;
-  badge.hidden = kmRate <= 0;
-  iibbInput.oninput = kmRate > 0 ? recalcMontoProyecto : null;
-
-  if (proyectoExistente) {
-    state.proyEditingId = proyectoExistente._id;
-    form.elements['nroExpedienteProyecto'].value = proyectoExistente.nroExpedienteProyecto || '';
-    form.elements['numeroProyecto'].value = proyectoExistente.numeroProyecto || '';
-    form.elements['descripcionProyecto'].value = proyectoExistente.descripcionProyecto || '';
-    form.elements['iibbProyecto'].value = proyectoExistente.iibbProyecto || '';
-    form.elements['montoProyecto'].value = proyectoExistente.montoProyecto || '';
-    form.elements['observaciones'].value = proyectoExistente.observaciones || '';
-    if (kmRate > 0) recalcMontoProyecto(); // recalcula por si la tarifa cambió desde que se cargó
-    document.getElementById('proyFormTitle').textContent = 'Editar proyecto';
-    document.getElementById('proySubmitBtn').textContent = 'Guardar cambios';
-  } else {
-    state.proyEditingId = null;
-    resetProyFormTitulo();
-  }
 }
 
-function resetProyFormTitulo() {
-  document.getElementById('proyFormTitle').textContent = 'Cargar proyecto';
-  document.getElementById('proySubmitBtn').textContent = 'Guardar proyecto';
-}
-
-document.getElementById('proyCancelarBtn').addEventListener('click', () => {
-  document.getElementById('proyForm').hidden = true;
-  document.getElementById('proyTramiteSeleccionado').hidden = true;
-  document.getElementById('proyKmLamtInfo').hidden = true;
-  proyTramiteActual = null;
-  state.proyEditingId = null;
-  resetProyFormTitulo();
-});
-
-// ---- Editar: precarga el formulario con los datos de un proyecto ya cargado ----
-function abrirProyectoParaEditar(p) {
+// ---- Editar: carga un proyecto ya existente en el formulario, en modo edición ----
+function editarProyecto(p) {
   const rec = state.registros.find(r => r._id === p.idTramite);
   if (!rec) { alert('No se encontró el trámite asociado a este proyecto.'); return; }
-  seleccionarTramiteParaProyecto(rec, p);
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  if (!puedeEditar) return;
+
+  seleccionarTramiteParaProyecto(rec);
+  proyEditingId = p._id;
+  document.getElementById('proyFormTitle').textContent = 'Editar proyecto';
+  document.getElementById('proySubmitBtn').textContent = 'Guardar cambios';
+
+  document.querySelectorAll('#proyForm [name]').forEach(input => {
+    if (p[input.name] != null) input.value = p[input.name];
+  });
+  recalcMontoProyecto();
+  document.getElementById('proyFormMsg').hidden = true;
   document.getElementById('proyFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -2255,12 +2179,10 @@ function copiarProyecto(p, btn) {
     'Sucursal: ' + (p.sucursal || ''),
     'Pedido de Compras: ' + (p.nroPedidoCompras || ''),
     'Contratista: ' + (p.contratista || ''),
-    'N° de Expediente de Proyecto: ' + (p.nroExpedienteProyecto || ''),
-    'Número de Proyecto: ' + (p.numeroProyecto || ''),
-    'Descripción: ' + (p.descripcionProyecto || ''),
+    'N° de Proyecto: ' + (p.numeroProyecto || ''),
+    'Exp. Proyecto: ' + (p.nroExpedienteProyecto || ''),
     'IIBB del Proyecto: ' + (p.iibbProyecto || ''),
     '$ del Proyecto: ' + formatMoney(p.montoProyecto),
-    '% IIBB Proyectados: ' + num(p.pctIIBBProyecto).toFixed(1) + '%',
   ].join('\n');
 
   navigator.clipboard.writeText(resumen).then(() => {
@@ -2272,26 +2194,38 @@ function copiarProyecto(p, btn) {
   });
 }
 
-// ---- Clonar: crea un proyecto nuevo con los mismos datos, para el mismo trámite ----
+// ---- Clonar: crea un proyecto nuevo con los mismos datos ----
 async function clonarProyecto(p) {
-  const confirmado = confirm('¿Clonar este proyecto? Se va a crear un proyecto nuevo con los mismos datos, para el mismo trámite (podés editarlo después).');
+  const confirmado = confirm('¿Clonar este proyecto? Se va a crear un proyecto nuevo con los mismos datos.');
   if (!confirmado) return;
-  const datos = {
-    pospre: p.pospre || '', sucursal: p.sucursal || '', nroPedidoCompras: p.nroPedidoCompras || '', contratista: p.contratista || '',
-    nroExpedienteProyecto: p.nroExpedienteProyecto || '', numeroProyecto: p.numeroProyecto || '',
-    descripcionProyecto: p.descripcionProyecto || '', iibbProyecto: p.iibbProyecto || '', montoProyecto: p.montoProyecto || '',
-    observaciones: p.observaciones || ''
-  };
+  const datos = {};
+  proyCamposCache.forEach(f => { if (f.key !== 'pctIIBBProyecto') datos[f.key] = p[f.key]; });
   try {
     await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: p.idTramite }, datos) });
-    const data = await apiCall('listar');
-    state.registros = data.registros;
     await cargarProyectos();
   } catch (err) {
     alert('Error al clonar: ' + err.message);
   }
 }
 
+document.getElementById('proyCancelarBtn').addEventListener('click', () => {
+  document.getElementById('proyForm').hidden = true;
+  document.getElementById('proyTramiteSeleccionado').hidden = true;
+  document.getElementById('proyKmLamtInfo').hidden = true;
+  proyTramiteActual = null;
+  proyEditingId = null;
+});
+
+// ---- $ del Proyecto se calcula solo: Cantidad de ítems Base (IIBB) del trámite × $ Adjudicado Unitario del trámite ----
+function recalcMontoProyecto() {
+  const montoInput = document.querySelector('#proyForm [name="montoProyecto"]');
+  if (!montoInput) return;
+  if (!proyTramiteActual) { montoInput.value = ''; return; }
+  const cantidadesIIBB = parseFloat(proyTramiteActual.cantidadesIIBB) || 0;
+  const unitario = parseFloat(proyTramiteActual.adjudicadoUnitario) || 0;
+  const monto = cantidadesIIBB * unitario;
+  montoInput.value = monto ? monto.toFixed(2) : '';
+}
 document.getElementById('proyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('proyFormMsg');
@@ -2307,8 +2241,8 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
   document.querySelectorAll('#proyForm [name]').forEach(input => { datos[input.name] = input.value; });
 
   try {
-    if (state.proyEditingId) {
-      await apiCall('proyectos_actualizar', { id: state.proyEditingId, datos });
+    if (proyEditingId) {
+      await apiCall('proyectos_actualizar', { id: proyEditingId, datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
       msg.textContent = 'Proyecto actualizado correctamente.';
     } else {
       await apiCall('proyectos_crear', { datos: Object.assign({ idTramite: proyTramiteActual._id }, datos) });
@@ -2316,7 +2250,7 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
     }
     msg.className = 'form-msg ok';
     msg.hidden = false;
-    state.proyEditingId = null;
+    proyEditingId = null;
     document.getElementById('proyForm').reset();
     seleccionarTramiteParaProyecto(proyTramiteActual); // limpia el form pero deja el trámite elegido para cargar otro
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
@@ -2354,35 +2288,33 @@ function renderProyTable() {
 
   const isAdmin = state.session && state.session.rol === 'admin';
   const puedeEditar = state.session && state.session.rol !== 'consulta';
-  const mostrarAcciones = isAdmin || puedeEditar;
   const table = document.getElementById('proyTable');
-  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + (mostrarAcciones ? '<th class="col-sticky">Acciones</th>' : '') + '</tr></thead>';
+  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : '') + '</tr></thead>';
   const tbody = '<tbody>' + rows.map(p => {
     const tds = PROY_TABLE_COLS.map(col => {
       if (['montoProyecto'].includes(col.key)) return `<td>${formatMoney(p[col.key])}</td>`;
       if (col.key === 'pctIIBBProyecto') return `<td>${num(p.pctIIBBProyecto).toFixed(1)}%</td>`;
       return `<td>${escapeHtml(p[col.key] != null ? p[col.key] : '')}</td>`;
     }).join('');
-    const acciones = mostrarAcciones ? `<td class="row-actions col-sticky">
-        <button class="icon-btn" data-proy-action="copiar" data-proy-id="${p._id}" title="Copiar datos">📋</button>
-        ${puedeEditar ? `<button class="icon-btn" data-proy-action="editar" data-proy-id="${p._id}" title="Editar proyecto">✏️</button>` : ''}
-        ${puedeEditar ? `<button class="icon-btn" data-proy-action="clonar" data-proy-id="${p._id}" title="Clonar proyecto">🧬</button>` : ''}
-        ${isAdmin ? `<button class="icon-btn danger" data-proy-action="eliminar" data-proy-id="${p._id}" title="Eliminar proyecto">🗑️</button>` : ''}
+    const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
+        ${puedeEditar ? '<button class="icon-btn" data-action="editar" data-proy-id="' + p._id + '" title="Editar proyecto">✏️</button>' : ''}
+        <button class="icon-btn" data-action="copiar" data-proy-id="${p._id}" title="Copiar datos">📋</button>
+        ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-proy-id="' + p._id + '" title="Clonar proyecto">🧬</button>' : ''}
+        ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" data-proy-id="' + p._id + '" title="Eliminar proyecto">🗑️</button>' : ''}
       </td>` : '';
     return `<tr>${tds}<td>${escapeHtml(p.descripcionProyecto || '')}</td><td>${escapeHtml(p.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
 
-  table.querySelectorAll('[data-proy-action]').forEach(btn => {
+  table.querySelectorAll('[data-proy-id]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
       const p = proyListaCache.find(x => x._id === btn.dataset.proyId);
       if (!p) return;
-      const accion = btn.dataset.proyAction;
+      const accion = btn.dataset.action;
       if (accion === 'copiar') { copiarProyecto(p, btn); return; }
-      if (accion === 'editar') { abrirProyectoParaEditar(p); return; }
-      if (accion === 'clonar') { clonarProyecto(p); return; }
+      if (accion === 'editar') { editarProyecto(p); return; }
+      if (accion === 'clonar') { await clonarProyecto(p); return; }
       if (accion === 'eliminar') {
         const confirmado = confirm('¿Eliminar este proyecto? El total del trámite se va a recalcular.');
         if (!confirmado) return;

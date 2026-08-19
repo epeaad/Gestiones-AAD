@@ -103,11 +103,11 @@
         <div class="control-inline">
           <label>Agrupar por
             <select id="dashGroupBy">
-              <option value="__todos__">Todos (detalle completo)</option>
               <option value="sucursal">Sucursal</option>
               <option value="pospre">PosPre</option>
               <option value="nroPedidoCompras">Pedido de Compras</option>
               <option value="adjudicatario">Contratista/Proveedor</option>
+              <option value="todos">Todos (detalle completo)</option>
             </select>
           </label>
           <button id="printDashboardBtn" class="btn btn-secondary">Imprimir a PDF</button>
@@ -152,21 +152,21 @@
           <input type="date" id="dashFechaPCHasta" />
         </div>
         <div class="filter-field">
-          <label>% Avance desde</label>
-          <input type="number" id="dashAvanceDesde" min="0" max="100" step="1" placeholder="0" />
+          <label>% de Avance desde</label>
+          <input type="number" min="0" max="100" step="any" id="dashPctAvanceDesde" placeholder="0" />
         </div>
         <div class="filter-field">
-          <label>% Avance hasta</label>
-          <input type="number" id="dashAvanceHasta" min="0" max="100" step="1" placeholder="100" />
+          <label>% de Avance hasta</label>
+          <input type="number" min="0" max="100" step="any" id="dashPctAvanceHasta" placeholder="100" />
         </div>
-        <div class="filter-field filter-field-texto">
-          <label>Buscar texto</label>
-          <div class="texto-filter-group">
+        <div class="filter-field filter-field-wide">
+          <label>Buscar palabra</label>
+          <div class="filter-texto-group">
             <select id="dashTextoModo">
               <option value="contiene">Contiene</option>
               <option value="no_contiene">No contiene</option>
             </select>
-            <input type="text" id="dashTextoBusqueda" placeholder="Palabras..." />
+            <input type="text" id="dashTextoBuscar" placeholder="Palabra o frase..." />
           </div>
         </div>
         <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
@@ -205,7 +205,7 @@
       </div>
 
       <div class="panel">
-        <h3 id="dashTableTitle">Detalle por agrupación</h3>
+        <h3>Detalle por agrupación</h3>
         <p class="table-note" id="dashTableNota" hidden></p>
         <div class="table-wrap">
           <table id="dashTable" class="data-table"></table>
@@ -318,9 +318,11 @@
         <h3>Cargar certificación</h3>
 
         <div class="field-grid">
-          <label class="span-2" style="position:relative;">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
-            <input type="text" id="certBuscarTramite" placeholder="Escribí para buscar..." autocomplete="off" />
-            <div id="certResultadosBusqueda" class="cert-search-results" hidden></div>
+          <label class="span-2">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
+            <div class="search-input-wrap">
+              <input type="text" id="certBuscarTramite" placeholder="Escribí para buscar..." autocomplete="off" />
+              <div id="certResultadosBusqueda" class="cert-search-results" hidden></div>
+            </div>
           </label>
         </div>
 
@@ -333,6 +335,7 @@
             <label>Pedido de Compras <input type="text" id="certPC" readonly /></label>
             <label>Contratista <input type="text" id="certContratista" readonly /></label>
             <label>Fecha de Inicio de Contrato <input type="text" id="certFechaInicio" readonly /></label>
+            <label>Expediente de Certificación <input type="text" name="expedienteCertificacion" /></label>
             <label>Número de Certificado <input type="text" name="numeroCertificado" /></label>
             <label>Mes/Año de Certificación <input type="month" name="mesAnioCertificacion" /></label>
             <label>IIBB Certificados <input type="number" step="any" name="iibbCertificados" /></label>
@@ -376,9 +379,11 @@
         <h3 id="proyFormTitle">Cargar proyecto</h3>
 
         <div class="field-grid">
-          <label class="span-2" style="position:relative;">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
-            <input type="text" id="proyBuscarTramite" placeholder="Escribí para buscar..." autocomplete="off" />
-            <div id="proyResultadosBusqueda" class="cert-search-results" hidden></div>
+          <label class="span-2">Buscar trámite (Pospre, Expediente o N° Pedido de Compras)
+            <div class="search-input-wrap">
+              <input type="text" id="proyBuscarTramite" placeholder="Escribí para buscar..." autocomplete="off" />
+              <div id="proyResultadosBusqueda" class="cert-search-results" hidden></div>
+            </div>
           </label>
         </div>
 
@@ -394,8 +399,8 @@
             <label>N° de Expediente de Proyecto <input type="text" name="nroExpedienteProyecto" /></label>
             <label>Número de Proyecto <input type="text" name="numeroProyecto" /></label>
             <label class="span-2">Descripción del Proyecto <textarea name="descripcionProyecto"></textarea></label>
-            <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" id="proyIIBBProyectoInput" /></label>
-            <label>$ del Proyecto <span class="calc-badge" id="proyMontoCalcBadge" hidden>calculado</span> <input type="number" step="any" name="montoProyecto" id="proyMontoProyectoInput" /></label>
+            <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" /></label>
+            <label>$ del Proyecto <span class="calc-badge">calculado</span> <input type="number" step="any" name="montoProyecto" readonly tabindex="-1" /></label>
             <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
           </div>
           <div class="form-actions">
