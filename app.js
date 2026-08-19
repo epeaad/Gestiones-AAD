@@ -284,10 +284,12 @@ function stageColorVar(idx) {
   return 'var(--stage-' + (idx + 1) + ')';
 }
 
-// ---- Un Pospre corresponde a Obra Menor si contiene O.D.P o O.D.S (con o sin puntos) ----
+// ---- Un Pospre corresponde a Obra Menor si es (o contiene) "OBRAS MENORES".
+//      También se sigue reconociendo O.D.P. / O.D.S. por compatibilidad con trámites
+//      viejos que quedaron cargados con esos códigos, antes de unificar el Pospre. ----
 function isObraMenorPospre(val) {
   const v = (val || '').toLowerCase();
-  return v.includes('o.d.s') || v.includes('o.d.p') || v.includes('ods') || v.includes('odp');
+  return v.includes('obras menores') || v.includes('o.d.s') || v.includes('o.d.p') || v.includes('ods') || v.includes('odp');
 }
 
 function buildForm(record) {
@@ -324,7 +326,7 @@ function buildForm(record) {
     const title = document.createElement('div');
     title.className = 'stage-panel-title';
     title.innerHTML = `<span class="dot" style="background:${stageColorVar(idx)}"></span> ${etapa.label}` +
-      (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre O.D.P. / O.D.S. — Obra Menor)</span>' : '');
+      (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre "Obras Menores")</span>' : '');
     panel.appendChild(title);
 
     const grid = document.createElement('div');
@@ -394,7 +396,7 @@ function buildForm(record) {
     });
   }
 
-  // Si cambia el Pospre elegido, re-evaluar si Proyectos aplica (solo O.D.P / O.D.S = Obra Menor)
+  // Si cambia el Pospre elegido, re-evaluar si Proyectos aplica (solo Pospre "Obras Menores")
   const pospreInput = panelsWrap.querySelector('[name="pospre"]');
   if (pospreInput) {
     pospreInput.addEventListener('change', () => {
@@ -2107,15 +2109,15 @@ proyBuscarInput.addEventListener('input', () => {
 
   if (!matches.length) {
     if (todasLasCoincidencias.length) {
-      // Hay trámite(s) con ese Pospre/Expediente/PC, pero ninguno tiene Pospre Obra Menor (O.D.P. / O.D.S.):
+      // Hay trámite(s) con ese Pospre/Expediente/PC, pero ninguno tiene Pospre "Obras Menores":
       // por eso no aparecen acá, aunque el trámite sí existe en Registros.
       const ejemplos = todasLasCoincidencias.slice(0, 5).map(r =>
         `${escapeHtml(r.pospre || '(sin pospre)')} — Exp. ${escapeHtml(r.expediente || '—')} — PC ${escapeHtml(r.nroPedidoCompras || '—')}`
       ).join('<br/>');
       resultados.innerHTML = `<div class="cert-search-item">
-          Encontré ${todasLasCoincidencias.length} trámite(s) con ese texto, pero ninguno tiene Pospre <strong>O.D.P.</strong> u <strong>O.D.S.</strong> (Obra Menor), que es el único tipo al que aplica el módulo de Proyectos:<br/>
+          Encontré ${todasLasCoincidencias.length} trámite(s) con ese texto, pero ninguno tiene Pospre <strong>"Obras Menores"</strong>, que es el único tipo al que aplica el módulo de Proyectos:<br/>
           <span class="small">${ejemplos}</span><br/>
-          Si corresponde, corregí el Pospre de ese trámite desde Registros para que incluya "O.D.P." u "O.D.S.".
+          Si corresponde, corregí el Pospre de ese trámite desde Registros para que sea "Obras Menores".
         </div>`;
     } else {
       resultados.innerHTML = '<div class="cert-search-item">Sin resultados: no encontré ningún trámite con ese Pospre, Expediente o N° de Pedido de Compras.</div>';
