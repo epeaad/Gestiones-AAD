@@ -272,6 +272,13 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 // FORMULARIO (alta / edición por etapas)
 // ============================================================
+// ---- Convierte cualquier valor a formato "yyyy-MM" para inputs type="month" (por si llegó como fecha completa) ----
+function toMonthValue(v) {
+  if (!v) return '';
+  const s = String(v);
+  return /^\d{4}-\d{2}/.test(s) ? s.slice(0, 7) : s;
+}
+
 function fieldByKey(key) {
   return state.campos.find(f => f.key === key);
 }
@@ -488,7 +495,7 @@ function buildFieldInput(f, record) {
   } else if (DATE_FIELDS.has(f.key)) {
     inputHtml = `<input type="date" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else if (MONTH_FIELDS.has(f.key)) {
-    inputHtml = `<input type="month" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
+    inputHtml = `<input type="month" name="${f.key}" value="${escapeHtml(toMonthValue(value))}" ${readonlyAttr} />`;
   } else if (NUMBER_FIELDS.has(f.key)) {
     inputHtml = `<input type="number" step="any" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else {
@@ -1319,6 +1326,12 @@ function renderDashboard() {
   const totalDesAdj = cantDesiertos + cantAdjudicados;
   const pctDesiertos = totalDesAdj > 0 ? (cantDesiertos / totalDesAdj) * 100 : 0;
 
+  // ---- Obras Menores (Pospre O.D.P. / O.D.S.): IIBB Proyectados sobre el filtro actual ----
+  const rowsObraMenor = rows.filter(r => isObraMenorPospre(r.pospre));
+  const sumaIIBBProyectados = sumField(rowsObraMenor, 'cantTotalIIBBProyectados');
+  const sumaIIBBGestionadosOM = sumField(rowsObraMenor, 'cantidadesIIBB');
+  const pctIIBBProyectadoGeneral = sumaIIBBGestionadosOM > 0 ? (sumaIIBBProyectados / sumaIIBBGestionadosOM) * 100 : 0;
+
   const kpiRow = document.getElementById('kpiRow');
   kpiRow.innerHTML = [
     kpiCard('Trámites (filtro actual)', rows.length, 'de ' + state.registros.length + ' totales'),
@@ -1329,6 +1342,8 @@ function renderDashboard() {
     kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial'),
     kpiCard('Multas acumuladas', formatMillions(totalMultas), 'sin IVA'),
     kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
+    kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
+    kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)'),
   ].join('');
 
 
@@ -1944,7 +1959,7 @@ function editarCertificacion(c) {
   document.getElementById('certSubmitBtn').textContent = 'Guardar cambios';
 
   document.querySelectorAll('#certForm [name]').forEach(input => {
-    if (c[input.name] != null) input.value = c[input.name];
+    if (c[input.name] != null) input.value = input.name === 'mesAnioCertificacion' ? toMonthValue(c[input.name]) : c[input.name];
   });
   recalcIIBBCertificados();
   document.getElementById('certFormMsg').hidden = true;
@@ -2065,7 +2080,7 @@ const CERT_TABLE_COLS = [
   { key: 'montoCertificado', label: '$ Certificado' },
   { key: 'montoReconocimiento', label: '$ Reconocimiento' },
   { key: 'montoMultas', label: '$ Multas' },
-  { key: 'pctAvance', label: '% Avance' },
+  { key: 'pctAvance', label: '% del Adjudicado' },
 ];
 const CERT_MONEY_COLS = new Set(['montoCertificado', 'montoReconocimiento', 'montoMultas']);
 
@@ -2096,6 +2111,7 @@ function renderCertTable() {
     const tds = CERT_TABLE_COLS.map(col => {
       if (CERT_MONEY_COLS.has(col.key)) return `<td>${formatMoney(c[col.key])}</td>`;
       if (col.key === 'pctAvance') return `<td>${num(c.pctAvance).toFixed(1)}%</td>`;
+      if (col.key === 'iibbCertificados') return `<td>${num(c.iibbCertificados).toFixed(2)}</td>`;
       return `<td>${escapeHtml(c[col.key] != null ? c[col.key] : '')}</td>`;
     }).join('');
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
