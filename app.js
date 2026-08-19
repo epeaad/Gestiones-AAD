@@ -1579,14 +1579,27 @@ function renderDashboard() {
 function renderDashDetalleTodos(rows) {
   const table = document.getElementById('dashTable');
   const ordenadas = sortRows(rows, state.dashDetalleSort);
+  const puedeEditar = state.session && state.session.rol !== 'consulta'; // mismo criterio que Registros: "solo consulta" no abre el formulario
   table.innerHTML = '<thead><tr>' + REGISTROS_COLS.map(c => sortableTh(state.dashDetalleSort, c.key, c.label)).join('') + '</tr></thead>' +
-    '<tbody>' + ordenadas.map(r => '<tr>' + REGISTROS_COLS.map(c => renderRegistroCell(r, c)).join('') + '</tr>').join('') + '</tbody>';
+    '<tbody>' + ordenadas.map(r => `<tr data-id="${r._id}">` + REGISTROS_COLS.map(c => renderRegistroCell(r, c)).join('') + '</tr>').join('') + '</tbody>';
   wireSortableHeaders(table, state.dashDetalleSort, () => renderDashDetalleTodos(rows));
   setupScrollShadow(table.closest('.table-wrap'));
+  table.classList.toggle('solo-consulta', !puedeEditar);
+
+  if (puedeEditar) {
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      tr.addEventListener('click', (e) => {
+        if (e.target.closest('th')) return; // por si algún click cae sobre el encabezado ordenable
+        const rec = state.registros.find(r => r._id === tr.dataset.id);
+        if (rec) openRecordForEdit(rec);
+      });
+    });
+  }
 
   const nota = document.getElementById('dashTableNota');
   if (nota) {
-    nota.textContent = `Se muestran los ${ordenadas.length} trámite(s) que pasan los filtros actuales del Dashboard (detalle completo, sin agrupar).`;
+    nota.textContent = `Se muestran los ${ordenadas.length} trámite(s) que pasan los filtros actuales del Dashboard (detalle completo, sin agrupar).` +
+      (puedeEditar ? ' Tocá una fila para ver el trámite completo en "Nuevo trámite".' : '');
     nota.hidden = false;
   }
 }
