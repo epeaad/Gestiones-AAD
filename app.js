@@ -32,9 +32,13 @@ const SELECT_FIELDS = {
   movilidadInspeccion: ['Si','No'],
   estado: ['Adjudicado','Desierto','Relanzado','Finalizado']
 };
+// Etiqueta usada para representar, en filtros/agrupaciones, los trámites que todavía no tienen
+// un Estado cargado (sin adjudicar). No es un valor real de la base: es un valor "sentinela"
+// que se muestra y se filtra como una categoría más, para poder aislar esos trámites.
+const ESTADO_VACIO_LABEL = 'Vacío (sin adjudicar)';
 // Campos con opciones dinámicas: se cargan a partir de los valores ya existentes en la base
 // (evita errores de tipeo, obliga a elegir uno de los que ya existen).
-const DYNAMIC_SELECT_FIELDS = new Set(['pospre']);
+const DYNAMIC_SELECT_FIELDS = new Set(['pospre', 'sucursal']);
 const LONG_FIELDS = new Set(['detalleRubro','observaciones']);
 
 // ---- Campos calculados automáticamente: no se editan a mano ----
@@ -833,6 +837,7 @@ function populateFilterOptions() {
     const el = document.querySelector('#filtersBar [data-filter="' + key + '"]');
     if (!el) return;
     const opts = uniqueValues(key);
+    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
     state.filtros[key] = (state.filtros[key] || []).filter(v => opts.includes(v));
     renderMultiselect(el, opts, state.filtros[key], (vals) => {
       state.filtros[key] = vals;
@@ -844,6 +849,7 @@ function populateFilterOptions() {
     const el = document.querySelector('#dashFiltersBar [data-dashfilter="' + key + '"]');
     if (!el) return;
     const opts = uniqueValues(key);
+    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
     state.dashFiltros[key] = (state.dashFiltros[key] || []).filter(v => opts.includes(v));
     renderMultiselect(el, opts, state.dashFiltros[key], (vals) => {
       state.dashFiltros[key] = vals;
@@ -1168,7 +1174,9 @@ function applyFilters(rows, filtros, keys) {
       }
       if (!fval || !fval.length) return true; // sin selección = sin filtro
       const rval = String(r[k] || '').trim();
-      return fval.includes(rval);
+      // "Estado" vacío (trámite sin adjudicar) se filtra a través de la etiqueta sentinela ESTADO_VACIO_LABEL.
+      const efectivo = (k === 'estado' && rval === '') ? ESTADO_VACIO_LABEL : rval;
+      return fval.includes(efectivo);
     });
   });
 }
@@ -1237,7 +1245,8 @@ function registroTdsHtml(r) {
   return REGISTROS_COLS.map(c => {
     if (c.key === 'estado') {
       const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
-      return `<td>${r.estado ? `<span class="state-pill ${cls}">${escapeHtml(r.estado)}</span>` : ''}</td>`;
+      const texto = r.estado ? r.estado : ESTADO_VACIO_LABEL;
+      return `<td><span class="state-pill ${cls}">${escapeHtml(texto)}</span></td>`;
     }
     if (MONEY_COL_KEYS.has(c.key)) return `<td>${formatMoney(r[c.key])}</td>`;
     if (c.key === 'pctAvance') return `<td>${pctAvanceTramite(r).toFixed(1)}%</td>`;
@@ -1676,7 +1685,8 @@ function renderDashboard() {
 
   const groups = {};
   rows.forEach(r => {
-    const key = (r[groupKey] || '(sin dato)').toString().trim() || '(sin dato)';
+    const vacioLabel = groupKey === 'estado' ? ESTADO_VACIO_LABEL : '(sin dato)';
+    const key = (r[groupKey] || vacioLabel).toString().trim() || vacioLabel;
     if (!groups[key]) groups[key] = { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBValores:[], sucursales:new Set(), contratistas:new Set() };
     groups[key].n++;
     groups[key].presOficial += num(r.presupuestoOficialRubro);
