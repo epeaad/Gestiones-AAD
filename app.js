@@ -2099,6 +2099,12 @@ async function cargarCertificaciones() {
     const data = await apiCall('certificaciones_listar');
     certCamposCache = data.campos;
     certListaCache = data.certificaciones;
+    // El Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite (PC) al
+    // que pertenece cada certificación, para saber de un vistazo qué se está certificando.
+    certListaCache.forEach(c => {
+      const rec = state.registros.find(r => r._id === c.idTramite);
+      c.rubro = rec ? rec.rubro : '';
+    });
     renderCertTable();
   } catch (err) {
     showAppError('No se pudieron cargar las certificaciones: ' + err.message);
@@ -2312,6 +2318,7 @@ document.getElementById('certFiltroTexto').addEventListener('input', renderCertT
 const CERT_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
+  { key: 'rubro', label: 'Rubro' },
   { key: 'nroPedidoCompras', label: 'PC' },
   { key: 'contratista', label: 'Contratista' },
   { key: 'expedienteCertificacion', label: 'Exp. Certificación' },
@@ -2334,7 +2341,7 @@ function renderCertTable() {
   const q = document.getElementById('certFiltroTexto').value.trim().toLowerCase();
   let rows = certListaCache.filter(c => {
     if (!q) return true;
-    return ['pospre','expediente','nroPedidoCompras','contratista','numeroCertificado','expedienteCertificacion'].some(k =>
+    return ['pospre','expediente','rubro','nroPedidoCompras','contratista','numeroCertificado','expedienteCertificacion'].some(k =>
       String(c[k] || '').toLowerCase().includes(q)
     );
   });
