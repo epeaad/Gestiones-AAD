@@ -586,6 +586,43 @@ function buildForm(record) {
     });
   }
 
+  // Desplegables dinámicos (Pospre, Sucursal): si el usuario elige "+ Otra (nueva)", mostramos
+  // un campo de texto libre en su lugar para que pueda escribir un valor que todavía no existe en la base.
+  panelsWrap.querySelectorAll('select.dyn-select').forEach(sel => {
+    const row = sel.nextElementSibling; // .dyn-otro-row
+    const otroInput = row.querySelector('.dyn-otro-input');
+    const volverBtn = row.querySelector('.dyn-otro-volver');
+    sel.addEventListener('change', () => {
+      if (sel.value === DYNAMIC_SELECT_OTRO) {
+        sel.hidden = true;
+        sel.removeAttribute('name');
+        row.hidden = false;
+        otroInput.name = sel.dataset.dynKey;
+        otroInput.value = '';
+        otroInput.focus();
+      }
+    });
+    volverBtn.addEventListener('click', () => {
+      row.hidden = true;
+      otroInput.removeAttribute('name');
+      sel.hidden = false;
+      sel.name = sel.dataset.dynKey;
+      sel.value = '';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // Caso especial: si el campo "Otra (nueva)" es el Pospre, hay que seguir evaluando en vivo
+    // si corresponde habilitar la etapa "Proyectos" (solo aplica a Obra Menor: O.D.P. / O.D.S.).
+    if (sel.dataset.dynKey === 'pospre') {
+      otroInput.addEventListener('input', () => {
+        const om = isObraMenorPospre(otroInput.value);
+        const proyNode = lifeline.querySelector('[data-stage="proyectos"]');
+        const proyPanel = document.getElementById('panel-proyectos');
+        proyNode.classList.toggle('disabled', !om);
+        if (!om) proyPanel.hidden = true;
+      });
+    }
+  });
+
   state.activeStage = state.etapas[0].id;
   setActiveStage(state.activeStage);
   document.getElementById('formMsg').hidden = true;
@@ -644,6 +681,9 @@ document.getElementById('stagePanels').addEventListener('click', (e) => {
   if (RECALC_TRIGGER_FIELDS.has(mainInput.name)) recalcDerivedFields();
 });
 
+// Valor sentinela para la opción "Otra (nueva)" de los campos con desplegable dinámico (Pospre, Sucursal).
+const DYNAMIC_SELECT_OTRO = '__otro__';
+
 function buildFieldInput(f, record) {
   const label = document.createElement('label');
   if (LONG_FIELDS.has(f.key)) label.classList.add('span-2');
@@ -663,8 +703,14 @@ function buildFieldInput(f, record) {
     if (value && !existentes.includes(value)) existentes.unshift(value);
     const opts = ['<option value="">— Elegí un ' + escapeHtml(f.label) + ' existente —</option>'].concat(
       existentes.map(o => `<option value="${escapeHtml(o)}" ${value === o ? 'selected' : ''}>${escapeHtml(o)}</option>`)
-    );
-    inputHtml = `<select name="${f.key}">${opts.join('')}</select>`;
+    ).concat(['<option value="' + DYNAMIC_SELECT_OTRO + '">+ Otra (nueva)...</option>']);
+    // Dos elementos, pero solo uno tiene el atributo "name" a la vez (se alterna por JS al elegir "+ Otra (nueva)"),
+    // para que el formulario nunca envíe dos valores distintos bajo la misma clave.
+    inputHtml = `<select name="${f.key}" class="dyn-select" data-dyn-key="${f.key}">${opts.join('')}</select>` +
+      `<div class="dyn-otro-row" hidden>` +
+        `<input type="text" placeholder="Escribí ${escapeHtml(f.label)} nuevo/a..." class="dyn-otro-input" />` +
+        `<button type="button" class="dyn-otro-volver" title="Volver a elegir de la lista">↩ volver a la lista</button>` +
+      `</div>`;
   } else if (LONG_FIELDS.has(f.key)) {
     inputHtml = `<textarea name="${f.key}">${escapeHtml(value)}</textarea>`;
   } else if (DATE_FIELDS.has(f.key)) {

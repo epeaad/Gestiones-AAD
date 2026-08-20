@@ -530,6 +530,15 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 }
 .btn-mini-add:hover{ background:var(--stage-4); color:#fff; border-color:var(--stage-4); }
 .field-grid textarea{ resize:vertical; min-height:60px; }
+.dyn-otro-row{ display:flex; gap:6px; margin-top:0; }
+.dyn-otro-row .dyn-otro-input{
+  flex:1; padding:8px 10px; border:1px solid var(--brand); border-radius:7px; font-weight:400; color:var(--text);
+}
+.dyn-otro-volver{
+  flex-shrink:0; background:none; border:none; color:var(--text-soft); font-size:11px; cursor:pointer;
+  text-decoration:underline; white-space:nowrap;
+}
+.dyn-otro-volver:hover{ color:var(--brand); }
 .form-actions{ display:flex; align-items:center; gap:16px; justify-content:flex-end; }
 .cert-nota{
   margin-top:16px; padding:14px 16px; background:var(--brand-soft);
