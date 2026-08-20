@@ -1307,6 +1307,10 @@ function sortRows(rows, sortState, valueFn) {
   return copy;
 }
 
+function rowClassForEstado(r) {
+  return r.estado === 'Finalizado' ? ' class="row-finalizado"' : '';
+}
+
 function renderRegistros() {
   let rows = filteredRecords();
   rows = sortRows(rows, state.registrosSort, registroSortValue);
@@ -1322,7 +1326,7 @@ function renderRegistros() {
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" title="Clonar trámite">🧬</button>' : ''}
         ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" title="Eliminar trámite">🗑️</button>' : ''}
       </td>`;
-    return `<tr data-id="${r._id}">${tds}${acciones}</tr>`;
+    return `<tr data-id="${r._id}"${rowClassForEstado(r)}>${tds}${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   table.classList.toggle('solo-consulta', !puedeEditar);
@@ -1826,7 +1830,7 @@ function renderDashDetalleCompleto(rows) {
   rows = sortRows(rows, state.dashDetalleSort, registroSortValue);
   const table = document.getElementById('dashTable');
   table.innerHTML = sortableTheadHtml(REGISTROS_COLS, state.dashDetalleSort) +
-    '<tbody>' + rows.map(r => `<tr data-id="${r._id}">${registroTdsHtml(r)}</tr>`).join('') + '</tbody>';
+    '<tbody>' + rows.map(r => `<tr data-id="${r._id}"${rowClassForEstado(r)}>${registroTdsHtml(r)}</tr>`).join('') + '</tbody>';
   wireSortableHeaders(table, state.dashDetalleSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
 

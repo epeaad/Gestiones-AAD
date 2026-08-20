@@ -471,6 +471,15 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 }
 .data-table thead .col-sticky{ background:#F8FAFB; }
 .data-table tbody tr:hover .col-sticky{ background:var(--brand-soft); }
+
+/* Trámites Finalizados: se resaltan con un fondo visible en toda la fila (tablas de Registros y Dashboard),
+   usando el mismo tono que la pastilla de Estado "Finalizado", pero bien clarito para que el texto se siga leyendo. */
+.data-table tbody tr.row-finalizado{ background:#EEF2FF; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+.data-table tbody tr.row-finalizado td{ border-color:#C7D2FE; }
+.data-table tbody tr.row-finalizado .col-sticky{ background:#EEF2FF; }
+.data-table tbody tr.row-finalizado:hover{ background:#E0E7FF; }
+.data-table tbody tr.row-finalizado:hover .col-sticky{ background:#E0E7FF; }
+
 .state-pill{
   display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:600;
   font-family:var(--font-ui);
