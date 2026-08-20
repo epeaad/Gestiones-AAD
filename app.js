@@ -1308,7 +1308,9 @@ function sortRows(rows, sortState, valueFn) {
 }
 
 function rowClassForEstado(r) {
-  return r.estado === 'Finalizado' ? ' class="row-finalizado"' : '';
+  if (r.estado === 'Finalizado') return ' class="row-finalizado"';
+  if (r.estado === 'Desierto') return ' class="row-desierto"';
+  return '';
 }
 
 function renderRegistros() {
