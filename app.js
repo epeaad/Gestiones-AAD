@@ -1294,8 +1294,15 @@ function registroTdsHtml(r) {
       const texto = r.estado ? r.estado : ESTADO_VACIO_LABEL;
       return `<td><span class="state-pill ${cls}">${escapeHtml(texto)}</span></td>`;
     }
-    if (MONEY_COL_KEYS.has(c.key)) return `<td>${formatMoney(r[c.key])}</td>`;
-    if (c.key === 'pctAvance') return `<td>${pctAvanceTramite(r).toFixed(1)}%</td>`;
+    if (MONEY_COL_KEYS.has(c.key)) return `<td class="mono">${formatMoney(r[c.key])}</td>`;
+    if (c.key === 'pctAvance') return `<td class="mono">${pctAvanceTramite(r).toFixed(1)}%</td>`;
+    if (c.key === 'anio') return `<td class="mono">${escapeHtml(r.anio != null ? r.anio : '')}</td>`;
+    // Textos potencialmente largos (nombre del contratista): se truncan con "..." y el texto
+    // completo queda disponible al pasar el mouse, para no forzar el ancho de toda la tabla.
+    if (c.key === 'adjudicatario') {
+      const texto = r.adjudicatario != null ? r.adjudicatario : '';
+      return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
+    }
     return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
   }).join('');
 }
@@ -2343,9 +2350,13 @@ function renderCertTable() {
   const thead = sortableTheadHtml(CERT_TABLE_COLS, certSort, '<th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
   const tbody = '<tbody>' + rows.map(c => {
     const tds = CERT_TABLE_COLS.map(col => {
-      if (CERT_MONEY_COLS.has(col.key)) return `<td>${formatMoney(c[col.key])}</td>`;
-      if (col.key === 'pctAvance') return `<td>${num(c.pctAvance).toFixed(1)}%</td>`;
-      if (col.key === 'iibbCertificados') return `<td>${num(c.iibbCertificados).toFixed(2)}</td>`;
+      if (CERT_MONEY_COLS.has(col.key)) return `<td class="mono">${formatMoney(c[col.key])}</td>`;
+      if (col.key === 'pctAvance') return `<td class="mono">${num(c.pctAvance).toFixed(1)}%</td>`;
+      if (col.key === 'iibbCertificados') return `<td class="mono">${num(c.iibbCertificados).toFixed(2)}</td>`;
+      if (col.key === 'contratista') {
+        const texto = c.contratista != null ? c.contratista : '';
+        return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
+      }
       return `<td>${escapeHtml(c[col.key] != null ? c[col.key] : '')}</td>`;
     }).join('');
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
@@ -2354,7 +2365,7 @@ function renderCertTable() {
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-cert-id="' + c._id + '" title="Clonar certificación">🧬</button>' : ''}
         ${puedeEditar ? '<button class="icon-btn danger" data-action="eliminar" data-cert-id="' + c._id + '" title="Eliminar certificación">🗑️</button>' : ''}
       </td>` : '';
-    return `<tr>${tds}<td>${escapeHtml(c.observaciones || '')}</td>${acciones}</tr>`;
+    return `<tr>${tds}<td class="td-truncate" title="${escapeHtml(c.observaciones || '')}">${escapeHtml(c.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
@@ -2659,8 +2670,12 @@ function renderProyTable() {
   const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : '') + '</tr></thead>';
   const tbody = '<tbody>' + rows.map(p => {
     const tds = PROY_TABLE_COLS.map(col => {
-      if (['montoProyecto'].includes(col.key)) return `<td>${formatMoney(p[col.key])}</td>`;
-      if (col.key === 'pctIIBBProyecto') return `<td>${num(p.pctIIBBProyecto).toFixed(1)}%</td>`;
+      if (['montoProyecto'].includes(col.key)) return `<td class="mono">${formatMoney(p[col.key])}</td>`;
+      if (col.key === 'pctIIBBProyecto') return `<td class="mono">${num(p.pctIIBBProyecto).toFixed(1)}%</td>`;
+      if (col.key === 'contratista') {
+        const texto = p.contratista != null ? p.contratista : '';
+        return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
+      }
       return `<td>${escapeHtml(p[col.key] != null ? p[col.key] : '')}</td>`;
     }).join('');
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
@@ -2669,7 +2684,7 @@ function renderProyTable() {
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-proy-id="' + p._id + '" title="Clonar proyecto">🧬</button>' : ''}
         ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" data-proy-id="' + p._id + '" title="Eliminar proyecto">🗑️</button>' : ''}
       </td>` : '';
-    return `<tr>${tds}<td>${escapeHtml(p.descripcionProyecto || '')}</td><td>${escapeHtml(p.observaciones || '')}</td>${acciones}</tr>`;
+    return `<tr>${tds}<td class="td-truncate" title="${escapeHtml(p.descripcionProyecto || '')}">${escapeHtml(p.descripcionProyecto || '')}</td><td class="td-truncate" title="${escapeHtml(p.observaciones || '')}">${escapeHtml(p.observaciones || '')}</td>${acciones}</tr>`;
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
