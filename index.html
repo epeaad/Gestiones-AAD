@@ -153,11 +153,11 @@
         </div>
         <div class="filter-field">
           <label>% de Avance desde</label>
-          <input type="number" min="0" max="100" step="any" id="dashPctAvanceDesde" placeholder="0" />
+          <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="dashPctAvanceDesde" placeholder="0" />
         </div>
         <div class="filter-field">
           <label>% de Avance hasta</label>
-          <input type="number" min="0" max="100" step="any" id="dashPctAvanceHasta" placeholder="100" />
+          <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="dashPctAvanceHasta" placeholder="100" />
         </div>
         <div class="filter-field filter-field-wide">
           <label>Buscar palabra</label>
@@ -338,10 +338,10 @@
             <label>Expediente de Certificación <input type="text" name="expedienteCertificacion" /></label>
             <label>Número de Certificado <input type="text" name="numeroCertificado" /></label>
             <label>Mes/Año de Certificación <input type="month" name="mesAnioCertificacion" /></label>
-            <label>$ Certificados <input type="number" step="any" name="montoCertificado" /></label>
-            <label>IIBB Certificados <span class="calc-badge">calculado</span> <input type="number" step="any" name="iibbCertificados" readonly tabindex="-1" /></label>
-            <label>$ de Reconocimiento <input type="number" step="any" name="montoReconocimiento" /></label>
-            <label>$ Multas <input type="number" step="any" name="montoMultas" /></label>
+            <label>$ Certificados <input type="text" inputmode="decimal" class="num-decimal" name="montoCertificado" /></label>
+            <label>IIBB Certificados <span class="calc-badge">calculado</span> <input type="text" inputmode="decimal" class="num-decimal" name="iibbCertificados" readonly tabindex="-1" /></label>
+            <label>$ de Reconocimiento <input type="text" inputmode="decimal" class="num-decimal" name="montoReconocimiento" /></label>
+            <label>$ Multas <input type="text" inputmode="decimal" class="num-decimal" name="montoMultas" /></label>
             <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
           </div>
           <div class="form-actions">
@@ -399,8 +399,8 @@
             <label>N° de Expediente de Proyecto <input type="text" name="nroExpedienteProyecto" /></label>
             <label>Número de Proyecto <input type="text" name="numeroProyecto" /></label>
             <label class="span-2">Descripción del Proyecto <textarea name="descripcionProyecto"></textarea></label>
-            <label>IIBB del Proyecto <input type="number" step="any" name="iibbProyecto" /></label>
-            <label>$ del Proyecto <span class="calc-badge">calculado</span> <input type="number" step="any" name="montoProyecto" readonly tabindex="-1" /></label>
+            <label>IIBB del Proyecto <input type="text" inputmode="decimal" class="num-decimal" name="iibbProyecto" /></label>
+            <label>$ del Proyecto <span class="calc-badge">calculado</span> <input type="text" inputmode="decimal" class="num-decimal" name="montoProyecto" readonly tabindex="-1" /></label>
             <label class="span-2">Observaciones <textarea name="observaciones"></textarea></label>
           </div>
           <div class="form-actions">
@@ -553,7 +553,7 @@
 
       <label class="modal-field">
         % de ampliación de contrato
-        <input type="number" id="ampliacionPct" step="any" min="0.01" placeholder="Ej: 20" />
+        <input type="text" inputmode="decimal" class="num-decimal" id="ampliacionPct" min="0.01" placeholder="Ej: 20" />
       </label>
 
       <label class="modal-field">

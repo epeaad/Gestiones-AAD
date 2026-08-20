@@ -721,20 +721,41 @@ function buildFieldInput(f, record) {
   } else if (MONTH_FIELDS.has(f.key)) {
     inputHtml = `<input type="month" name="${f.key}" value="${escapeHtml(toMonthValue(value))}" ${readonlyAttr} />`;
   } else if (NUMBER_FIELDS.has(f.key)) {
-    inputHtml = `<input type="number" step="any" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
+    // type="text" + inputmode="decimal" en vez de type="number": los inputs numéricos nativos de
+    // Chrome/Edge RECHAZAN la coma decimal (habitual en Argentina, ej. "106,61") y borran lo tipeado.
+    // Con texto + normalización en vivo (ver listener global "num-decimal" más abajo) se acepta
+    // coma o punto indistintamente y siempre se guarda con punto.
+    inputHtml = `<input type="text" inputmode="decimal" class="num-decimal" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else {
     inputHtml = `<input type="text" name="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   }
   const isSumHelper = SUM_HELPER_FIELDS.has(f.key);
   const sumHelperHtml = isSumHelper
     ? `<div class="sum-helper">
-        <input type="number" step="any" class="sum-add-input" placeholder="Sumar..." />
+        <input type="text" inputmode="decimal" class="num-decimal sum-add-input" placeholder="Sumar..." />
         <button type="button" class="btn-mini-add" title="Sumar al total">+ Sumar</button>
       </div>`
     : '';
   label.innerHTML = `${f.label}${isDerived ? ' <span class="calc-badge">calculado</span>' : ''}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}${inputHtml}${sumHelperHtml}`;
   return label;
 }
+
+// Normaliza en vivo cualquier input numérico decimal (clase "num-decimal", usada en Nuevo trámite,
+// Certificaciones, Proyectos, Ampliación de contrato, etc.): si el usuario tipea una coma como
+// separador decimal (habitual en Argentina), la convierte a punto al vuelo, antes de que cualquier
+// otro cálculo (recalcDerivedFields, recalcMontoProyecto, etc.) llegue a leer ese valor.
+// Se registra en fase de "captura" (tercer parámetro true) para garantizar que corra primero,
+// sin importar en qué orden se hayan agregado los demás listeners de "input" del formulario.
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (el.classList && el.classList.contains('num-decimal') && typeof el.value === 'string' && el.value.indexOf(',') !== -1) {
+    const pos = el.selectionStart;
+    el.value = el.value.replace(/,/g, '.');
+    if (pos !== null && typeof el.setSelectionRange === 'function') {
+      try { el.setSelectionRange(pos, pos); } catch (err) { /* algunos navegadores no lo permiten en ciertos inputs */ }
+    }
+  }
+}, true);
 
 function setActiveStage(stageId) {
   state.activeStage = stageId;
