@@ -2607,16 +2607,20 @@ document.getElementById('proyCancelarBtn').addEventListener('click', () => {
   proyEditingId = null;
 });
 
-// ---- $ del Proyecto se calcula solo: Cantidad de ítems Base (IIBB) del trámite × $ Adjudicado Unitario del trámite ----
+// ---- $ del Proyecto se calcula solo: IIBB Proyectados de ESTE proyecto × $ Adjudicado Unitario del trámite ----
 function recalcMontoProyecto() {
   const montoInput = document.querySelector('#proyForm [name="montoProyecto"]');
+  const iibbInput = document.querySelector('#proyForm [name="iibbProyecto"]');
   if (!montoInput) return;
   if (!proyTramiteActual) { montoInput.value = ''; return; }
-  const cantidadesIIBB = parseFloat(proyTramiteActual.cantidadesIIBB) || 0;
+  const iibbProyecto = parseFloat(iibbInput ? iibbInput.value : '') || 0;
   const unitario = parseFloat(proyTramiteActual.adjudicadoUnitario) || 0;
-  const monto = cantidadesIIBB * unitario;
+  const monto = iibbProyecto * unitario;
   montoInput.value = monto ? monto.toFixed(2) : '';
 }
+document.getElementById('proyForm').addEventListener('input', (e) => {
+  if (e.target.name === 'iibbProyecto') recalcMontoProyecto();
+});
 document.getElementById('proyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('proyFormMsg');
