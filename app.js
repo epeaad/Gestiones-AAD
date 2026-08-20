@@ -461,10 +461,13 @@ function stageColorVar(idx) {
   return 'var(--stage-' + (idx + 1) + ')';
 }
 
-// ---- Un Pospre corresponde a Obra Menor si contiene O.D.P o O.D.S (con o sin puntos) ----
+// ---- Un Pospre corresponde a Obra Menor si es "OBRAS MENORES" (el valor vigente y único válido),
+// o si contiene la nomenclatura vieja O.D.P / O.D.S (con o sin puntos), por compatibilidad con
+// trámites históricos que puedan seguir usándola. ----
 function isObraMenorPospre(val) {
   const v = (val || '').toLowerCase();
-  return v.includes('o.d.s') || v.includes('o.d.p') || v.includes('ods') || v.includes('odp');
+  return v.includes('obras menores') || v.includes('obra menor')
+    || v.includes('o.d.s') || v.includes('o.d.p') || v.includes('ods') || v.includes('odp');
 }
 
 function buildForm(record) {
