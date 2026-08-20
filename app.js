@@ -2099,11 +2099,11 @@ async function cargarCertificaciones() {
     const data = await apiCall('certificaciones_listar');
     certCamposCache = data.campos;
     certListaCache = data.certificaciones;
-    // El Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite (PC) al
-    // que pertenece cada certificación, para saber de un vistazo qué se está certificando.
+    // El Detalle del Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite
+    // (PC) al que pertenece cada certificación, para saber de un vistazo qué se está certificando.
     certListaCache.forEach(c => {
       const rec = state.registros.find(r => r._id === c.idTramite);
-      c.rubro = rec ? rec.rubro : '';
+      c.rubro = rec ? rec.detalleRubro : '';
     });
     renderCertTable();
   } catch (err) {
@@ -2166,16 +2166,19 @@ document.addEventListener('click', (e) => {
 
 function seleccionarTramiteParaCertificar(rec) {
   certTramiteActual = rec;
-  certEditingId = null;
-  document.getElementById('certFormTitle').textContent = 'Cargar certificación';
-  document.getElementById('certSubmitBtn').textContent = 'Guardar certificación';
+  const seguirEditando = certEditingId; // si veníamos editando una certificación, "Cambiar" no debe perder eso
+  document.getElementById('certFormTitle').textContent = seguirEditando ? 'Editar certificación' : 'Cargar certificación';
+  document.getElementById('certSubmitBtn').textContent = seguirEditando ? 'Guardar cambios' : 'Guardar certificación';
   const chip = document.getElementById('certTramiteSeleccionado');
   chip.innerHTML = `<span><strong>${escapeHtml(rec.pospre || '')}</strong> — Exp. ${escapeHtml(rec.expediente || '—')} — PC ${escapeHtml(rec.nroPedidoCompras || '—')} — ${escapeHtml(rec.adjudicatario || '(sin contratista)')}</span>
     <button type="button" class="btn btn-ghost" id="certCambiarTramiteBtn">Cambiar</button>`;
   chip.hidden = false;
   document.getElementById('certCambiarTramiteBtn').addEventListener('click', () => {
     certTramiteActual = null;
-    certEditingId = null;
+    // Ojo: NO tocamos certEditingId acá. Si estábamos editando una certificación y el usuario
+    // elige otro trámite, al guardar se reasigna esa MISMA certificación al trámite nuevo
+    // (útil cuando un PC tiene varios trámites cargados y quedó vinculada al que no correspondía),
+    // en vez de crear una certificación duplicada y dejar la vieja mal vinculada.
     chip.hidden = true;
     document.getElementById('certForm').hidden = true;
   });
@@ -2187,7 +2190,7 @@ function seleccionarTramiteParaCertificar(rec) {
   document.getElementById('certFechaInicio').value = rec.fechaInicioReal || '';
 
   const form = document.getElementById('certForm');
-  form.reset();
+  if (!seguirEditando) form.reset(); // si estamos reasignando una edición, no perder lo ya tipeado
   recalcIIBBCertificados();
   document.getElementById('certFormMsg').hidden = true;
   form.hidden = false;
@@ -2318,7 +2321,7 @@ document.getElementById('certFiltroTexto').addEventListener('input', renderCertT
 const CERT_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
-  { key: 'rubro', label: 'Rubro' },
+  { key: 'rubro', label: 'Detalle Rubro' },
   { key: 'nroPedidoCompras', label: 'PC' },
   { key: 'contratista', label: 'Contratista' },
   { key: 'expedienteCertificacion', label: 'Exp. Certificación' },
@@ -2360,8 +2363,8 @@ function renderCertTable() {
       if (CERT_MONEY_COLS.has(col.key)) return `<td class="mono">${formatMoney(c[col.key])}</td>`;
       if (col.key === 'pctAvance') return `<td class="mono">${num(c.pctAvance).toFixed(1)}%</td>`;
       if (col.key === 'iibbCertificados') return `<td class="mono">${num(c.iibbCertificados).toFixed(2)}</td>`;
-      if (col.key === 'contratista') {
-        const texto = c.contratista != null ? c.contratista : '';
+      if (col.key === 'contratista' || col.key === 'rubro') {
+        const texto = c[col.key] != null ? c[col.key] : '';
         return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
       }
       return `<td>${escapeHtml(c[col.key] != null ? c[col.key] : '')}</td>`;
