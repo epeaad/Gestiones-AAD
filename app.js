@@ -2125,9 +2125,12 @@ async function cargarCertificaciones() {
     certListaCache = data.certificaciones;
     // El Detalle del Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite
     // (PC) al que pertenece cada certificación, para saber de un vistazo qué se está certificando.
+    // La Sucursal se toma de la misma forma, para poder ordenar el detalle Pospre → Sucursal → PC →
+    // Contratista → N° de Certificado, aunque esa columna no se muestre en la tabla.
     certListaCache.forEach(c => {
       const rec = state.registros.find(r => r._id === c.idTramite);
       c.rubro = rec ? rec.detalleRubro : '';
+      c.sucursal = rec ? rec.sucursal : '';
     });
     renderCertTable();
   } catch (err) {
@@ -2375,7 +2378,7 @@ function renderCertTable() {
   if (certSort.key) {
     rows = sortRows(rows, certSort, certSortValue);
   } else {
-    rows = rows.slice().sort((a, b) => String(b.mesAnioCertificacion || '').localeCompare(String(a.mesAnioCertificacion || '')));
+    rows = rows.slice().sort((a, b) => defaultMultiKeyCompare(a, b, CERT_ORDEN_DEFECTO));
   }
 
   const isAdmin = state.session && state.session.rol === 'admin';
@@ -2693,19 +2696,46 @@ const PROY_TABLE_COLS = [
   { key: 'pctIIBBProyecto', label: '% IIBB' },
 ];
 
+// Orden por defecto (sin que el usuario haya clickeado ningún encabezado todavía): agrupa la
+// lectura siguiendo el mismo recorrido de categorías, de izquierda a derecha, en ambos módulos.
+function defaultMultiKeyCompare(a, b, keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const va = String(a[k] != null ? a[k] : '').toLowerCase();
+    const vb = String(b[k] != null ? b[k] : '').toLowerCase();
+    const cmp = va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true });
+    if (cmp !== 0) return cmp;
+  }
+  return 0;
+}
+const PROY_ORDEN_DEFECTO = ['pospre', 'sucursal', 'nroPedidoCompras', 'contratista', 'numeroProyecto'];
+const CERT_ORDEN_DEFECTO = ['pospre', 'sucursal', 'nroPedidoCompras', 'contratista', 'numeroCertificado'];
+
+let proySort = { key: null, dir: 1 };  // ordenamiento de la tabla de Proyectos cargados
+
+function proySortValue(p, key) {
+  if (key === 'montoProyecto' || key === 'pctIIBBProyecto' || key === 'iibbProyecto') return num(p[key]);
+  return String(p[key] != null ? p[key] : '').toLowerCase();
+}
+
 function renderProyTable() {
   const q = document.getElementById('proyFiltroTexto').value.trim().toLowerCase();
-  const rows = proyListaCache.filter(p => {
+  let rows = proyListaCache.filter(p => {
     if (!q) return true;
     return ['pospre','nroPedidoCompras','contratista','numeroProyecto','nroExpedienteProyecto'].some(k =>
       String(p[k] || '').toLowerCase().includes(q)
     );
-  }).sort((a, b) => String(b.numeroProyecto || '').localeCompare(String(a.numeroProyecto || '')));
+  });
+  if (proySort.key) {
+    rows = sortRows(rows, proySort, proySortValue);
+  } else {
+    rows = rows.slice().sort((a, b) => defaultMultiKeyCompare(a, b, PROY_ORDEN_DEFECTO));
+  }
 
   const isAdmin = state.session && state.session.rol === 'admin';
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   const table = document.getElementById('proyTable');
-  const thead = '<thead><tr>' + PROY_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Descripción</th><th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : '') + '</tr></thead>';
+  const thead = sortableTheadHtml(PROY_TABLE_COLS, proySort, '<th>Descripción</th><th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
   const tbody = '<tbody>' + rows.map(p => {
     const tds = PROY_TABLE_COLS.map(col => {
       if (['montoProyecto'].includes(col.key)) return `<td class="mono">${formatMoney(p[col.key])}</td>`;
@@ -2726,6 +2756,7 @@ function renderProyTable() {
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
+  wireSortableHeaders(table, proySort, renderProyTable);
 
   table.querySelectorAll('[data-proy-id]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
