@@ -2676,6 +2676,187 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
 
 document.getElementById('proyFiltroTexto').addEventListener('input', renderProyTable);
 
+// ============================================================
+// IMPORTAR PROYECTOS DESDE CSV (de otra herramienta)
+// ============================================================
+// Nunca toca el trámite/PC al que se vincula cada fila — solo CREA proyectos nuevos.
+// Cada fila del CSV se busca por N° de Pedido (+ Sucursal, si hace falta desambiguar entre
+// varios trámites con el mismo PC, algo que pasa seguido por ampliaciones/clones).
+
+// Convierte "211505367,04" (coma decimal, típico de estos exports) a un número de JS normal.
+function _parseNumeroImport(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+// Parser CSV simple pero robusto: entiende campos entre comillas (con comas y comillas escapadas "" adentro).
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/, ''); // BOM
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\r') { /* ignorar, el \n que sigue cierra la fila */ }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1)
+    .filter(r => r.some(c => c.trim() !== ''))
+    .map(r => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (r[i] != null ? r[i] : '').trim(); });
+      return obj;
+    });
+}
+
+let proyImportFilas = []; // filas ya procesadas (matcheadas o no), listas para mostrar/confirmar
+
+document.getElementById('proyImportToggleBtn').addEventListener('click', () => {
+  const body = document.getElementById('proyImportBody');
+  body.hidden = !body.hidden;
+});
+
+document.getElementById('proyImportFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const texto = await file.text();
+  const filas = parseCSV(texto);
+
+  proyImportFilas = filas.map(f => {
+    const nroPedido = (f['N° Pedido'] || '').trim();
+    const sucursal = (f['Sucursal'] || '').trim();
+    const numeroProyecto = (f['N° Proy.'] || '').trim();
+
+    // Buscamos el trámite por N° de Pedido; si hay más de uno con el mismo PC (ampliaciones/clones),
+    // desambiguamos por Sucursal, que también viene en el CSV.
+    let candidatos = state.registros.filter(r => String(r.nroPedidoCompras || '').trim() === nroPedido);
+    let tramite = null;
+    let motivo = '';
+    if (!nroPedido) {
+      motivo = 'Fila sin N° de Pedido';
+    } else if (!candidatos.length) {
+      motivo = 'No hay ningún trámite cargado con ese N° de Pedido';
+    } else if (candidatos.length === 1) {
+      tramite = candidatos[0];
+    } else {
+      const porSucursal = candidatos.filter(r => (r.sucursal || '').trim().toLowerCase() === sucursal.toLowerCase());
+      if (porSucursal.length === 1) {
+        tramite = porSucursal[0];
+      } else {
+        motivo = 'Hay ' + candidatos.length + ' trámites con ese PC y no se pudo desambiguar por Sucursal';
+      }
+    }
+
+    // Evitar duplicados: si ya existe un proyecto para ese trámite con el mismo N° de Proyecto, se omite.
+    let duplicado = false;
+    if (tramite) {
+      duplicado = proyListaCache.some(p => p.idTramite === tramite._id && String(p.numeroProyecto || '').trim() === numeroProyecto && numeroProyecto !== '');
+    }
+
+    let estado = 'importar';
+    if (!tramite) estado = 'sin_tramite';
+    else if (duplicado) estado = 'duplicado';
+
+    return {
+      csv: f,
+      tramite,
+      motivo,
+      estado, // 'importar' | 'duplicado' | 'sin_tramite'
+      datos: tramite ? {
+        idTramite: tramite._id,
+        nroExpedienteProyecto: (f['Expediente'] || '').trim(),
+        numeroProyecto,
+        descripcionProyecto: (f['Breve Resumen'] || '').trim(),
+        iibbProyecto: _parseNumeroImport(f['IIBB Proy.']),
+        observaciones: (f['Observaciones'] || '').trim()
+      } : null
+    };
+  });
+
+  renderProyImportPreview();
+});
+
+function renderProyImportPreview() {
+  const wrap = document.getElementById('proyImportPreviewWrap');
+  wrap.hidden = false;
+  const cantImportar = proyImportFilas.filter(f => f.estado === 'importar').length;
+  const cantDuplicado = proyImportFilas.filter(f => f.estado === 'duplicado').length;
+  const cantSinTramite = proyImportFilas.filter(f => f.estado === 'sin_tramite').length;
+
+  document.getElementById('proyImportResumen').textContent =
+    `${proyImportFilas.length} fila(s) en el CSV — ${cantImportar} para importar, ${cantDuplicado} ya existen (se omiten), ${cantSinTramite} sin trámite coincidente (se omiten, revisalas manualmente).`;
+
+  const table = document.getElementById('proyImportPreviewTable');
+  const badge = (estado) => estado === 'importar'
+    ? '<span class="state-pill state-Adjudicado">Importar</span>'
+    : estado === 'duplicado'
+      ? '<span class="state-pill state-default">Ya existe</span>'
+      : '<span class="state-pill state-Desierto">Sin trámite</span>';
+
+  table.innerHTML = '<thead><tr><th>N° Pedido</th><th>Sucursal</th><th>N° Proy.</th><th>Breve Resumen</th><th>IIBB Proy.</th><th>Estado</th><th>Detalle</th></tr></thead>' +
+    '<tbody>' + proyImportFilas.map(f => `<tr>
+        <td>${escapeHtml(f.csv['N° Pedido'] || '')}</td>
+        <td>${escapeHtml(f.csv['Sucursal'] || '')}</td>
+        <td>${escapeHtml(f.csv['N° Proy.'] || '')}</td>
+        <td class="td-truncate" title="${escapeHtml(f.csv['Breve Resumen'] || '')}">${escapeHtml(f.csv['Breve Resumen'] || '')}</td>
+        <td class="mono">${escapeHtml(f.csv['IIBB Proy.'] || '')}</td>
+        <td>${badge(f.estado)}</td>
+        <td>${escapeHtml(f.motivo || (f.estado === 'duplicado' ? 'Ya hay un proyecto Nº ' + (f.csv['N° Proy.'] || '') + ' cargado para ese trámite' : ''))}</td>
+      </tr>`).join('') + '</tbody>';
+
+  document.getElementById('proyImportConfirmarBtn').disabled = cantImportar === 0;
+  document.getElementById('proyImportConfirmarBtn').textContent = 'Importar ' + cantImportar + ' proyecto(s)';
+}
+
+document.getElementById('proyImportCancelarBtn').addEventListener('click', () => {
+  proyImportFilas = [];
+  document.getElementById('proyImportFile').value = '';
+  document.getElementById('proyImportPreviewWrap').hidden = true;
+  document.getElementById('proyImportMsg').hidden = true;
+});
+
+document.getElementById('proyImportConfirmarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('proyImportConfirmarBtn');
+  const msg = document.getElementById('proyImportMsg');
+  const aImportar = proyImportFilas.filter(f => f.estado === 'importar');
+  btn.disabled = true;
+  let ok = 0, fallidos = 0;
+  for (let i = 0; i < aImportar.length; i++) {
+    btn.textContent = `Importando ${i + 1} de ${aImportar.length}...`;
+    try {
+      await apiCall('proyectos_crear', { datos: aImportar[i].datos });
+      ok++;
+    } catch (err) {
+      fallidos++;
+    }
+  }
+  msg.textContent = `Listo: ${ok} proyecto(s) importado(s)${fallidos ? ', ' + fallidos + ' fallaron' : ''}. Los trámites (Pedidos de Compras) no se modificaron.`;
+  msg.className = 'form-msg ' + (fallidos ? 'err' : 'ok');
+  msg.hidden = false;
+  proyImportFilas = [];
+  document.getElementById('proyImportFile').value = '';
+  document.getElementById('proyImportPreviewWrap').hidden = true;
+
+  const data = await apiCall('listar'); // refresca los rollups de los trámites afectados
+  state.registros = data.registros;
+  await cargarProyectos();
+});
+
 const PROY_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'sucursal', label: 'Sucursal' },

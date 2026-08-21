@@ -415,6 +415,33 @@
         </form>
       </div>
 
+      <div class="panel" id="proyImportPanel">
+        <div class="view-header" style="margin-bottom:10px;">
+          <h3 style="margin:0;">Importar proyectos desde CSV</h3>
+          <button type="button" id="proyImportToggleBtn" class="btn btn-ghost">Importar CSV</button>
+        </div>
+        <div id="proyImportBody" hidden>
+          <p class="table-note">
+            Subí un CSV exportado de otra herramienta (columnas esperadas: <code>N° Pedido</code>, <code>Sucursal</code>,
+            <code>Expediente</code>, <code>N° Proy.</code>, <code>Breve Resumen</code>, <code>IIBB Proy.</code>, <code>Observaciones</code>).
+            Cada fila se vincula al trámite <strong>ya cargado</strong> con ese mismo N° de Pedido de Compras — el trámite
+            en sí <strong>nunca se modifica</strong>, solo se le agrega el proyecto como registro nuevo.
+          </p>
+          <input type="file" id="proyImportFile" accept=".csv" />
+          <div id="proyImportPreviewWrap" hidden>
+            <p class="table-note" id="proyImportResumen"></p>
+            <div class="table-wrap" style="max-height:320px;">
+              <table id="proyImportPreviewTable" class="data-table"></table>
+            </div>
+            <div class="form-actions">
+              <p id="proyImportMsg" class="form-msg" hidden></p>
+              <button type="button" id="proyImportCancelarBtn" class="btn btn-ghost">Cancelar</button>
+              <button type="button" id="proyImportConfirmarBtn" class="btn btn-primary">Importar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="view-header" style="margin-bottom:14px;">
           <h3 style="margin:0;">Proyectos cargados</h3>
