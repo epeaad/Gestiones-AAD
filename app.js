@@ -2243,30 +2243,6 @@ function editarCertificacion(c) {
   document.getElementById('certFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ---- Copiar: pasa un resumen de la certificación al portapapeles ----
-function copiarCertificacion(c, btn) {
-  const resumen = [
-    'Pospre: ' + (c.pospre || ''),
-    'Expediente: ' + (c.expediente || ''),
-    'Pedido de Compras: ' + (c.nroPedidoCompras || ''),
-    'Contratista: ' + (c.contratista || ''),
-    'Expediente de Certificación: ' + (c.expedienteCertificacion || ''),
-    'N° de Certificado: ' + (c.numeroCertificado || ''),
-    'Mes/Año: ' + (c.mesAnioCertificacion || ''),
-    '$ Certificado: ' + formatMoney(c.montoCertificado),
-    'IIBB Certificados: ' + (c.iibbCertificados || ''),
-    '$ Multas: ' + formatMoney(c.montoMultas),
-  ].join('\n');
-
-  navigator.clipboard.writeText(resumen).then(() => {
-    const original = btn.textContent;
-    btn.textContent = '✅';
-    setTimeout(() => { btn.textContent = original; }, 1200);
-  }).catch(() => {
-    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
-  });
-}
-
 // ---- Clonar: crea una certificación nueva con los mismos datos ----
 async function clonarCertificacion(c) {
   const confirmado = confirm('¿Clonar esta certificación? Se va a crear una nueva con los mismos datos (podés editarla después).');
@@ -2398,7 +2374,6 @@ function renderCertTable() {
     }).join('');
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
         ${puedeEditar ? '<button class="icon-btn" data-action="editar" data-cert-id="' + c._id + '" title="Editar certificación">✏️</button>' : ''}
-        <button class="icon-btn" data-action="copiar" data-cert-id="${c._id}" title="Copiar datos">📋</button>
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-cert-id="' + c._id + '" title="Clonar certificación">🧬</button>' : ''}
         ${puedeEditar ? '<button class="icon-btn danger" data-action="eliminar" data-cert-id="' + c._id + '" title="Eliminar certificación">🗑️</button>' : ''}
       </td>` : '';
@@ -2413,7 +2388,6 @@ function renderCertTable() {
       const c = certListaCache.find(x => x._id === btn.dataset.certId);
       if (!c) return;
       const accion = btn.dataset.action;
-      if (accion === 'copiar') { copiarCertificacion(c, btn); return; }
       if (accion === 'editar') { editarCertificacion(c); return; }
       if (accion === 'clonar') { await clonarCertificacion(c); return; }
       if (accion === 'eliminar') {
@@ -2587,28 +2561,6 @@ function editarProyecto(p) {
   document.getElementById('proyFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ---- Copiar: pasa un resumen del proyecto al portapapeles ----
-function copiarProyecto(p, btn) {
-  const resumen = [
-    'Pospre: ' + (p.pospre || ''),
-    'Sucursal: ' + (p.sucursal || ''),
-    'Pedido de Compras: ' + (p.nroPedidoCompras || ''),
-    'Contratista: ' + (p.contratista || ''),
-    'N° de Proyecto: ' + (p.numeroProyecto || ''),
-    'Exp. Proyecto: ' + (p.nroExpedienteProyecto || ''),
-    'IIBB del Proyecto: ' + (p.iibbProyecto || ''),
-    '$ del Proyecto: ' + formatMoney(p.montoProyecto),
-  ].join('\n');
-
-  navigator.clipboard.writeText(resumen).then(() => {
-    const original = btn.textContent;
-    btn.textContent = '✅';
-    setTimeout(() => { btn.textContent = original; }, 1200);
-  }).catch(() => {
-    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
-  });
-}
-
 // ---- Clonar: crea un proyecto nuevo con los mismos datos ----
 async function clonarProyecto(p) {
   const confirmado = confirm('¿Clonar este proyecto? Se va a crear un proyecto nuevo con los mismos datos.');
@@ -2748,7 +2700,6 @@ function renderProyTable() {
     }).join('');
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
         ${puedeEditar ? '<button class="icon-btn" data-action="editar" data-proy-id="' + p._id + '" title="Editar proyecto">✏️</button>' : ''}
-        <button class="icon-btn" data-action="copiar" data-proy-id="${p._id}" title="Copiar datos">📋</button>
         ${puedeEditar ? '<button class="icon-btn" data-action="clonar" data-proy-id="' + p._id + '" title="Clonar proyecto">🧬</button>' : ''}
         ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" data-proy-id="' + p._id + '" title="Eliminar proyecto">🗑️</button>' : ''}
       </td>` : '';
@@ -2763,7 +2714,6 @@ function renderProyTable() {
       const p = proyListaCache.find(x => x._id === btn.dataset.proyId);
       if (!p) return;
       const accion = btn.dataset.action;
-      if (accion === 'copiar') { copiarProyecto(p, btn); return; }
       if (accion === 'editar') { editarProyecto(p); return; }
       if (accion === 'clonar') { await clonarProyecto(p); return; }
       if (accion === 'eliminar') {
