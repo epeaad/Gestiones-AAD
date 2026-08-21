@@ -267,7 +267,7 @@ document.getElementById('origenVolverBtn').addEventListener('click', () => {
 document.getElementById('origenNuevoBtn').addEventListener('click', () => {
   cerrarSelectorOrigenTramite();
   state.editingId = null;
-  document.getElementById('formTitle').textContent = 'Nuevo trámite';
+  document.getElementById('formTitle').textContent = 'Nueva Contratación';
   document.getElementById('ampliacionBanner').hidden = true;
   buildForm({});
 });
@@ -374,7 +374,7 @@ function iniciarAmpliacionContrato(base, pct) {
   // draft._id se deja sin definir a propósito: es un trámite NUEVO, no una edición del original.
 
   state.editingId = null;
-  document.getElementById('formTitle').textContent = 'Nuevo trámite — Ampliación de contrato';
+  document.getElementById('formTitle').textContent = 'Nueva Contratación — Ampliación de contrato';
   const banner = document.getElementById('ampliacionBanner');
   banner.querySelector('p').textContent =
     `Este formulario se completó automáticamente a partir del Pedido de Compras Nº ${base.nroPedidoCompras || ''} con un +${pct}% aplicado a los campos numéricos. Revisá los datos (fechas, expediente, etc.) antes de guardar.`;
