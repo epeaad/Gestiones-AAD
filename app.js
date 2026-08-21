@@ -1287,6 +1287,7 @@ const REGISTROS_COLS = [
   { key: 'totalAdjudicado', label: 'Total Adjudicado' },
   { key: 'certificadosAAD', label: 'Certificado' },
   { key: 'pctAvance', label: '% Avance' },
+  { key: 'cantidadProyectos', label: 'Cant. Proyectos' },
   { key: 'estado', label: 'Estado' }
 ];
 
@@ -1298,7 +1299,7 @@ const MONEY_COL_KEYS = new Set(['presupuestoOficialRubro', 'totalAdjudicado', 'c
 // Valor "comparable" de un registro de trámite para una columna dada (usado para ordenar)
 function registroSortValue(r, key) {
   if (key === 'pctAvance') return pctAvanceTramite(r);
-  if (MONEY_COL_KEYS.has(key) || key === 'anio') return num(r[key]);
+  if (MONEY_COL_KEYS.has(key) || key === 'anio' || key === 'cantidadProyectos') return num(r[key]);
   return String(r[key] != null ? r[key] : '').toLowerCase();
 }
 
@@ -1341,6 +1342,7 @@ function registroTdsHtml(r) {
     if (MONEY_COL_KEYS.has(c.key)) return `<td class="mono">${formatMoney(r[c.key])}</td>`;
     if (c.key === 'pctAvance') return `<td class="mono">${pctAvanceTramite(r).toFixed(1)}%</td>`;
     if (c.key === 'anio') return `<td class="mono">${escapeHtml(r.anio != null ? r.anio : '')}</td>`;
+    if (c.key === 'cantidadProyectos') return `<td class="mono">${num(r.cantidadProyectos) || 0}</td>`;
     // Textos potencialmente largos (nombre del contratista): se truncan con "..." y el texto
     // completo queda disponible al pasar el mouse, para no forzar el ancho de toda la tabla.
     if (c.key === 'adjudicatario') {

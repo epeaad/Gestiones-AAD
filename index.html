@@ -101,15 +101,6 @@
       <div class="view-header">
         <h2>Seguimiento presupuestario y de ejecución</h2>
         <div class="control-inline">
-          <label>Agrupar por
-            <select id="dashGroupBy">
-              <option value="sucursal">Sucursal</option>
-              <option value="pospre">PosPre</option>
-              <option value="nroPedidoCompras">Pedido de Compras</option>
-              <option value="adjudicatario">Contratista/Proveedor</option>
-              <option value="todos">Todos (detalle completo)</option>
-            </select>
-          </label>
           <button id="printDashboardBtn" class="btn btn-secondary">Imprimir a PDF</button>
         </div>
       </div>
@@ -205,7 +196,20 @@
       </div>
 
       <div class="panel">
-        <h3>Detalle por agrupación</h3>
+        <div class="view-header" style="margin-bottom:14px;">
+          <h3 style="margin:0;">Detalle por agrupación</h3>
+          <div class="control-inline">
+            <label>Agrupar por
+              <select id="dashGroupBy">
+                <option value="sucursal">Sucursal</option>
+                <option value="pospre">PosPre</option>
+                <option value="nroPedidoCompras">Pedido de Compras</option>
+                <option value="adjudicatario">Contratista/Proveedor</option>
+                <option value="todos">Todos (detalle completo)</option>
+              </select>
+            </label>
+          </div>
+        </div>
         <p class="table-note" id="dashTableNota" hidden></p>
         <div class="table-wrap">
           <table id="dashTable" class="data-table"></table>
