@@ -428,6 +428,15 @@ async function boot() {
     return; // no seguimos si no hay datos
   }
 
+  // Certificaciones se precargan acá (no solo al entrar a esa pestaña) porque el Dashboard necesita
+  // sumar el $ Reconocimiento acumulado de todos los contratos. Si falla, el Dashboard sigue andando
+  // igual, solo que esa tarjeta va a mostrar $0 hasta que se pueda cargar.
+  try {
+    await cargarCertificacionesDatos();
+  } catch (err) {
+    console.error('No se pudieron precargar las certificaciones para el Dashboard:', err);
+  }
+
   populateFilterOptions();
   buildForm({});
   showView('dashboard');
@@ -452,6 +461,17 @@ function toMonthValue(v) {
   if (!v) return '';
   const s = String(v);
   return /^\d{4}-\d{2}/.test(s) ? s.slice(0, 7) : s;
+}
+
+// ---- "Mes/Año" para mostrar en tablas: de "AAAA-MM" (formato del input type="month") a "MM/AA",
+// que es como se lee habitualmente en Argentina. Solo cambia cómo se MUESTRA — el campo se sigue
+// guardando y editando internamente en formato "AAAA-MM" para que el selector de mes del navegador
+// funcione bien. ----
+function formatMesAnio(v) {
+  if (!v) return '';
+  const m = String(v).match(/^(\d{4})-(\d{2})/);
+  if (!m) return String(v);
+  return m[2] + '/' + m[1].slice(2);
 }
 
 function fieldByKey(key) {
@@ -1584,6 +1604,17 @@ function renderDashboard() {
   // aplicada sobre los totales del filtro actual — para que coincida con el dato individual, no un promedio aparte.
   const avanceCertificacion = totalAdjudicado > 0 ? (totalCertificado / totalAdjudicado) * 100 : 0;
 
+  // ---- $ Reconocimiento acumulado: suma de "$ de Reconocimiento" de TODAS las certificaciones
+  // cargadas cuyo trámite pasa el filtro actual del Dashboard. No es un dato del trámite en sí (no
+  // se guarda ahí), se cruza en vivo con las certificaciones ya cargadas en la otra pestaña. La
+  // "Erogación total real" suma esto al Certificado por AAD, para reflejar todo lo efectivamente
+  // reconocido/pagado (certificado + reconocimientos), no solo el monto certificado base.
+  const idsFiltrados = new Set(rows.map(r => r._id));
+  const totalReconocimiento = (certListaCache || [])
+    .filter(c => idsFiltrados.has(c.idTramite))
+    .reduce((acc, c) => acc + num(c.montoReconocimiento), 0);
+  const erogacionTotalReal = totalCertificado + totalReconocimiento;
+
   // ---- Desiertos vs. Adjudicados: sobre los trámites del filtro actual que ya tienen uno de estos dos estados ----
   const cantDesiertos = rows.filter(r => r.estado === 'Desierto').length;
   const cantAdjudicados = rows.filter(r => r.estado === 'Adjudicado').length;
@@ -1605,6 +1636,8 @@ function renderDashboard() {
     kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado'),
     kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial'),
     kpiCard('Multas acumuladas', formatMillions(totalMultas), 'sin IVA'),
+    kpiCard('$ Reconocimiento acumulado', formatMillions(totalReconocimiento), 'suma de certificaciones cargadas'),
+    kpiCard('Erogación total real', formatMillions(erogacionTotalReal), 'Certificado por AAD + Reconocimiento'),
     kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
     kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
     kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)'),
@@ -1826,7 +1859,6 @@ function renderDashboard() {
   const promedioPctIIBBGeneral = totalGeneral.cant ? totalGeneral.pctIIBBSuma / totalGeneral.cant : 0;
 
   const dashCols = [{ key: 'grupo', label: labelForGroup(groupKey) }]
-    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }] : [])
     .concat([
       { key: 'n', label: 'Trámites' },
       { key: 'presOficial', label: 'Pres. Oficial' },
@@ -1836,15 +1868,16 @@ function renderDashboard() {
       { key: 'certProcesados', label: 'Cant. Certificados Proc.' },
       { key: 'proyectos', label: 'Cant. Proyectos' },
       { key: 'pctIIBB', label: '% IIBB Proyectados' }
-    ]);
+    ])
+    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }] : []);
 
   const table = document.getElementById('dashTable');
   table.innerHTML = sortableTheadHtml(dashCols, state.dashSort) +
     '<tbody>' + entries.map(f => {
       const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td>` : '';
-      return `<tr><td>${escapeHtml(f.grupo)}</td>${tdsExtra}<td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctIIBB.toFixed(1)}%</td></tr>`;
+      return `<tr><td>${escapeHtml(f.grupo)}</td><td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctIIBB.toFixed(1)}%</td>${tdsExtra}</tr>`;
     }).join('') +
-    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}<td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td></tr>` +
+    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}</tr>` +
     '</tbody>';
   wireSortableHeaders(table, state.dashSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
@@ -2118,20 +2151,24 @@ async function abrirVistaCertificaciones() {
   }
 }
 
+async function cargarCertificacionesDatos() {
+  const data = await apiCall('certificaciones_listar');
+  certCamposCache = data.campos;
+  certListaCache = data.certificaciones;
+  // El Detalle del Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite
+  // (PC) al que pertenece cada certificación, para saber de un vistazo qué se está certificando.
+  // La Sucursal se toma de la misma forma, para poder ordenar el detalle Pospre → Sucursal → PC →
+  // Contratista → N° de Certificado, aunque esa columna no se muestre en la tabla.
+  certListaCache.forEach(c => {
+    const rec = state.registros.find(r => r._id === c.idTramite);
+    c.rubro = rec ? rec.detalleRubro : '';
+    c.sucursal = rec ? rec.sucursal : '';
+  });
+}
+
 async function cargarCertificaciones() {
   try {
-    const data = await apiCall('certificaciones_listar');
-    certCamposCache = data.campos;
-    certListaCache = data.certificaciones;
-    // El Detalle del Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite
-    // (PC) al que pertenece cada certificación, para saber de un vistazo qué se está certificando.
-    // La Sucursal se toma de la misma forma, para poder ordenar el detalle Pospre → Sucursal → PC →
-    // Contratista → N° de Certificado, aunque esa columna no se muestre en la tabla.
-    certListaCache.forEach(c => {
-      const rec = state.registros.find(r => r._id === c.idTramite);
-      c.rubro = rec ? rec.detalleRubro : '';
-      c.sucursal = rec ? rec.sucursal : '';
-    });
+    await cargarCertificacionesDatos();
     renderCertTable();
   } catch (err) {
     showAppError('No se pudieron cargar las certificaciones: ' + err.message);
@@ -2366,6 +2403,7 @@ function renderCertTable() {
       if (CERT_MONEY_COLS.has(col.key)) return `<td class="mono">${formatMoney(c[col.key])}</td>`;
       if (col.key === 'pctAvance') return `<td class="mono">${num(c.pctAvance).toFixed(1)}%</td>`;
       if (col.key === 'iibbCertificados') return `<td class="mono">${num(c.iibbCertificados).toFixed(2)}</td>`;
+      if (col.key === 'mesAnioCertificacion') return `<td class="mono">${formatMesAnio(c.mesAnioCertificacion)}</td>`;
       if (col.key === 'contratista' || col.key === 'rubro') {
         const texto = c[col.key] != null ? c[col.key] : '';
         return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
