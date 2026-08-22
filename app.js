@@ -1206,6 +1206,14 @@ function pctAvanceTramite(r) {
   return adj > 0 ? (num(r.certificadosAAD) / adj) * 100 : 0;
 }
 
+// ---- % de Presupuesto Proyectado respecto del Adjudicado del contrato: $ Proyectados Acumulados
+// (suma de "$ del Proyecto" de todos los proyectos del trámite) sobre el $ Total Adjudicado. No
+// confundir con "% IIBB Proyectados" (que compara cantidades de IIBB, no plata). ----
+function pctPresupuestoProyectado(r) {
+  const adj = num(r.totalAdjudicado);
+  return adj > 0 ? (num(r.proyectadosAcumulados) / adj) * 100 : 0;
+}
+
 // ---- Campos de texto sobre los que busca el filtro "Contiene / No contiene" del Dashboard ----
 const DASH_TEXTO_CAMPOS = [
   'pospre', 'expediente', 'sucursal', 'rubro', 'detalleRubro', 'nroPedidoCompras',
@@ -1288,6 +1296,8 @@ const REGISTROS_COLS = [
   { key: 'certificadosAAD', label: 'Certificado' },
   { key: 'pctAvance', label: '% Avance' },
   { key: 'cantidadProyectos', label: 'Cant. Proyectos' },
+  { key: 'pctPresupuestoProyectado', label: '% Presup. Proyectado' },
+  { key: 'pctIIBBProyectados', label: '% IIBB Proyectados / Gestionados' },
   { key: 'estado', label: 'Estado' }
 ];
 
@@ -1299,7 +1309,8 @@ const MONEY_COL_KEYS = new Set(['presupuestoOficialRubro', 'totalAdjudicado', 'c
 // Valor "comparable" de un registro de trámite para una columna dada (usado para ordenar)
 function registroSortValue(r, key) {
   if (key === 'pctAvance') return pctAvanceTramite(r);
-  if (MONEY_COL_KEYS.has(key) || key === 'anio' || key === 'cantidadProyectos') return num(r[key]);
+  if (key === 'pctPresupuestoProyectado') return pctPresupuestoProyectado(r);
+  if (MONEY_COL_KEYS.has(key) || key === 'anio' || key === 'cantidadProyectos' || key === 'pctIIBBProyectados') return num(r[key]);
   return String(r[key] != null ? r[key] : '').toLowerCase();
 }
 
@@ -1343,6 +1354,8 @@ function registroTdsHtml(r) {
     if (c.key === 'pctAvance') return `<td class="mono">${pctAvanceTramite(r).toFixed(1)}%</td>`;
     if (c.key === 'anio') return `<td class="mono">${escapeHtml(r.anio != null ? r.anio : '')}</td>`;
     if (c.key === 'cantidadProyectos') return `<td class="mono">${num(r.cantidadProyectos) || 0}</td>`;
+    if (c.key === 'pctPresupuestoProyectado') return `<td class="mono">${pctPresupuestoProyectado(r).toFixed(1)}%</td>`;
+    if (c.key === 'pctIIBBProyectados') return `<td class="mono">${num(r.pctIIBBProyectados).toFixed(1)}%</td>`;
     // Textos potencialmente largos (nombre del contratista): se truncan con "..." y el texto
     // completo queda disponible al pasar el mouse, para no forzar el ancho de toda la tabla.
     if (c.key === 'adjudicatario') {
@@ -1805,13 +1818,14 @@ function renderDashboard() {
   rows.forEach(r => {
     const vacioLabel = groupKey === 'estado' ? ESTADO_VACIO_LABEL : '(sin dato)';
     const key = (r[groupKey] || vacioLabel).toString().trim() || vacioLabel;
-    if (!groups[key]) groups[key] = { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBValores:[], sucursales:new Set(), contratistas:new Set() };
+    if (!groups[key]) groups[key] = { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, proyectadosAcumulados:0, pctIIBBValores:[], sucursales:new Set(), contratistas:new Set() };
     groups[key].n++;
     groups[key].presOficial += num(r.presupuestoOficialRubro);
     groups[key].adjudicado += num(r.totalAdjudicado);
     groups[key].certificado += num(r.certificadosAAD);
     groups[key].certProcesados += num(r.cantidadCertificadosProcesados);
     groups[key].proyectos += num(r.cantidadProyectos);
+    groups[key].proyectadosAcumulados += num(r.proyectadosAcumulados);
     const pctIIBB = num(r.pctIIBBProyectados);
     if (pctIIBB > 0) groups[key].pctIIBBValores.push(pctIIBB);
     if (r.sucursal) groups[key].sucursales.add(r.sucursal.trim());
@@ -1835,6 +1849,10 @@ function renderDashboard() {
     avance: v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0,
     certProcesados: v.certProcesados,
     proyectos: v.proyectos,
+    proyectadosAcumulados: v.proyectadosAcumulados,
+    // % de Presupuesto Proyectado respecto del Adjudicado (en plata, no confundir con % IIBB Proyectados
+    // que compara cantidades): $ Proyectados Acumulados del grupo / $ Total Adjudicado del grupo.
+    pctPresupuestoProyectado: v.adjudicado > 0 ? (v.proyectadosAcumulados / v.adjudicado) * 100 : 0,
     pctIIBB: promedioPctIIBB(v),
     sucursales: listaCorta(v.sucursales),
     contratistas: listaCorta(v.contratistas)
@@ -1855,10 +1873,12 @@ function renderDashboard() {
   const totalGeneral = allEntries.reduce((acc, f) => {
     acc.n += f.n; acc.presOficial += f.presOficial; acc.adjudicado += f.adjudicado; acc.certificado += f.certificado;
     acc.certProcesados += f.certProcesados; acc.proyectos += f.proyectos; acc.pctIIBBSuma += f.pctIIBB; acc.cant++;
+    acc.proyectadosAcumulados += f.proyectadosAcumulados;
     return acc;
-  }, { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBSuma:0, cant:0 });
+  }, { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, pctIIBBSuma:0, cant:0, proyectadosAcumulados:0 });
   const avanceGeneral = totalGeneral.adjudicado > 0 ? (totalGeneral.certificado / totalGeneral.adjudicado) * 100 : 0;
   const promedioPctIIBBGeneral = totalGeneral.cant ? totalGeneral.pctIIBBSuma / totalGeneral.cant : 0;
+  const pctPresupuestoProyectadoGeneral = totalGeneral.adjudicado > 0 ? (totalGeneral.proyectadosAcumulados / totalGeneral.adjudicado) * 100 : 0;
 
   const dashCols = [{ key: 'grupo', label: labelForGroup(groupKey) }]
     .concat([
@@ -1869,6 +1889,7 @@ function renderDashboard() {
       { key: 'avance', label: '% de Avance' },
       { key: 'certProcesados', label: 'Cant. Certificados Proc.' },
       { key: 'proyectos', label: 'Cant. Proyectos' },
+      { key: 'pctPresupuestoProyectado', label: '% Presup. Proyectado' },
       { key: 'pctIIBB', label: '% IIBB Proyectados' }
     ])
     .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }] : []);
@@ -1877,9 +1898,9 @@ function renderDashboard() {
   table.innerHTML = sortableTheadHtml(dashCols, state.dashSort) +
     '<tbody>' + entries.map(f => {
       const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td>` : '';
-      return `<tr><td>${escapeHtml(f.grupo)}</td><td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctIIBB.toFixed(1)}%</td>${tdsExtra}</tr>`;
+      return `<tr><td>${escapeHtml(f.grupo)}</td><td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctPresupuestoProyectado.toFixed(1)}%</td><td>${f.pctIIBB.toFixed(1)}%</td>${tdsExtra}</tr>`;
     }).join('') +
-    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}</tr>` +
+    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${pctPresupuestoProyectadoGeneral.toFixed(1)}%</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}</tr>` +
     '</tbody>';
   wireSortableHeaders(table, state.dashSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
