@@ -2360,6 +2360,155 @@ document.getElementById('certForm').addEventListener('submit', async (e) => {
 
 document.getElementById('certFiltroTexto').addEventListener('input', renderCertTable);
 
+// ---- "Mes/Año" en la importación: acepta "MM/AAAA", "AAAA-MM" o "MM/AA" (con 2 dígitos de año),
+// y siempre lo devuelve normalizado a "AAAA-MM" (el formato que usa el campo internamente). ----
+function _parseMesAnioImport(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})$/);
+  if (m) return m[1] + '-' + String(m[2]).padStart(2, '0');
+  m = s.match(/^(\d{1,2})[\/\-](\d{4})$/);
+  if (m) return m[2] + '-' + String(m[1]).padStart(2, '0');
+  m = s.match(/^(\d{1,2})[\/\-](\d{2})$/);
+  if (m) return '20' + m[2] + '-' + String(m[1]).padStart(2, '0');
+  return '';
+}
+
+let certImportFilas = []; // filas ya procesadas (matcheadas o no), listas para mostrar/confirmar
+
+document.getElementById('certImportToggleBtn').addEventListener('click', () => {
+  const body = document.getElementById('certImportBody');
+  body.hidden = !body.hidden;
+});
+
+document.getElementById('certImportFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const texto = await file.text();
+  const filas = parseCSV(texto);
+
+  certImportFilas = filas.map(f => {
+    const nroPedido = (f['N° Pedido'] || '').trim();
+    const sucursal = (f['Sucursal'] || '').trim();
+    const numeroCertificado = (f['N° Certificado'] || '').trim();
+
+    // Buscamos el trámite por N° de Pedido; si hay más de uno con el mismo PC (ampliaciones/clones),
+    // desambiguamos por Sucursal, si vino en el CSV.
+    let candidatos = state.registros.filter(r => String(r.nroPedidoCompras || '').trim() === nroPedido);
+    let tramite = null;
+    let motivo = '';
+    if (!nroPedido) {
+      motivo = 'Fila sin N° de Pedido';
+    } else if (!candidatos.length) {
+      motivo = 'No hay ningún trámite cargado con ese N° de Pedido';
+    } else if (candidatos.length === 1) {
+      tramite = candidatos[0];
+    } else {
+      const porSucursal = candidatos.filter(r => (r.sucursal || '').trim().toLowerCase() === sucursal.toLowerCase());
+      if (porSucursal.length === 1) {
+        tramite = porSucursal[0];
+      } else {
+        motivo = 'Hay ' + candidatos.length + ' trámites con ese PC y no se pudo desambiguar por Sucursal';
+      }
+    }
+
+    // Evitar duplicados: si ya existe una certificación para ese trámite con el mismo N° de Certificado, se omite.
+    let duplicado = false;
+    if (tramite && numeroCertificado) {
+      duplicado = certListaCache.some(c => c.idTramite === tramite._id && String(c.numeroCertificado || '').trim() === numeroCertificado);
+    }
+
+    let estado = 'importar';
+    if (!tramite) estado = 'sin_tramite';
+    else if (duplicado) estado = 'duplicado';
+
+    return {
+      csv: f,
+      tramite,
+      motivo,
+      estado, // 'importar' | 'duplicado' | 'sin_tramite'
+      datos: tramite ? {
+        idTramite: tramite._id,
+        numeroCertificado,
+        expedienteCertificacion: (f['Expediente Certificación'] || '').trim(),
+        mesAnioCertificacion: _parseMesAnioImport(f['Mes/Año']),
+        montoCertificado: _parseNumeroImport(f['$ Certificado']),
+        montoReconocimiento: _parseNumeroImport(f['$ Reconocimiento']),
+        montoMultas: _parseNumeroImport(f['$ Multas']),
+        observaciones: (f['Observaciones'] || '').trim()
+      } : null
+    };
+  });
+
+  renderCertImportPreview();
+});
+
+function renderCertImportPreview() {
+  const wrap = document.getElementById('certImportPreviewWrap');
+  wrap.hidden = false;
+  const cantImportar = certImportFilas.filter(f => f.estado === 'importar').length;
+  const cantDuplicado = certImportFilas.filter(f => f.estado === 'duplicado').length;
+  const cantSinTramite = certImportFilas.filter(f => f.estado === 'sin_tramite').length;
+
+  document.getElementById('certImportResumen').textContent =
+    `${certImportFilas.length} fila(s) en el CSV — ${cantImportar} para importar, ${cantDuplicado} ya existen (se omiten), ${cantSinTramite} sin trámite coincidente (se omiten, revisalas manualmente).`;
+
+  const table = document.getElementById('certImportPreviewTable');
+  const badge = (estado) => estado === 'importar'
+    ? '<span class="state-pill state-Adjudicado">Importar</span>'
+    : estado === 'duplicado'
+      ? '<span class="state-pill state-default">Ya existe</span>'
+      : '<span class="state-pill state-Desierto">Sin trámite</span>';
+
+  table.innerHTML = '<thead><tr><th>N° Pedido</th><th>Sucursal</th><th>N° Certificado</th><th>Mes/Año</th><th>$ Certificado</th><th>Estado</th><th>Detalle</th></tr></thead>' +
+    '<tbody>' + certImportFilas.map(f => `<tr>
+        <td>${escapeHtml(f.csv['N° Pedido'] || '')}</td>
+        <td>${escapeHtml(f.csv['Sucursal'] || '')}</td>
+        <td>${escapeHtml(f.csv['N° Certificado'] || '')}</td>
+        <td>${escapeHtml(f.csv['Mes/Año'] || '')}</td>
+        <td class="mono">${escapeHtml(f.csv['$ Certificado'] || '')}</td>
+        <td>${badge(f.estado)}</td>
+        <td>${escapeHtml(f.motivo || (f.estado === 'duplicado' ? 'Ya hay una certificación Nº ' + (f.csv['N° Certificado'] || '') + ' cargada para ese trámite' : ''))}</td>
+      </tr>`).join('') + '</tbody>';
+
+  document.getElementById('certImportConfirmarBtn').disabled = cantImportar === 0;
+  document.getElementById('certImportConfirmarBtn').textContent = 'Importar ' + cantImportar + ' certificación(es)';
+}
+
+document.getElementById('certImportCancelarBtn').addEventListener('click', () => {
+  certImportFilas = [];
+  document.getElementById('certImportFile').value = '';
+  document.getElementById('certImportPreviewWrap').hidden = true;
+  document.getElementById('certImportMsg').hidden = true;
+});
+
+document.getElementById('certImportConfirmarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('certImportConfirmarBtn');
+  const msg = document.getElementById('certImportMsg');
+  const aImportar = certImportFilas.filter(f => f.estado === 'importar');
+  btn.disabled = true;
+  let ok = 0, fallidos = 0;
+  for (let i = 0; i < aImportar.length; i++) {
+    btn.textContent = `Importando ${i + 1} de ${aImportar.length}...`;
+    try {
+      await apiCall('certificaciones_crear', { datos: aImportar[i].datos });
+      ok++;
+    } catch (err) {
+      fallidos++;
+    }
+  }
+  msg.textContent = `Listo: ${ok} certificación(es) importada(s)${fallidos ? ', ' + fallidos + ' fallaron' : ''}. Los trámites (Pedidos de Compras) no se modificaron.`;
+  msg.className = 'form-msg ' + (fallidos ? 'err' : 'ok');
+  msg.hidden = false;
+  certImportFilas = [];
+  document.getElementById('certImportFile').value = '';
+  document.getElementById('certImportPreviewWrap').hidden = true;
+
+  const data = await apiCall('listar'); // refresca los rollups (% de avance, etc.) de los trámites afectados
+  state.registros = data.registros;
+  await cargarCertificaciones();
+});
+
 const CERT_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
