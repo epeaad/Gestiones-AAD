@@ -2621,6 +2621,7 @@ function renderCertTable() {
 // ============================================================
 let proyTramitePreseleccionado = null; // seteado desde el botón "Ver / cargar proyectos" del formulario
 let proyTramiteActual = null;          // registro del trámite elegido en esta pestaña
+let proyDatosHuerfano = null;          // datos de un proyecto "huérfano" (trámite vinculado ya no existe) que se está re-vinculando
 let proyListaCache = [];               // todos los proyectos ya cargados (para la tabla)
 let proyCamposCache = [];              // metadatos de campos (para exportar con etiquetas legibles)
 let proyEditingId = null;              // si no es null, el formulario está editando ese proyecto (en vez de crear uno nuevo)
@@ -2641,6 +2642,7 @@ async function abrirVistaProyectos() {
     document.getElementById('proyForm').hidden = true;
     proyTramiteActual = null;
     proyEditingId = null;
+    proyDatosHuerfano = null;
   }
 }
 
@@ -2711,16 +2713,19 @@ document.addEventListener('click', (e) => {
 
 function seleccionarTramiteParaProyecto(rec) {
   proyTramiteActual = rec;
-  proyEditingId = null;
-  document.getElementById('proyFormTitle').textContent = 'Cargar proyecto';
-  document.getElementById('proySubmitBtn').textContent = 'Guardar proyecto';
+  const seguirEditando = proyEditingId; // si veníamos editando un proyecto, "Cambiar" no debe perder eso
+  document.getElementById('proyFormTitle').textContent = seguirEditando ? 'Editar proyecto' : 'Cargar proyecto';
+  document.getElementById('proySubmitBtn').textContent = seguirEditando ? 'Guardar cambios' : 'Guardar proyecto';
   const chip = document.getElementById('proyTramiteSeleccionado');
   chip.innerHTML = `<span><strong>${escapeHtml(rec.pospre || '')}</strong> — Exp. ${escapeHtml(rec.expediente || '—')} — PC ${escapeHtml(rec.nroPedidoCompras || '—')} — ${escapeHtml(rec.adjudicatario || '(sin contratista)')}</span>
     <button type="button" class="btn btn-ghost" id="proyCambiarTramiteBtn">Cambiar</button>`;
   chip.hidden = false;
   document.getElementById('proyCambiarTramiteBtn').addEventListener('click', () => {
     proyTramiteActual = null;
-    proyEditingId = null;
+    // Ojo: NO tocamos proyEditingId acá. Si estábamos editando un proyecto y el usuario elige otro
+    // trámite, al guardar se reasigna ESE MISMO proyecto al trámite nuevo (útil cuando un proyecto
+    // quedó "huérfano" — vinculado a un trámite que ya no existe, por ejemplo tras borrar y volver
+    // a cargar el trámite — en vez de crear un proyecto duplicado y dejar el viejo mal vinculado).
     chip.hidden = true;
     document.getElementById('proyForm').hidden = true;
     document.getElementById('proyKmLamtInfo').hidden = true;
@@ -2745,7 +2750,19 @@ function seleccionarTramiteParaProyecto(rec) {
   }
 
   const form = document.getElementById('proyForm');
-  form.reset();
+  if (proyDatosHuerfano) {
+    // Re-vinculando un proyecto huérfano: precargamos sus datos propios (no los del trámite,
+    // esos ya se completaron arriba) en vez de vaciar el formulario.
+    const p = proyDatosHuerfano;
+    document.querySelectorAll('#proyForm [name]').forEach(input => {
+      if (p[input.name] != null) input.value = p[input.name];
+    });
+    document.getElementById('proyFormTitle').textContent = 'Editar proyecto';
+    document.getElementById('proySubmitBtn').textContent = 'Guardar cambios';
+    proyDatosHuerfano = null;
+  } else if (!seguirEditando) {
+    form.reset(); // si estamos reasignando una edición normal, no perder lo ya tipeado
+  }
   recalcMontoProyecto();
   document.getElementById('proyFormMsg').hidden = true;
   form.hidden = false;
@@ -2753,13 +2770,32 @@ function seleccionarTramiteParaProyecto(rec) {
 
 // ---- Editar: carga un proyecto ya existente en el formulario, en modo edición ----
 function editarProyecto(p) {
-  const rec = state.registros.find(r => r._id === p.idTramite);
-  if (!rec) { alert('No se encontró el trámite asociado a este proyecto.'); return; }
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   if (!puedeEditar) return;
 
-  seleccionarTramiteParaProyecto(rec);
+  const rec = state.registros.find(r => r._id === p.idTramite);
   proyEditingId = p._id;
+
+  if (!rec) {
+    // Proyecto "huérfano": su trámite vinculado ya no existe (por ejemplo, se borró y se volvió a
+    // cargar). En vez de bloquear la edición, dejamos elegir a qué trámite corresponde ahora,
+    // usando el mismo buscador de siempre — proyEditingId ya está seteado, así que al elegir un
+    // trámite se reasigna ESTE proyecto en vez de crear uno nuevo.
+    proyTramiteActual = null;
+    document.getElementById('proyTramiteSeleccionado').hidden = true;
+    document.getElementById('proyKmLamtInfo').hidden = true;
+    document.getElementById('proyForm').hidden = true;
+    document.getElementById('proyFormMsg').className = 'form-msg err';
+    document.getElementById('proyFormMsg').textContent =
+      `Este proyecto (N° ${p.numeroProyecto || '—'}, PC ${p.nroPedidoCompras || '—'}) está vinculado a un trámite que ya no existe. Buscá y elegí el trámite correcto abajo para volver a vincularlo — no vas a perder los datos ya cargados.`;
+    document.getElementById('proyFormMsg').hidden = false;
+    document.getElementById('proyBuscarTramite').focus();
+    document.getElementById('proyFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    proyDatosHuerfano = p; // se usan para precargar el resto del formulario apenas se elija el trámite nuevo
+    return;
+  }
+
+  seleccionarTramiteParaProyecto(rec);
   document.getElementById('proyFormTitle').textContent = 'Editar proyecto';
   document.getElementById('proySubmitBtn').textContent = 'Guardar cambios';
 
