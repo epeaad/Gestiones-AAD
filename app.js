@@ -2636,6 +2636,8 @@ async function abrirVistaProyectos() {
   if (proyTramitePreseleccionado) {
     const rec = state.registros.find(r => r._id === proyTramitePreseleccionado);
     proyTramitePreseleccionado = null;
+    proyEditingId = null;      // llegar acá (ej: "Ver / cargar proyectos" desde un trámite) siempre arranca en modo carga, nunca "edición pegada"
+    proyDatosHuerfano = null;
     if (rec && puedeEditar) seleccionarTramiteParaProyecto(rec);
   } else {
     document.getElementById('proyTramiteSeleccionado').hidden = true;
@@ -2698,6 +2700,11 @@ proyBuscarInput.addEventListener('input', () => {
   resultados.querySelectorAll('[data-id]').forEach(el => {
     el.addEventListener('click', () => {
       const rec = state.registros.find(r => r._id === el.dataset.id);
+      // Elegir un trámite desde ESTE buscador siempre arranca una carga nueva (nunca "sigue"
+      // editando un proyecto anterior) — la única forma de mantener el modo edición es con el
+      // botón "Cambiar" del panel de arriba, que sí preserva proyEditingId a propósito.
+      proyEditingId = null;
+      proyDatosHuerfano = null;
       if (rec) seleccionarTramiteParaProyecto(rec);
       resultados.hidden = true;
       proyBuscarInput.value = '';
@@ -2827,6 +2834,7 @@ document.getElementById('proyCancelarBtn').addEventListener('click', () => {
   document.getElementById('proyKmLamtInfo').hidden = true;
   proyTramiteActual = null;
   proyEditingId = null;
+  proyDatosHuerfano = null;
 });
 
 // ---- $ del Proyecto se calcula solo: IIBB Proyectados de ESTE proyecto × $ Adjudicado Unitario del trámite ----
@@ -2868,6 +2876,7 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
     msg.className = 'form-msg ok';
     msg.hidden = false;
     proyEditingId = null;
+    proyDatosHuerfano = null;
     document.getElementById('proyForm').reset();
     seleccionarTramiteParaProyecto(proyTramiteActual); // limpia el form pero deja el trámite elegido para cargar otro
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
