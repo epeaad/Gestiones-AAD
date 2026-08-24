@@ -202,7 +202,7 @@ function showView(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-' + name));
   if (name === 'dashboard') renderDashboard();
-  if (name === 'registros') renderRegistros();
+  if (name === 'registros') { renderRegistros(); renderRegistrosConsolidado(); }
   if (name === 'vencimientos') renderCalendar();
   if (name === 'aperturas') renderCalendarApertura();
   if (name === 'certificaciones') abrirVistaCertificaciones();
@@ -3308,6 +3308,66 @@ function comprasBadgeTramo(label, pos, fechaKey, entregadoKey, desvioKey, vencid
   return `<div class="compras-tramo"><b>${escapeHtml(label)}:</b> <span class="${cls}" style="position:static;display:inline-block;">${escapeHtml(texto)}</span></div>`;
 }
 
+// ---- Vista consolidada de Registros (Contrataciones + Compras), en la pestaña "Registros" ----
+// Solo lectura: combina lo que ya está en memoria (state.registros y comprasCache) sin pegarle
+// a la API de nuevo y, sobre todo, SIN escribir ni modificar nada de "Gestiones Plan".
+function registrosConsolidadoFilas() {
+  const contrataciones = (state.registros || []).map(r => ({
+    tipo: 'Contratación', expediente: r.expediente || '', extracto: r.detalleRubro || r.rubro || '',
+    adjudicatario: r.adjudicatario || '', presupuestoOficial: num(r.presupuestoOficialRubro),
+    adjudicado: num(r.totalAdjudicado), estado: r.estado || '',
+    fechaVencimiento: r.fechaFinPlazoAmpliada || r.fechaFinContrato || ''
+  }));
+  const hoy = _hoyStrFrontend();
+  const compras = (comprasCache || []).map(exp => {
+    const fechas = [];
+    (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
+      [pos.fechaContratoFija, pos.fechaContratoPlanificada, pos.fechaContratoAmpliacion].forEach(f => { if (f) fechas.push(f); });
+    }));
+    fechas.sort();
+    const proxima = fechas.find(f => f >= hoy) || fechas[fechas.length - 1] || '';
+    return {
+      tipo: 'Compra', expediente: exp.expediente || '', extracto: exp.extracto || '',
+      adjudicatario: (exp.pedidos || []).map(pc => pc.adjudicatario).filter(Boolean).join(', '),
+      presupuestoOficial: num(exp.presupuestoOficial), adjudicado: num(exp.adjudicadoTotal),
+      estado: '', fechaVencimiento: proxima
+    };
+  });
+  return contrataciones.concat(compras);
+}
+function _hoyStrFrontend() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function renderRegistrosConsolidado() {
+  const table = document.getElementById('registrosConsolidadoTable');
+  if (!table) return;
+  const filas = registrosConsolidadoFilas().sort((a, b) => (a.fechaVencimiento || '9999').localeCompare(b.fechaVencimiento || '9999'));
+  const thead = '<thead><tr><th>Tipo</th><th>Expediente</th><th>Extracto</th><th>Adjudicatario</th>' +
+    '<th>$ Presupuesto Oficial</th><th>$ Adjudicado</th><th>Estado</th><th>Próximo Vencimiento</th></tr></thead>';
+  const tbody = '<tbody>' + filas.map(f => `<tr>
+      <td><span class="${f.tipo === 'Compra' ? 'cal-tag-compra' : 'cal-tag-contratacion'}">${f.tipo}</span></td>
+      <td>${escapeHtml(f.expediente)}</td>
+      <td>${escapeHtml(f.extracto)}</td>
+      <td>${escapeHtml(f.adjudicatario)}</td>
+      <td class="mono">${formatMoney(f.presupuestoOficial)}</td>
+      <td class="mono">${formatMoney(f.adjudicado)}</td>
+      <td>${escapeHtml(f.estado)}</td>
+      <td class="mono">${escapeHtml(f.fechaVencimiento)}</td>
+    </tr>`).join('') + '</tbody>';
+  table.innerHTML = thead + tbody;
+}
+
+// Genera un literal JS seguro para insertar dentro de un atributo onclick="..." (con comillas
+// dobles). Usar JSON.stringify() ahí rompía el HTML porque agrega comillas dobles DENTRO de un
+// atributo que ya está delimitado por comillas dobles — por eso "Editar" y "+ Pedido (PC)" no
+// respondían: el navegador cortaba el atributo en la primera comilla y el resto quedaba como
+// texto suelto, mal formado.
+function comprasJsArg(v) {
+  if (v === null || v === undefined) return 'null';
+  return "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+}
+
 function renderComprasTable() {
   const wrap = document.getElementById('comprasTree');
   const puedeEditar = state.session && state.session.rol !== 'consulta';
@@ -3322,8 +3382,8 @@ function renderComprasTable() {
           <div class="compras-pos-head">
             <b>Posición ${escapeHtml(pos.posicion || '')}</b>
             ${puedeEditar ? `<span class="compras-pos-actions">
-              <button class="btn-link" onclick="abrirComprasForm('pos', ${JSON.stringify(pos._id)}, ${JSON.stringify(pc._id)})">Editar</button>
-              <button class="btn-link danger" onclick="eliminarComprasRegistro('pos', ${JSON.stringify(pos._id)})">Eliminar</button>
+              <button class="btn-link" onclick="abrirComprasForm('pos', ${comprasJsArg(pos._id)}, ${comprasJsArg(pc._id)})">Editar</button>
+              <button class="btn-link danger" onclick="eliminarComprasRegistro('pos', ${comprasJsArg(pos._id)})">Eliminar</button>
             </span>` : ''}
           </div>
           ${comprasBadgeTramo('P. Fija', pos, 'fechaContratoFija', 'entregadoFija', 'desvioFija', 'vencidaFija')}
@@ -3337,9 +3397,9 @@ function renderComprasTable() {
             PC ${escapeHtml(pc.nroPC || '(sin número)')} — ${escapeHtml(pc.adjudicatario || 'sin adjudicatario')} — ${escapeHtml(pc.destino || '')}
             <span class="mono">$ ${num(pc.adjudicado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
             ${puedeEditar ? `<span class="compras-pos-actions">
-              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', ${JSON.stringify(pc._id)}, ${JSON.stringify(exp._id)})">Editar PC</button>
-              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pos', null, ${JSON.stringify(pc._id)})">+ Posición</button>
-              <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('pc', ${JSON.stringify(pc._id)})">Eliminar PC</button>
+              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', ${comprasJsArg(pc._id)}, ${comprasJsArg(exp._id)})">Editar PC</button>
+              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pos', null, ${comprasJsArg(pc._id)})">+ Posición</button>
+              <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('pc', ${comprasJsArg(pc._id)})">Eliminar PC</button>
             </span>` : ''}
           </summary>
           <div class="compras-pos-list">${posHtml}</div>
@@ -3351,9 +3411,9 @@ function renderComprasTable() {
           <b>${escapeHtml(exp.expediente || '(sin número)')}</b> — ${escapeHtml(exp.extracto || '')}
           <span class="mono">Ofic.: $ ${num(exp.presupuestoOficial).toLocaleString('es-AR', { maximumFractionDigits: 2 })} · Adj.: $ ${num(exp.adjudicadoTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
           ${puedeEditar ? `<span class="compras-pos-actions">
-            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('exp', ${JSON.stringify(exp._id)}, null)">Editar</button>
-            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', null, ${JSON.stringify(exp._id)})">+ Pedido (PC)</button>
-            <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('exp', ${JSON.stringify(exp._id)})">Eliminar Expediente</button>
+            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('exp', ${comprasJsArg(exp._id)}, null)">Editar</button>
+            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', null, ${comprasJsArg(exp._id)})">+ Pedido (PC)</button>
+            <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('exp', ${comprasJsArg(exp._id)})">Eliminar Expediente</button>
           </span>` : ''}
         </summary>
         <div class="compras-pc-list">${pedidosHtml}</div>
