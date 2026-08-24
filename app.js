@@ -207,6 +207,7 @@ function showView(name) {
   if (name === 'aperturas') renderCalendarApertura();
   if (name === 'certificaciones') abrirVistaCertificaciones();
   if (name === 'proyectos') abrirVistaProyectos();
+  if (name === 'compras') abrirVistaCompras();
   if (name === 'usuarios') renderUsuarios();
 }
 
@@ -435,6 +436,14 @@ async function boot() {
     await cargarCertificacionesDatos();
   } catch (err) {
     console.error('No se pudieron precargar las certificaciones para el Dashboard:', err);
+  }
+
+  // Compras se precarga igual que Certificaciones: el Dashboard y el Calendario de Vencimientos
+  // necesitan sus fechas de entrega aunque el usuario no haya entrado a la pestaña Compras todavía.
+  try {
+    await cargarComprasDatos();
+  } catch (err) {
+    console.error('No se pudieron precargar las compras para el Dashboard:', err);
   }
 
   populateFilterOptions();
@@ -1057,7 +1066,13 @@ function renderCalendar() {
     const fecha = fechaLimiteTramite(r);
     if (!fecha) return;
     if (!porDia[fecha]) porDia[fecha] = [];
-    porDia[fecha].push(r);
+    porDia[fecha].push({ _tipo: 'contratacion', rec: r });
+  });
+  // Compras: cada tramo (Fija/Planificada/Ampliación) todavía pendiente de entrega figura en el
+  // calendario en su Fecha de Entrega por Contrato, esté vencida o no (igual que Contrataciones).
+  comprasEventosParaCalendario().forEach(ev => {
+    if (!porDia[ev.fecha]) porDia[ev.fecha] = [];
+    porDia[ev.fecha].push({ _tipo: 'compra', rec: ev });
   });
 
   document.getElementById('calMonthLabel').textContent = MESES_ES[calMonthDate.getMonth()] + ' ' + calMonthDate.getFullYear();
@@ -1111,10 +1126,20 @@ function mostrarDetalleDia(eventos, fechaStr) {
   const detailBox = document.getElementById('calendarDayDetail');
   const fechaLegible = new Date(fechaStr + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   detailBox.innerHTML = `<h4>Vencen el ${fechaLegible} (${eventos.length})</h4>` +
-    eventos.map(r => `<div class="cal-detail-item">
-        <span>${escapeHtml(r.nroPedidoCompras || '(sin PC)')} — ${escapeHtml(r.adjudicatario || '(sin contratista)')} — ${escapeHtml(r.sucursal || '')}</span>
-        <b>${escapeHtml(r.expediente || '')}</b>
-      </div>`).join('');
+    eventos.map(ev => {
+      if (ev._tipo === 'compra') {
+        const c = ev.rec;
+        return `<div class="cal-detail-item">
+            <span><span class="cal-tag-compra">Compra</span> PC ${escapeHtml(c.nroPC || '')} Pos. ${escapeHtml(c.posicion || '')} (${escapeHtml(c.tramo)}) — ${escapeHtml(c.adjudicatario || '(sin adjudicatario)')} — ${escapeHtml(c.destino || '')}</span>
+            <b>${escapeHtml(c.expediente || '')}</b>
+          </div>`;
+      }
+      const r = ev.rec;
+      return `<div class="cal-detail-item">
+          <span><span class="cal-tag-contratacion">Contratación</span> ${escapeHtml(r.nroPedidoCompras || '(sin PC)')} — ${escapeHtml(r.adjudicatario || '(sin contratista)')} — ${escapeHtml(r.sucursal || '')}</span>
+          <b>${escapeHtml(r.expediente || '')}</b>
+        </div>`;
+    }).join('');
   detailBox.hidden = false;
 }
 
@@ -1656,6 +1681,7 @@ function renderDashboard() {
     kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
     kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
     kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)'),
+    kpiCard('Compras en riesgo de vencimiento', comprasRiesgoCount(), 'vencidas o vencen en ≤ ' + DIAS_RIESGO + ' días (todas las compras, sin filtro)'),
   ].join('');
 
 
@@ -3167,3 +3193,410 @@ function renderProyTable() {
     });
   });
 }
+
+// ============================================================
+// MÓDULO DE COMPRAS (Equipos, Máquinas, Instrumentos, Materiales y Bienes)
+// ------------------------------------------------------------
+// Independiente del módulo de Contrataciones (Registros): no toca `state.registros`
+// ni ningún dato de ese módulo. Estructura en árbol: Expediente -> Pedidos (PC) -> Posiciones.
+// ============================================================
+let comprasCache = [];              // árbol completo: expedientes -> pedidos -> posiciones
+let comprasFormNivel = null;        // 'exp' | 'pc' | 'pos' — qué se está creando/editando
+let comprasFormEditId = null;       // id del registro en edición, o null si es alta nueva
+let comprasFormParentId = null;     // idExpediente (para pc) o idPC (para pos)
+let comprasImportFilas = [];        // preview de la importación desde Excel, antes de confirmar
+
+const COMPRAS_EXP_FORM_FIELDS = [
+  { key: 'pospre', label: 'Pospre', type: 'text' },
+  { key: 'expediente', label: 'Expediente', type: 'text', required: true },
+  { key: 'lp', label: 'LP', type: 'text' },
+  { key: 'extracto', label: 'Extracto', type: 'text' },
+  { key: 'presupuestoOficial', label: '$ Presupuesto Oficial (sin IVA)', type: 'number' },
+  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+];
+const COMPRAS_PC_FORM_FIELDS = [
+  { key: 'nroPC', label: 'N° PC', type: 'text', required: true },
+  { key: 'matriculas', label: 'Matrículas N° (opcional)', type: 'text' },
+  { key: 'detalleMat', label: 'Detalle Mat. (opcional)', type: 'text' },
+  { key: 'adjudicatario', label: 'Adjudicatario', type: 'text' },
+  { key: 'destino', label: 'Destino', type: 'text' },
+  { key: 'adjudicado', label: '$ Adjudicado (sin IVA)', type: 'number' }
+];
+const COMPRAS_POS_FORM_FIELDS = [
+  { key: 'posicion', label: 'Posición', type: 'number', required: true },
+  { key: 'montoPFija', label: '$ P. Fija p/ítems (sin IVA)', type: 'number' },
+  { key: 'fechaContratoFija', label: 'Fecha Entrega x Contrato — P. Fija', type: 'date' },
+  { key: 'fechaRealFija', label: 'Fecha Entrega Real — P. Fija', type: 'date' },
+  { key: 'partePlanificada', label: 'Parte Planificada', type: 'select', options: ['No', 'Si'] },
+  { key: 'montoPPlanificada', label: '$ P. Planificada (sin IVA)', type: 'number' },
+  { key: 'fechaContratoPlanificada', label: 'Fecha Entrega x Contrato — Planificada', type: 'date' },
+  { key: 'fechaRealPlanificada', label: 'Fecha Entrega Real — Planificada', type: 'date' },
+  { key: 'ampliacion', label: 'Ampliación', type: 'select', options: ['No', 'Si'] },
+  { key: 'pctAmpliacion', label: '% de Ampliación', type: 'number' },
+  { key: 'montoAmpliacion', label: '$ Ampliación (sin IVA)', type: 'number' },
+  { key: 'fechaContratoAmpliacion', label: 'Fecha Entrega x Contrato — Ampliación', type: 'date' },
+  { key: 'fechaRealAmpliacion', label: 'Fecha Entrega Real — Ampliación', type: 'date' },
+  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+];
+
+async function abrirVistaCompras() {
+  await cargarCompras();
+  cerrarComprasForm();
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  document.getElementById('comprasToolbar').hidden = !puedeEditar;
+}
+
+async function cargarComprasDatos() {
+  const data = await apiCall('compras_listar');
+  comprasCache = data.expedientes || [];
+}
+async function cargarCompras() {
+  try {
+    await cargarComprasDatos();
+    renderComprasTable();
+  } catch (err) {
+    showAppError('No se pudieron cargar las compras: ' + err.message);
+  }
+}
+
+// ---- Riesgo por plazo (mismo criterio que Contrataciones: DIAS_RIESGO, definido más arriba) ----
+function comprasTramosPendientes() {
+  const out = [];
+  comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
+    [
+      { tramo: 'P. Fija', fecha: pos.fechaContratoFija, entregado: pos.entregadoFija },
+      { tramo: 'P. Planificada', fecha: pos.fechaContratoPlanificada, entregado: pos.entregadoPlanificada },
+      { tramo: 'Ampliación', fecha: pos.fechaContratoAmpliacion, entregado: pos.entregadoAmpliacion }
+    ].forEach(t => {
+      if (t.fecha && !t.entregado) out.push({ exp, pc, pos, tramo: t.tramo, fecha: t.fecha });
+    });
+  })));
+  return out;
+}
+function comprasRiesgoCount() {
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  return comprasTramosPendientes().filter(t => {
+    const d = new Date(t.fecha + 'T00:00:00');
+    if (isNaN(d.getTime())) return false;
+    return ((d - hoy) / 86400000) <= DIAS_RIESGO;
+  }).length;
+}
+function comprasEventosParaCalendario() {
+  return comprasTramosPendientes().map(t => ({
+    fecha: t.fecha, tramo: t.tramo, expediente: t.exp.expediente, nroPC: t.pc.nroPC,
+    posicion: t.pos.posicion, adjudicatario: t.pc.adjudicatario, destino: t.pc.destino
+  }));
+}
+
+// ---- Render de la tabla / árbol ----
+function comprasBadgeTramo(label, pos, fechaKey, entregadoKey, desvioKey, vencidaKey) {
+  const fecha = pos[fechaKey];
+  if (!fecha) return '';
+  const entregado = pos[entregadoKey];
+  const desvio = pos[desvioKey];
+  const vencida = pos[vencidaKey];
+  let cls = 'cal-badge lejano', texto = fecha;
+  if (entregado) {
+    cls = desvio > 0 ? 'cal-badge proximo' : 'cal-badge lejano';
+    texto = fecha + (desvio !== null ? ' · entregado (' + (desvio > 0 ? '+' : '') + desvio + ' d)' : ' · entregado');
+  } else if (vencida) {
+    cls = 'cal-badge vencido';
+    texto = fecha + ' · vencido hace ' + Math.abs(desvio) + ' d';
+  } else {
+    texto = fecha + ' · pendiente';
+  }
+  return `<div class="compras-tramo"><b>${escapeHtml(label)}:</b> <span class="${cls}" style="position:static;display:inline-block;">${escapeHtml(texto)}</span></div>`;
+}
+
+function renderComprasTable() {
+  const wrap = document.getElementById('comprasTree');
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  if (!comprasCache.length) {
+    wrap.innerHTML = '<p class="empty-hint">Todavía no hay expedientes de Compras cargados.</p>';
+    return;
+  }
+  wrap.innerHTML = comprasCache.map(exp => {
+    const pedidosHtml = (exp.pedidos || []).map(pc => {
+      const posHtml = (pc.posiciones || []).map(pos => `
+        <div class="compras-pos-card">
+          <div class="compras-pos-head">
+            <b>Posición ${escapeHtml(pos.posicion || '')}</b>
+            ${puedeEditar ? `<span class="compras-pos-actions">
+              <button class="btn-link" onclick="abrirComprasForm('pos', ${JSON.stringify(pos._id)}, ${JSON.stringify(pc._id)})">Editar</button>
+              <button class="btn-link danger" onclick="eliminarComprasRegistro('pos', ${JSON.stringify(pos._id)})">Eliminar</button>
+            </span>` : ''}
+          </div>
+          ${comprasBadgeTramo('P. Fija', pos, 'fechaContratoFija', 'entregadoFija', 'desvioFija', 'vencidaFija')}
+          ${comprasBadgeTramo('P. Planificada', pos, 'fechaContratoPlanificada', 'entregadoPlanificada', 'desvioPlanificada', 'vencidaPlanificada')}
+          ${comprasBadgeTramo('Ampliación', pos, 'fechaContratoAmpliacion', 'entregadoAmpliacion', 'desvioAmpliacion', 'vencidaAmpliacion')}
+          ${pos.observaciones ? `<div class="compras-tramo"><b>Obs.:</b> ${escapeHtml(pos.observaciones)}</div>` : ''}
+        </div>`).join('') || '<p class="empty-hint">Sin posiciones cargadas.</p>';
+
+      return `<details class="compras-pc">
+          <summary>
+            PC ${escapeHtml(pc.nroPC || '(sin número)')} — ${escapeHtml(pc.adjudicatario || 'sin adjudicatario')} — ${escapeHtml(pc.destino || '')}
+            <span class="mono">$ ${num(pc.adjudicado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+            ${puedeEditar ? `<span class="compras-pos-actions">
+              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', ${JSON.stringify(pc._id)}, ${JSON.stringify(exp._id)})">Editar PC</button>
+              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pos', null, ${JSON.stringify(pc._id)})">+ Posición</button>
+              <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('pc', ${JSON.stringify(pc._id)})">Eliminar PC</button>
+            </span>` : ''}
+          </summary>
+          <div class="compras-pos-list">${posHtml}</div>
+        </details>`;
+    }).join('') || '<p class="empty-hint">Sin pedidos de compra cargados.</p>';
+
+    return `<details class="compras-exp" open>
+        <summary>
+          <b>${escapeHtml(exp.expediente || '(sin número)')}</b> — ${escapeHtml(exp.extracto || '')}
+          <span class="mono">Ofic.: $ ${num(exp.presupuestoOficial).toLocaleString('es-AR', { maximumFractionDigits: 2 })} · Adj.: $ ${num(exp.adjudicadoTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+          ${puedeEditar ? `<span class="compras-pos-actions">
+            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('exp', ${JSON.stringify(exp._id)}, null)">Editar</button>
+            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', null, ${JSON.stringify(exp._id)})">+ Pedido (PC)</button>
+            <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('exp', ${JSON.stringify(exp._id)})">Eliminar Expediente</button>
+          </span>` : ''}
+        </summary>
+        <div class="compras-pc-list">${pedidosHtml}</div>
+      </details>`;
+  }).join('');
+}
+
+// ---- Formulario genérico (sirve para los 3 niveles) ----
+function comprasCampos(nivel) {
+  return nivel === 'exp' ? COMPRAS_EXP_FORM_FIELDS : (nivel === 'pc' ? COMPRAS_PC_FORM_FIELDS : COMPRAS_POS_FORM_FIELDS);
+}
+function abrirComprasForm(nivel, editId, parentId) {
+  comprasFormNivel = nivel;
+  comprasFormEditId = editId || null;
+  comprasFormParentId = parentId || null;
+
+  let registro = {};
+  if (editId) {
+    if (nivel === 'exp') registro = comprasCache.find(e => e._id === editId) || {};
+    if (nivel === 'pc') comprasCache.forEach(e => (e.pedidos || []).forEach(pc => { if (pc._id === editId) registro = pc; }));
+    if (nivel === 'pos') comprasCache.forEach(e => (e.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => { if (pos._id === editId) registro = pos; })));
+  }
+
+  const titulos = { exp: 'Expediente de Compras', pc: 'Pedido de Compra (PC)', pos: 'Posición' };
+  document.getElementById('comprasFormTitle').textContent = (editId ? 'Editar ' : 'Nuevo/a ') + titulos[nivel];
+
+  const cont = document.getElementById('comprasFormFields');
+  cont.innerHTML = comprasCampos(nivel).map(f => {
+    const val = registro[f.key] !== undefined && registro[f.key] !== null ? registro[f.key] : '';
+    if (f.type === 'select') {
+      return `<label>${escapeHtml(f.label)}
+        <select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+      </label>`;
+    }
+    return `<label>${escapeHtml(f.label)}
+      <input type="${f.type}" data-key="${f.key}" value="${escapeHtml(String(val))}" ${f.required ? 'required' : ''} />
+    </label>`;
+  }).join('');
+
+  document.getElementById('comprasFormMsg').hidden = true;
+  document.getElementById('comprasFormPanel').hidden = false;
+  document.getElementById('comprasFormPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function cerrarComprasForm() {
+  comprasFormNivel = null; comprasFormEditId = null; comprasFormParentId = null;
+  const panel = document.getElementById('comprasFormPanel');
+  if (panel) panel.hidden = true;
+}
+document.getElementById('comprasFormCancelarBtn').addEventListener('click', cerrarComprasForm);
+
+document.getElementById('comprasForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('comprasFormMsg');
+  const datos = {};
+  document.querySelectorAll('#comprasFormFields [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+
+  try {
+    if (comprasFormNivel === 'exp') {
+      if (comprasFormEditId) await apiCall('compras_exp_actualizar', { id: comprasFormEditId, datos });
+      else await apiCall('compras_exp_crear', { datos });
+    } else if (comprasFormNivel === 'pc') {
+      if (comprasFormEditId) await apiCall('compras_pc_actualizar', { id: comprasFormEditId, datos });
+      else await apiCall('compras_pc_crear', { datos: Object.assign({ idExpediente: comprasFormParentId }, datos) });
+    } else if (comprasFormNivel === 'pos') {
+      if (comprasFormEditId) await apiCall('compras_pos_actualizar', { id: comprasFormEditId, datos });
+      else await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) });
+    }
+    await cargarCompras();
+    cerrarComprasForm();
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.className = 'form-msg err';
+    msg.hidden = false;
+  }
+});
+
+async function eliminarComprasRegistro(nivel, id) {
+  const avisos = {
+    exp: '¿Eliminar este Expediente? Se van a borrar también todos sus Pedidos (PC) y Posiciones.',
+    pc: '¿Eliminar este Pedido de Compra? Se van a borrar también todas sus Posiciones.',
+    pos: '¿Eliminar esta Posición?'
+  };
+  if (!confirm(avisos[nivel])) return;
+  const acciones = { exp: 'compras_exp_eliminar', pc: 'compras_pc_eliminar', pos: 'compras_pos_eliminar' };
+  try {
+    await apiCall(acciones[nivel], { id });
+    await cargarCompras();
+  } catch (err) {
+    showAppError('No se pudo eliminar: ' + err.message);
+  }
+}
+
+// ---- Exportar a Excel (mismo formato de la planilla original, para backup / informes) ----
+document.getElementById('comprasExportBtn').addEventListener('click', () => {
+  if (!comprasCache.length) { alert('No hay compras para exportar.'); return; }
+  const filas = [];
+  comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
+    filas.push({
+      'PosPre': exp.pospre, 'Expte': exp.expediente, 'LP': exp.lp, 'Extracto': exp.extracto,
+      '$ Presupuesto Oficial (sin IVA)': exp.presupuestoOficial,
+      'PC': pc.nroPC, 'Matriculas N° (opcional)': pc.matriculas, 'Detalle Mat. (opcional)': pc.detalleMat,
+      'Adjudicatario': pc.adjudicatario, 'Destino': pc.destino, '$ Adjudicado (sin IVA)': pc.adjudicado,
+      'Posición': pos.posicion,
+      'Fecha de Entrega por Contrato P.Fija': pos.fechaContratoFija, 'Fecha de Entrega Real P.Fija': pos.fechaRealFija,
+      'Desvío de Fecha Entrega P. Fija (días)': pos.desvioFija,
+      '$ P. Fija p/ítems S/IVA': pos.montoPFija,
+      'Parte Planificada': pos.partePlanificada, '$ P. Planificada (s/IVA)': pos.montoPPlanificada,
+      'Fecha de Entrega por Contrato P.Planificada': pos.fechaContratoPlanificada, 'Fecha de Entrega Real P.Planificada': pos.fechaRealPlanificada,
+      'Desvío de Fecha Entrega P. Planificada (días)': pos.desvioPlanificada,
+      'Ampliación (si / no)': pos.ampliacion, '% de Ampliación': pos.pctAmpliacion, '$ Ampliación (sin IVA)': pos.montoAmpliacion,
+      'Fecha de Entrega por Contrato Ampliación': pos.fechaContratoAmpliacion, 'Fecha de Entrega Real Ampliación': pos.fechaRealAmpliacion,
+      'Desvío de Fecha Entrega Ampliación (días)': pos.desvioAmpliacion,
+      'Observaciones': pos.observaciones
+    });
+  })));
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Compras');
+  XLSX.writeFile(wb, 'compras_export.xlsx');
+});
+
+// ---- Importar desde Excel (formato "Gestiones de Compra de Mat-EE y Bienes.xlsx") ----
+// Reconstruye el árbol Expediente -> PC -> Posición rellenando hacia abajo las celdas que en
+// el Excel original vienen en blanco (porque pertenecen al mismo grupo que la fila de arriba).
+function parseComprasExcelRows(rows) {
+  const expedientes = [];
+  let curExp = null, curPC = null;
+  for (let i = 1; i < rows.length; i++) { // fila 0 = encabezados
+    const r = rows[i] || [];
+    const val = (idx) => (r[idx] !== undefined && r[idx] !== null) ? r[idx] : '';
+    const expte = String(val(1)).trim();
+    const pc = String(val(5)).trim();
+    const posicion = String(val(11)).trim();
+    if (!expte && !pc && !posicion) continue; // fila totalmente vacía
+
+    if (expte) {
+      curExp = {
+        pospre: val(0), expediente: expte, lp: val(2), extracto: val(3),
+        presupuestoOficial: _parseNumeroImport(val(4)), observaciones: '', pedidos: []
+      };
+      expedientes.push(curExp);
+      curPC = null;
+    }
+    if (!curExp) continue; // fila de PC/Posición sin ningún Expediente todavía abierto: se omite
+
+    if (pc) {
+      curPC = {
+        nroPC: pc, matriculas: val(6), detalleMat: val(7), adjudicatario: val(8),
+        destino: val(9), adjudicado: _parseNumeroImport(val(10)), posiciones: []
+      };
+      curExp.pedidos.push(curPC);
+    }
+    if (!curPC) continue;
+
+    if (posicion) {
+      curPC.posiciones.push({
+        posicion: posicion,
+        fechaContratoFija: _excelFechaImport(val(12)),
+        montoPFija: _parseNumeroImport(val(15)),
+        partePlanificada: val(16) ? 'Si' : 'No',
+        montoPPlanificada: _parseNumeroImport(val(17)),
+        fechaContratoPlanificada: _excelFechaImport(val(18)),
+        ampliacion: val(21) ? 'Si' : 'No',
+        pctAmpliacion: _parseNumeroImport(val(22)),
+        montoAmpliacion: _parseNumeroImport(val(23)),
+        fechaContratoAmpliacion: _excelFechaImport(val(24)),
+        observaciones: val(27)
+      });
+    }
+  }
+  return expedientes;
+}
+// Excel puede traer la fecha como texto dd/mm/aaaa, como número de serie de Excel, o como Date
+// (SheetJS con cellDates:true entrega Date directamente).
+function _excelFechaImport(v) {
+  if (!v && v !== 0) return '';
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  if (!s) return '';
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0].slice(0, 10);
+  return '';
+}
+
+document.getElementById('comprasImportFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+  comprasImportFilas = parseComprasExcelRows(rows);
+  renderComprasImportPreview();
+});
+
+function renderComprasImportPreview() {
+  const wrap = document.getElementById('comprasImportPreviewWrap');
+  wrap.hidden = false;
+  const cantPC = comprasImportFilas.reduce((acc, e) => acc + e.pedidos.length, 0);
+  const cantPos = comprasImportFilas.reduce((acc, e) => acc + e.pedidos.reduce((a, pc) => a + pc.posiciones.length, 0), 0);
+  document.getElementById('comprasImportResumen').textContent =
+    `${comprasImportFilas.length} expediente(s), ${cantPC} pedido(s) de compra y ${cantPos} posición(es) detectados en el archivo. ` +
+    `Si un Expediente / PC / Posición ya existe (mismo número), se actualiza; si no existe, se crea. No se duplica nada.`;
+
+  const table = document.getElementById('comprasImportPreviewTable');
+  table.innerHTML = '<thead><tr><th>Expediente</th><th>Extracto</th><th>PC</th><th>Adjudicatario</th><th>Posiciones</th></tr></thead><tbody>' +
+    comprasImportFilas.map(e => e.pedidos.map((pc, idx) => `<tr>
+        <td>${idx === 0 ? escapeHtml(e.expediente) : ''}</td>
+        <td>${idx === 0 ? escapeHtml(e.extracto) : ''}</td>
+        <td>${escapeHtml(pc.nroPC)}</td>
+        <td>${escapeHtml(pc.adjudicatario)}</td>
+        <td>${pc.posiciones.length}</td>
+      </tr>`).join('')).join('') + '</tbody>';
+
+  document.getElementById('comprasImportConfirmarBtn').disabled = !comprasImportFilas.length;
+}
+document.getElementById('comprasImportCancelarBtn').addEventListener('click', () => {
+  comprasImportFilas = [];
+  document.getElementById('comprasImportFile').value = '';
+  document.getElementById('comprasImportPreviewWrap').hidden = true;
+  document.getElementById('comprasImportMsg').hidden = true;
+});
+document.getElementById('comprasImportConfirmarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('comprasImportConfirmarBtn');
+  const msg = document.getElementById('comprasImportMsg');
+  btn.disabled = true;
+  btn.textContent = 'Importando...';
+  try {
+    const data = await apiCall('compras_importar', { expedientes: comprasImportFilas });
+    const r = data.resultado;
+    msg.textContent = `Listo — Expedientes: ${r.expCreados} nuevos / ${r.expActualizados} actualizados · ` +
+      `PC: ${r.pcCreados} nuevos / ${r.pcActualizados} actualizados · Posiciones: ${r.posCreados} nuevas / ${r.posActualizados} actualizadas.`;
+    msg.className = 'form-msg ok';
+  } catch (err) {
+    msg.textContent = 'Error al importar: ' + err.message;
+    msg.className = 'form-msg err';
+  }
+  msg.hidden = false;
+  btn.textContent = 'Confirmar importación';
+  comprasImportFilas = [];
+  document.getElementById('comprasImportFile').value = '';
+  document.getElementById('comprasImportPreviewWrap').hidden = true;
+  await cargarCompras();
+});

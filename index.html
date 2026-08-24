@@ -76,6 +76,9 @@
       <button class="nav-btn" data-view="certificaciones">
         <span class="nav-icon">✓</span> Certificaciones
       </button>
+      <button class="nav-btn" data-view="compras">
+        <span class="nav-icon">📦</span> Compras
+      </button>
       <button class="nav-btn" data-view="aperturas">
         <span class="nav-icon">▧</span> Aperturas
       </button>
@@ -485,6 +488,58 @@
         <div class="table-wrap">
           <table id="proyTable" class="data-table"></table>
         </div>
+      </div>
+    </section>
+
+    <!-- ---------- COMPRAS (Equipos, Máquinas, Instrumentos, Materiales y Bienes) ---------- -->
+    <section id="view-compras" class="view" hidden>
+      <div class="view-header">
+        <h2>Compras</h2>
+        <p class="table-note" style="margin:0;">Equipos, Máquinas, Instrumentos, Materiales y Bienes — módulo independiente de Contrataciones.</p>
+      </div>
+
+      <div class="panel" id="comprasToolbar">
+        <div class="view-header" style="margin-bottom:10px;">
+          <h3 style="margin:0;">Cargar / Importar</h3>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" onclick="abrirComprasForm('exp', null, null)">+ Nuevo Expediente</button>
+          <label class="btn btn-ghost" style="cursor:pointer;">Importar desde Excel
+            <input type="file" id="comprasImportFile" accept=".xlsx,.xls" style="display:none;" />
+          </label>
+          <button type="button" id="comprasExportBtn" class="btn btn-secondary">Exportar a Excel</button>
+        </div>
+
+        <div id="comprasImportPreviewWrap" hidden style="margin-top:14px;">
+          <p class="table-note" id="comprasImportResumen"></p>
+          <div class="table-wrap" style="max-height:320px;">
+            <table id="comprasImportPreviewTable" class="data-table"></table>
+          </div>
+          <div class="form-actions">
+            <p id="comprasImportMsg" class="form-msg" hidden></p>
+            <button type="button" id="comprasImportCancelarBtn" class="btn btn-ghost">Cancelar</button>
+            <button type="button" id="comprasImportConfirmarBtn" class="btn btn-primary">Confirmar importación</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="comprasFormPanel" hidden>
+        <h3 id="comprasFormTitle">Nuevo Expediente</h3>
+        <form id="comprasForm">
+          <div class="field-grid" id="comprasFormFields"></div>
+          <div class="form-actions">
+            <p id="comprasFormMsg" class="form-msg" hidden></p>
+            <button type="button" id="comprasFormCancelarBtn" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="view-header" style="margin-bottom:14px;">
+          <h3 style="margin:0;">Expedientes de Compras</h3>
+        </div>
+        <div id="comprasTree" class="compras-tree"></div>
       </div>
     </section>
 

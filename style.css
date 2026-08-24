@@ -602,3 +602,48 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .dupe-option input{ flex-shrink:0; }
 .dupe-count{ color:var(--text-soft); font-size:12px; }
 .dupe-unify-btn{ margin-top:8px; }
+
+/* ============================================================
+   MÓDULO DE COMPRAS
+   ============================================================ */
+.compras-tree{ display:flex; flex-direction:column; gap:10px; }
+.compras-exp{
+  border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); padding:0;
+}
+.compras-exp > summary{
+  cursor:pointer; padding:12px 16px; font-weight:600; list-style:none; display:flex; align-items:center;
+  gap:10px; flex-wrap:wrap; border-bottom:1px solid transparent;
+}
+.compras-exp[open] > summary{ border-bottom-color:var(--border); }
+.compras-exp > summary::-webkit-details-marker{ display:none; }
+.compras-exp > summary::before{ content:'▸'; color:var(--stage-2); }
+.compras-exp[open] > summary::before{ content:'▾'; }
+.compras-pc-list{ padding:10px 16px 14px 28px; display:flex; flex-direction:column; gap:8px; }
+.compras-pc{ border:1px solid var(--border); border-radius:8px; background:var(--bg); }
+.compras-pc > summary{
+  cursor:pointer; padding:9px 12px; list-style:none; display:flex; align-items:center;
+  gap:10px; flex-wrap:wrap; font-weight:500;
+}
+.compras-pc > summary::-webkit-details-marker{ display:none; }
+.compras-pc > summary::before{ content:'▸'; color:var(--stage-4); }
+.compras-pc[open] > summary::before{ content:'▾'; }
+.compras-pos-list{ padding:8px 12px 12px 24px; display:flex; flex-direction:column; gap:8px; }
+.compras-pos-card{ border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:8px 12px; }
+.compras-pos-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px; }
+.compras-pos-actions{ display:inline-flex; gap:8px; margin-left:auto; font-weight:400; }
+.compras-tramo{ font-size:.85rem; color:var(--text-soft); margin:2px 0; display:flex; align-items:center; gap:6px; }
+.compras-tramo b{ color:var(--text); font-weight:500; }
+
+.btn-link{
+  background:none; border:none; color:var(--brand); cursor:pointer; font-size:.85rem;
+  padding:2px 4px; text-decoration:underline;
+}
+.btn-link.danger{ color:var(--danger); }
+.empty-hint{ color:var(--text-soft); font-style:italic; padding:8px 0; }
+
+.cal-tag-compra, .cal-tag-contratacion{
+  font-size:.7rem; font-weight:600; padding:1px 6px; border-radius:6px; margin-right:6px;
+  display:inline-block; vertical-align:middle;
+}
+.cal-tag-compra{ background:#EDE9FE; color:var(--stage-2); }
+.cal-tag-contratacion{ background:var(--brand-soft); color:var(--brand); }
