@@ -107,6 +107,7 @@ function saveSession() {
 }
 function clearSession() {
   sessionStorage.removeItem('aad_session');
+  sessionStorage.removeItem('aad_last_view');
   state.session = null;
 }
 
@@ -201,6 +202,10 @@ document.getElementById('sidenav').addEventListener('click', (e) => {
 function showView(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-' + name));
+  // Recordamos en qué pantalla está el usuario (igual que la sesión) para que, si el navegador
+  // recarga la página sola después de un rato inactivo (algo normal en celulares), la app vuelva
+  // a abrir en la misma pantalla en vez de mandarlo siempre a Dashboard.
+  try { sessionStorage.setItem('aad_last_view', name); } catch (e) { /* si el navegador bloquea sessionStorage, no pasa nada grave */ }
   if (name === 'dashboard') renderDashboard();
   if (name === 'registros') renderRegistros();
   if (name === 'vencimientos') renderCalendar();
@@ -448,7 +453,16 @@ async function boot() {
 
   populateFilterOptions();
   buildForm({});
-  showView('dashboard');
+  // Reabrimos la pantalla en la que estaba el usuario (ver showView), no siempre Dashboard. Si es
+  // "usuarios" pero ya no es admin (por ejemplo cambió de usuario), o si es "formulario" pero no
+  // puede editar, caemos a Dashboard como último recurso.
+  let ultimaVista = null;
+  try { ultimaVista = sessionStorage.getItem('aad_last_view'); } catch (e) { /* nada que hacer */ }
+  const vistaValida = ultimaVista && document.getElementById('view-' + ultimaVista);
+  const vistaPermitida = vistaValida
+    && !(ultimaVista === 'usuarios' && state.session.rol !== 'admin')
+    && !(ultimaVista === 'formulario' && !puedeEditar);
+  showView(vistaPermitida ? ultimaVista : 'dashboard');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
