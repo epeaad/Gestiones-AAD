@@ -223,17 +223,25 @@ document.getElementById('formNewBtn').addEventListener('click', () => {
 // ============================================================
 // ORIGEN DEL TRÁMITE: nuevo desde cero vs. ampliación de contrato
 // ============================================================
-// Campos numéricos "fuente" (no calculados, no el Año) que se ven afectados
-// por el % de ampliación al copiar los datos de un Pedido de Compras existente.
-const AMPLIACION_ESCALABLE_FIELDS = Array.from(NUMBER_FIELDS).filter(
-  k => k !== 'anio' && !DERIVED_FIELDS.has(k)
-);
+// Campos "cantidad/plazo" que SÍ se escalan según el % de Ampliación: si el nuevo contrato
+// cubre el 30% del alcance original, se pide 0,3 veces la cantidad y 0,3 veces el plazo — NO
+// se suman al 100% original (eso duplicaría todo si el % cargado fuera 100). Fórmula: factor =
+// pct / 100 (100% -> factor 1, o sea "igual que el original"; 30% -> factor 0,3).
+const AMPLIACION_ESCALABLE_FIELDS = ['plazoEntrega', 'cantidadesIIBB', 'ampliacionPlazo'];
+// Campos de $ UNITARIO (precio por unidad / tarifa) NO se escalan: el precio unitario no cambia
+// porque el contrato cubra más o menos cantidad — se copian tal cual del original. El $ Presupuesto
+// Oficial y el $ Total Adjudicado, que sí dependen de la cantidad, se recalculan solos a partir
+// de estos unitarios (sin escalar) y de la cantidad ya escalada — ver recalcDerivedFields().
 // Campos calculados que dependen de sub-módulos (Certificaciones / Proyectos): no se copian,
 // porque el trámite nuevo todavía no tiene certificaciones ni proyectos propios cargados.
+// nroPedidoCompras tampoco se copia: el contrato de ampliación todavía no tiene su propio N° de
+// Pedido de Compras asignado (se carga después, cuando SAP lo genere) — pero sí se mantiene el
+// Adjudicatario/contratista, que normalmente es el mismo.
 const AMPLIACION_BLANQUEAR_FIELDS = [
   'certificadosAAD','pctAvanceCertificacion','sumatoriaMultas','cantidadCertificadosProcesados',
   'cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados',
-  'presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada'
+  'presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada',
+  'nroPedidoCompras'
 ];
 
 let ampliacionSeleccion = null; // registro elegido como base de la ampliación
@@ -361,7 +369,9 @@ document.getElementById('origenContinuarBtn').addEventListener('click', () => {
 // ---- Construye el registro "borrador" a partir de un Pedido de Compras existente,
 //      aplicando el % de ampliación a los campos numéricos que corresponde ----
 function iniciarAmpliacionContrato(base, pct) {
-  const factor = 1 + (pct / 100);
+  // factor = pct/100 (NO 1+pct/100): al 100% el nuevo contrato pide LO MISMO que el original
+  // (factor 1); al 30%, pide el 30% (factor 0,3). Con la fórmula anterior, 100% duplicaba todo.
+  const factor = pct / 100;
   const draft = {};
   state.campos.forEach(f => {
     let v = base[f.key];
@@ -372,10 +382,13 @@ function iniciarAmpliacionContrato(base, pct) {
       const num = parseFloat(v);
       draft[f.key] = isNaN(num) ? v : +(num * factor).toFixed(2);
     } else {
+      // Se copia tal cual: incluye los $ unitarios (Oficial y Adjudicado) y el Adjudicatario —
+      // el precio por unidad no cambia según el % de ampliación, y el contratista normalmente
+      // sigue siendo el mismo (solo cambia el N° de Pedido de Compras, que se blanquea arriba).
       draft[f.key] = v;
     }
   });
-  const nota = `Ampliación de contrato del Pedido de Compras Nº ${base.nroPedidoCompras || '(sin número)'} — se aplicó un +${pct}% sobre los valores cargados originalmente.`;
+  const nota = `Ampliación de contrato del Pedido de Compras Nº ${base.nroPedidoCompras || '(sin número)'} — se solicita un ${pct}% de las cantidades y plazos originales.`;
   draft.observaciones = draft.observaciones ? (nota + '\n' + draft.observaciones) : nota;
   // draft._id se deja sin definir a propósito: es un trámite NUEVO, no una edición del original.
 
@@ -383,9 +396,13 @@ function iniciarAmpliacionContrato(base, pct) {
   document.getElementById('formTitle').textContent = 'Nueva Contratación — Ampliación de contrato';
   const banner = document.getElementById('ampliacionBanner');
   banner.querySelector('p').textContent =
-    `Este formulario se completó automáticamente a partir del Pedido de Compras Nº ${base.nroPedidoCompras || ''} con un +${pct}% aplicado a los campos numéricos. Revisá los datos (fechas, expediente, etc.) antes de guardar.`;
+    `Este formulario se completó automáticamente a partir del Pedido de Compras Nº ${base.nroPedidoCompras || ''}: se copiaron los $ unitarios y el Adjudicatario tal cual, y se aplicó ${pct}% (factor ${factor}) a la Cantidad y al Plazo de Entrega. El N° de Pedido de Compras quedó vacío porque todavía no está asignado. Revisá los datos antes de guardar.`;
   banner.hidden = false;
   buildForm(draft);
+  // Recalcula $ Presupuesto Oficial / $ Total Adjudicado (cantidad ya escalada × $ unitario sin
+  // escalar) y las fechas de fin de contrato, ya que buildForm() solo pinta los valores del draft
+  // y no dispara el recálculo por sí solo (eso pasa normalmente al tipear en esos campos).
+  recalcDerivedFields();
 }
 
 // ============================================================
