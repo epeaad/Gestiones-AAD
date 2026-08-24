@@ -202,7 +202,7 @@ function showView(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-' + name));
   if (name === 'dashboard') renderDashboard();
-  if (name === 'registros') { renderRegistros(); renderRegistrosConsolidado(); }
+  if (name === 'registros') renderRegistros();
   if (name === 'vencimientos') renderCalendar();
   if (name === 'aperturas') renderCalendarApertura();
   if (name === 'certificaciones') abrirVistaCertificaciones();
@@ -1130,7 +1130,7 @@ function mostrarDetalleDia(eventos, fechaStr) {
       if (ev._tipo === 'compra') {
         const c = ev.rec;
         return `<div class="cal-detail-item">
-            <span><span class="cal-tag-compra">Compra</span> PC ${escapeHtml(c.nroPC || '')} Pos. ${escapeHtml(c.posicion || '')} (${escapeHtml(c.tramo)}) — ${escapeHtml(c.adjudicatario || '(sin adjudicatario)')} — ${escapeHtml(c.destino || '')}</span>
+            <span><span class="cal-tag-compra">Compra</span> PC ${escapeHtml(c.nroPC || '')} Pos. ${escapeHtml(c.posicion || '')} (${escapeHtml(c.tramo)}) — Matrícula ${escapeHtml(c.matricula || 's/n')} — ${escapeHtml(c.adjudicatario || '(sin adjudicatario)')} — ${escapeHtml(c.destino || '')}</span>
             <b>${escapeHtml(c.expediente || '')}</b>
           </div>`;
       }
@@ -3199,6 +3199,9 @@ function renderProyTable() {
 // ------------------------------------------------------------
 // Independiente del módulo de Contrataciones (Registros): no toca `state.registros`
 // ni ningún dato de ese módulo. Estructura en árbol: Expediente -> Pedidos (PC) -> Posiciones.
+// Matrícula, Detalle de Matrícula, Destino y Cantidad viven en la POSICIÓN (no en el PC): es lo
+// que distingue una posición de otra dentro del mismo PC, y por eso cada una tiene sus propias
+// fechas de entrega y su propio desvío.
 // ============================================================
 let comprasCache = [];              // árbol completo: expedientes -> pedidos -> posiciones
 let comprasFormNivel = null;        // 'exp' | 'pc' | 'pos' — qué se está creando/editando
@@ -3216,14 +3219,14 @@ const COMPRAS_EXP_FORM_FIELDS = [
 ];
 const COMPRAS_PC_FORM_FIELDS = [
   { key: 'nroPC', label: 'N° PC', type: 'text', required: true },
-  { key: 'matriculas', label: 'Matrículas N° (opcional)', type: 'text' },
-  { key: 'detalleMat', label: 'Detalle Mat. (opcional)', type: 'text' },
-  { key: 'adjudicatario', label: 'Adjudicatario', type: 'text' },
-  { key: 'destino', label: 'Destino', type: 'text' },
-  { key: 'adjudicado', label: '$ Adjudicado (sin IVA)', type: 'number' }
+  { key: 'adjudicatario', label: 'Adjudicatario', type: 'text' }
 ];
 const COMPRAS_POS_FORM_FIELDS = [
   { key: 'posicion', label: 'Posición', type: 'number', required: true },
+  { key: 'matricula', label: 'Matrícula N°', type: 'text' },
+  { key: 'detalleMat', label: 'Detalle de Matrícula', type: 'text' },
+  { key: 'destino', label: 'Destino', type: 'text' },
+  { key: 'cantidad', label: 'Cantidad', type: 'number' },
   { key: 'montoPFija', label: '$ P. Fija p/ítems (sin IVA)', type: 'number' },
   { key: 'fechaContratoFija', label: 'Fecha Entrega x Contrato — P. Fija', type: 'date' },
   { key: 'fechaRealFija', label: 'Fecha Entrega Real — P. Fija', type: 'date' },
@@ -3244,6 +3247,24 @@ async function abrirVistaCompras() {
   cerrarComprasForm();
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   document.getElementById('comprasToolbar').hidden = !puedeEditar;
+}
+
+// Cada vez que Compras cambia algo que impacta su fila espejo en "Gestiones Plan" (alta/edición/
+// eliminación de Expediente, PC o Posición, o una importación), refrescamos también los datos de
+// Contrataciones en memoria y volvemos a pintar Registros/Dashboard si están a la vista — así el
+// usuario ve la fila nueva/actualizada sin tener que recargar la página.
+async function refrescarRegistrosTrasCompras() {
+  try {
+    const data = await apiCall('listar');
+    state.registros = data.registros;
+  } catch (err) {
+    console.error('No se pudo refrescar Registros después del cambio en Compras:', err);
+    return;
+  }
+  const vistaActual = document.querySelector('.nav-btn.active');
+  const nombre = vistaActual && vistaActual.dataset.view;
+  if (nombre === 'dashboard') renderDashboard();
+  if (nombre === 'registros') renderRegistros();
 }
 
 async function cargarComprasDatos() {
@@ -3284,7 +3305,7 @@ function comprasRiesgoCount() {
 function comprasEventosParaCalendario() {
   return comprasTramosPendientes().map(t => ({
     fecha: t.fecha, tramo: t.tramo, expediente: t.exp.expediente, nroPC: t.pc.nroPC,
-    posicion: t.pos.posicion, adjudicatario: t.pc.adjudicatario, destino: t.pc.destino
+    posicion: t.pos.posicion, matricula: t.pos.matricula, adjudicatario: t.pc.adjudicatario, destino: t.pos.destino
   }));
 }
 
@@ -3308,66 +3329,6 @@ function comprasBadgeTramo(label, pos, fechaKey, entregadoKey, desvioKey, vencid
   return `<div class="compras-tramo"><b>${escapeHtml(label)}:</b> <span class="${cls}" style="position:static;display:inline-block;">${escapeHtml(texto)}</span></div>`;
 }
 
-// ---- Vista consolidada de Registros (Contrataciones + Compras), en la pestaña "Registros" ----
-// Solo lectura: combina lo que ya está en memoria (state.registros y comprasCache) sin pegarle
-// a la API de nuevo y, sobre todo, SIN escribir ni modificar nada de "Gestiones Plan".
-function registrosConsolidadoFilas() {
-  const contrataciones = (state.registros || []).map(r => ({
-    tipo: 'Contratación', expediente: r.expediente || '', extracto: r.detalleRubro || r.rubro || '',
-    adjudicatario: r.adjudicatario || '', presupuestoOficial: num(r.presupuestoOficialRubro),
-    adjudicado: num(r.totalAdjudicado), estado: r.estado || '',
-    fechaVencimiento: r.fechaFinPlazoAmpliada || r.fechaFinContrato || ''
-  }));
-  const hoy = _hoyStrFrontend();
-  const compras = (comprasCache || []).map(exp => {
-    const fechas = [];
-    (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
-      [pos.fechaContratoFija, pos.fechaContratoPlanificada, pos.fechaContratoAmpliacion].forEach(f => { if (f) fechas.push(f); });
-    }));
-    fechas.sort();
-    const proxima = fechas.find(f => f >= hoy) || fechas[fechas.length - 1] || '';
-    return {
-      tipo: 'Compra', expediente: exp.expediente || '', extracto: exp.extracto || '',
-      adjudicatario: (exp.pedidos || []).map(pc => pc.adjudicatario).filter(Boolean).join(', '),
-      presupuestoOficial: num(exp.presupuestoOficial), adjudicado: num(exp.adjudicadoTotal),
-      estado: '', fechaVencimiento: proxima
-    };
-  });
-  return contrataciones.concat(compras);
-}
-function _hoyStrFrontend() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-function renderRegistrosConsolidado() {
-  const table = document.getElementById('registrosConsolidadoTable');
-  if (!table) return;
-  const filas = registrosConsolidadoFilas().sort((a, b) => (a.fechaVencimiento || '9999').localeCompare(b.fechaVencimiento || '9999'));
-  const thead = '<thead><tr><th>Tipo</th><th>Expediente</th><th>Extracto</th><th>Adjudicatario</th>' +
-    '<th>$ Presupuesto Oficial</th><th>$ Adjudicado</th><th>Estado</th><th>Próximo Vencimiento</th></tr></thead>';
-  const tbody = '<tbody>' + filas.map(f => `<tr>
-      <td><span class="${f.tipo === 'Compra' ? 'cal-tag-compra' : 'cal-tag-contratacion'}">${f.tipo}</span></td>
-      <td>${escapeHtml(f.expediente)}</td>
-      <td>${escapeHtml(f.extracto)}</td>
-      <td>${escapeHtml(f.adjudicatario)}</td>
-      <td class="mono">${formatMoney(f.presupuestoOficial)}</td>
-      <td class="mono">${formatMoney(f.adjudicado)}</td>
-      <td>${escapeHtml(f.estado)}</td>
-      <td class="mono">${escapeHtml(f.fechaVencimiento)}</td>
-    </tr>`).join('') + '</tbody>';
-  table.innerHTML = thead + tbody;
-}
-
-// Genera un literal JS seguro para insertar dentro de un atributo onclick="..." (con comillas
-// dobles). Usar JSON.stringify() ahí rompía el HTML porque agrega comillas dobles DENTRO de un
-// atributo que ya está delimitado por comillas dobles — por eso "Editar" y "+ Pedido (PC)" no
-// respondían: el navegador cortaba el atributo en la primera comilla y el resto quedaba como
-// texto suelto, mal formado.
-function comprasJsArg(v) {
-  if (v === null || v === undefined) return 'null';
-  return "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
-}
-
 function renderComprasTable() {
   const wrap = document.getElementById('comprasTree');
   const puedeEditar = state.session && state.session.rol !== 'consulta';
@@ -3381,11 +3342,14 @@ function renderComprasTable() {
         <div class="compras-pos-card">
           <div class="compras-pos-head">
             <b>Posición ${escapeHtml(pos.posicion || '')}</b>
+            <span class="mono">$ ${num(pos.montoTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
             ${puedeEditar ? `<span class="compras-pos-actions">
               <button class="btn-link" onclick="abrirComprasForm('pos', ${comprasJsArg(pos._id)}, ${comprasJsArg(pc._id)})">Editar</button>
               <button class="btn-link danger" onclick="eliminarComprasRegistro('pos', ${comprasJsArg(pos._id)})">Eliminar</button>
             </span>` : ''}
           </div>
+          <div class="compras-tramo"><b>Matrícula:</b> ${escapeHtml(pos.matricula || '(sin matrícula)')} ${pos.detalleMat ? '— ' + escapeHtml(pos.detalleMat) : ''}</div>
+          <div class="compras-tramo"><b>Destino:</b> ${escapeHtml(pos.destino || '—')} &nbsp; <b>Cantidad:</b> ${escapeHtml(String(pos.cantidad || '—'))}</div>
           ${comprasBadgeTramo('P. Fija', pos, 'fechaContratoFija', 'entregadoFija', 'desvioFija', 'vencidaFija')}
           ${comprasBadgeTramo('P. Planificada', pos, 'fechaContratoPlanificada', 'entregadoPlanificada', 'desvioPlanificada', 'vencidaPlanificada')}
           ${comprasBadgeTramo('Ampliación', pos, 'fechaContratoAmpliacion', 'entregadoAmpliacion', 'desvioAmpliacion', 'vencidaAmpliacion')}
@@ -3394,8 +3358,8 @@ function renderComprasTable() {
 
       return `<details class="compras-pc">
           <summary>
-            PC ${escapeHtml(pc.nroPC || '(sin número)')} — ${escapeHtml(pc.adjudicatario || 'sin adjudicatario')} — ${escapeHtml(pc.destino || '')}
-            <span class="mono">$ ${num(pc.adjudicado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+            PC ${escapeHtml(pc.nroPC || '(sin número)')} — ${escapeHtml(pc.adjudicatario || 'sin adjudicatario')}
+            <span class="mono">$ ${num(pc.adjudicadoCalculado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
             ${puedeEditar ? `<span class="compras-pos-actions">
               <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', ${comprasJsArg(pc._id)}, ${comprasJsArg(exp._id)})">Editar PC</button>
               <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pos', null, ${comprasJsArg(pc._id)})">+ Posición</button>
@@ -3419,6 +3383,14 @@ function renderComprasTable() {
         <div class="compras-pc-list">${pedidosHtml}</div>
       </details>`;
   }).join('');
+}
+
+// Genera un literal JS seguro para insertar dentro de un atributo onclick="..." (con comillas
+// dobles). Usar JSON.stringify() ahí rompía el HTML porque agrega comillas dobles DENTRO de un
+// atributo que ya está delimitado por comillas dobles.
+function comprasJsArg(v) {
+  if (v === null || v === undefined) return 'null';
+  return "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
 }
 
 // ---- Formulario genérico (sirve para los 3 niveles) ----
@@ -3533,6 +3505,7 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
       else await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) });
     }
     await cargarCompras();
+    await refrescarRegistrosTrasCompras();
     cerrarComprasForm();
   } catch (err) {
     msg.textContent = err.message;
@@ -3543,7 +3516,7 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
 
 async function eliminarComprasRegistro(nivel, id) {
   const avisos = {
-    exp: '¿Eliminar este Expediente? Se van a borrar también todos sus Pedidos (PC) y Posiciones.',
+    exp: '¿Eliminar este Expediente? Se van a borrar también todos sus Pedidos (PC) y Posiciones, y su fila espejo en Registros.',
     pc: '¿Eliminar este Pedido de Compra? Se van a borrar también todas sus Posiciones.',
     pos: '¿Eliminar esta Posición?'
   };
@@ -3552,6 +3525,7 @@ async function eliminarComprasRegistro(nivel, id) {
   try {
     await apiCall(acciones[nivel], { id });
     await cargarCompras();
+    await refrescarRegistrosTrasCompras();
   } catch (err) {
     showAppError('No se pudo eliminar: ' + err.message);
   }
@@ -3565,9 +3539,9 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
     filas.push({
       'PosPre': exp.pospre, 'Expte': exp.expediente, 'LP': exp.lp, 'Extracto': exp.extracto,
       '$ Presupuesto Oficial (sin IVA)': exp.presupuestoOficial,
-      'PC': pc.nroPC, 'Matriculas N° (opcional)': pc.matriculas, 'Detalle Mat. (opcional)': pc.detalleMat,
-      'Adjudicatario': pc.adjudicatario, 'Destino': pc.destino, '$ Adjudicado (sin IVA)': pc.adjudicado,
-      'Posición': pos.posicion,
+      'PC': pc.nroPC, 'Adjudicatario': pc.adjudicatario, '$ Adjudicado PC (calculado)': pc.adjudicadoCalculado,
+      'Posición': pos.posicion, 'Matrícula N°': pos.matricula, 'Detalle de Matrícula': pos.detalleMat,
+      'Destino': pos.destino, 'Cantidad': pos.cantidad,
       'Fecha de Entrega por Contrato P.Fija': pos.fechaContratoFija, 'Fecha de Entrega Real P.Fija': pos.fechaRealFija,
       'Desvío de Fecha Entrega P. Fija (días)': pos.desvioFija,
       '$ P. Fija p/ítems S/IVA': pos.montoPFija,
@@ -3577,6 +3551,7 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
       'Ampliación (si / no)': pos.ampliacion, '% de Ampliación': pos.pctAmpliacion, '$ Ampliación (sin IVA)': pos.montoAmpliacion,
       'Fecha de Entrega por Contrato Ampliación': pos.fechaContratoAmpliacion, 'Fecha de Entrega Real Ampliación': pos.fechaRealAmpliacion,
       'Desvío de Fecha Entrega Ampliación (días)': pos.desvioAmpliacion,
+      '$ Total Posición (calculado)': pos.montoTotal,
       'Observaciones': pos.observaciones
     });
   })));
@@ -3589,6 +3564,8 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
 // ---- Importar desde Excel (formato "Gestiones de Compra de Mat-EE y Bienes.xlsx") ----
 // Reconstruye el árbol Expediente -> PC -> Posición rellenando hacia abajo las celdas que en
 // el Excel original vienen en blanco (porque pertenecen al mismo grupo que la fila de arriba).
+// IMPORTANTE: Matrícula, Detalle, Destino y Cantidad se leen de CADA fila de Posición (no se
+// heredan del PC), porque son propias de cada posición.
 function parseComprasExcelRows(rows) {
   const expedientes = [];
   let curExp = null, curPC = null;
@@ -3611,10 +3588,7 @@ function parseComprasExcelRows(rows) {
     if (!curExp) continue; // fila de PC/Posición sin ningún Expediente todavía abierto: se omite
 
     if (pc) {
-      curPC = {
-        nroPC: pc, matriculas: val(6), detalleMat: val(7), adjudicatario: val(8),
-        destino: val(9), adjudicado: _parseNumeroImport(val(10)), posiciones: []
-      };
+      curPC = { nroPC: pc, adjudicatario: val(8), posiciones: [] };
       curExp.pedidos.push(curPC);
     }
     if (!curPC) continue;
@@ -3622,6 +3596,7 @@ function parseComprasExcelRows(rows) {
     if (posicion) {
       curPC.posiciones.push({
         posicion: posicion,
+        matricula: val(6), detalleMat: val(7), destino: val(9), cantidad: '',
         fechaContratoFija: _excelFechaImport(val(12)),
         montoPFija: _parseNumeroImport(val(15)),
         partePlanificada: val(16) ? 'Si' : 'No',
@@ -3669,16 +3644,18 @@ function renderComprasImportPreview() {
   const cantPos = comprasImportFilas.reduce((acc, e) => acc + e.pedidos.reduce((a, pc) => a + pc.posiciones.length, 0), 0);
   document.getElementById('comprasImportResumen').textContent =
     `${comprasImportFilas.length} expediente(s), ${cantPC} pedido(s) de compra y ${cantPos} posición(es) detectados en el archivo. ` +
-    `Si un Expediente / PC / Posición ya existe (mismo número), se actualiza; si no existe, se crea. No se duplica nada.`;
+    `Si un Expediente / PC / Posición ya existe (mismo número), se actualiza; si no existe, se crea. No se duplica nada. ` +
+    `La columna "Cantidad" no existe en este formato de Excel: se importa en blanco, completala manualmente si la necesitás.`;
 
   const table = document.getElementById('comprasImportPreviewTable');
-  table.innerHTML = '<thead><tr><th>Expediente</th><th>Extracto</th><th>PC</th><th>Adjudicatario</th><th>Posiciones</th></tr></thead><tbody>' +
+  table.innerHTML = '<thead><tr><th>Expediente</th><th>Extracto</th><th>PC</th><th>Adjudicatario</th><th>Posiciones</th><th>Matrículas</th></tr></thead><tbody>' +
     comprasImportFilas.map(e => e.pedidos.map((pc, idx) => `<tr>
         <td>${idx === 0 ? escapeHtml(e.expediente) : ''}</td>
         <td>${idx === 0 ? escapeHtml(e.extracto) : ''}</td>
         <td>${escapeHtml(pc.nroPC)}</td>
         <td>${escapeHtml(pc.adjudicatario)}</td>
         <td>${pc.posiciones.length}</td>
+        <td>${pc.posiciones.map(p => escapeHtml(p.matricula)).filter(Boolean).join(', ')}</td>
       </tr>`).join('')).join('') + '</tbody>';
 
   document.getElementById('comprasImportConfirmarBtn').disabled = !comprasImportFilas.length;
@@ -3710,4 +3687,6 @@ document.getElementById('comprasImportConfirmarBtn').addEventListener('click', a
   document.getElementById('comprasImportFile').value = '';
   document.getElementById('comprasImportPreviewWrap').hidden = true;
   await cargarCompras();
+  await refrescarRegistrosTrasCompras();
 });
+
