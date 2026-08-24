@@ -1075,6 +1075,30 @@ function renderCalendar() {
     porDia[ev.fecha].push({ _tipo: 'compra', rec: ev });
   });
 
+  // Si hay vencimientos de Compras cargados pero ninguno cae en el mes que se está mirando,
+  // lo avisamos: así se distingue "están en otro mes" de "no se cargaron / no aparecen".
+  const hintEl = document.getElementById('calComprasHint');
+  if (hintEl) {
+    const todasLasFechasCompras = comprasEventosParaCalendario().map(ev => ev.fecha).sort();
+    const mesActual = calMonthDate.getFullYear() + '-' + String(calMonthDate.getMonth() + 1).padStart(2, '0');
+    const hayEnEsteMes = todasLasFechasCompras.some(f => f.startsWith(mesActual));
+    if (todasLasFechasCompras.length && !hayEnEsteMes) {
+      const hoyStrHint = new Date().toISOString().slice(0, 10);
+      const proxima = todasLasFechasCompras.find(f => f >= hoyStrHint) || todasLasFechasCompras[todasLasFechasCompras.length - 1];
+      hintEl.hidden = false;
+      hintEl.innerHTML = `Hay ${todasLasFechasCompras.length} vencimiento(s) de Compras cargado(s), pero ninguno en este mes. ` +
+        `<button type="button" class="btn-link" id="calIrAComprasBtn">Ir al ${escapeHtml(proxima)}</button>`;
+      const irBtn = document.getElementById('calIrAComprasBtn');
+      if (irBtn) irBtn.addEventListener('click', () => {
+        const [yy, mm] = proxima.split('-');
+        calMonthDate = new Date(Number(yy), Number(mm) - 1, 1);
+        renderCalendar();
+      });
+    } else {
+      hintEl.hidden = true;
+    }
+  }
+
   document.getElementById('calMonthLabel').textContent = MESES_ES[calMonthDate.getMonth()] + ' ' + calMonthDate.getFullYear();
 
   const year = calMonthDate.getFullYear();
