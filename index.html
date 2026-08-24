@@ -539,6 +539,30 @@
         <div class="view-header" style="margin-bottom:14px;">
           <h3 style="margin:0;">Expedientes de Compras</h3>
         </div>
+        <div class="filters-bar" id="comprasFiltersBar">
+          <div class="filter-field">
+            <label>Pospre</label>
+            <div class="multiselect" data-cfilter="pospre"></div>
+          </div>
+          <div class="filter-field">
+            <label>Trámite (Expediente)</label>
+            <input type="text" data-cfilter="expediente" placeholder="Buscar..." />
+          </div>
+          <div class="filter-field">
+            <label>Año</label>
+            <div class="multiselect" data-cfilter="anio"></div>
+          </div>
+          <div class="filter-field">
+            <label>PC</label>
+            <div class="multiselect" data-cfilter="nroPC"></div>
+          </div>
+          <div class="filter-field">
+            <label>Destino</label>
+            <div class="multiselect" data-cfilter="destino"></div>
+          </div>
+          <button id="comprasClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+        </div>
+        <p class="results-count" id="comprasResultsCount"></p>
         <div id="comprasTree" class="compras-tree"></div>
       </div>
     </section>

@@ -3242,6 +3242,73 @@ const COMPRAS_POS_FORM_FIELDS = [
   { key: 'observaciones', label: 'Observaciones', type: 'text' }
 ];
 
+// ---- Filtros de Compras: Pospre, Año, Trámite (Expediente), PC y Destino ----
+// Igual criterio que Registros: filtran a nivel Expediente (qué trámites se muestran), y una vez
+// que un trámite entra por el filtro se ve completo (todos sus PC y todas sus Posiciones) —
+// así siempre se puede ver el detalle entero de lo que se encontró, como en Certificaciones/Proyectos.
+const COMPRAS_FILTER_KEYS = ['pospre', 'anio', 'nroPC', 'destino'];
+let comprasFiltros = { pospre: [], anio: [], expediente: '', nroPC: [], destino: [] };
+
+function comprasAnioDeExpediente(expedienteStr) {
+  const m = String(expedienteStr || '').match(/-(\d{4})-/);
+  return m ? m[1] : '';
+}
+function comprasUniqueValues(key) {
+  const set = new Set();
+  comprasCache.forEach(exp => {
+    if (key === 'pospre') { if (exp.pospre) set.add(String(exp.pospre).trim()); }
+    if (key === 'anio') { const a = comprasAnioDeExpediente(exp.expediente); if (a) set.add(a); }
+    (exp.pedidos || []).forEach(pc => {
+      if (key === 'nroPC' && pc.nroPC) set.add(String(pc.nroPC).trim());
+      (pc.posiciones || []).forEach(pos => {
+        if (key === 'destino' && pos.destino) set.add(String(pos.destino).trim());
+      });
+    });
+  });
+  return Array.from(set).sort();
+}
+function populateComprasFilterOptions() {
+  COMPRAS_FILTER_KEYS.forEach(key => {
+    const el = document.querySelector('#comprasFiltersBar [data-cfilter="' + key + '"]');
+    if (!el) return;
+    const opts = comprasUniqueValues(key);
+    comprasFiltros[key] = (comprasFiltros[key] || []).filter(v => opts.includes(v));
+    renderMultiselect(el, opts, comprasFiltros[key], (vals) => {
+      comprasFiltros[key] = vals;
+      renderComprasTable();
+    });
+  });
+}
+function comprasFiltered() {
+  const texto = (comprasFiltros.expediente || '').trim().toLowerCase();
+  return comprasCache.filter(exp => {
+    if (comprasFiltros.pospre.length && !comprasFiltros.pospre.includes(String(exp.pospre || '').trim())) return false;
+    if (comprasFiltros.anio.length && !comprasFiltros.anio.includes(comprasAnioDeExpediente(exp.expediente))) return false;
+    if (texto && !String(exp.expediente || '').toLowerCase().includes(texto)) return false;
+    if (comprasFiltros.nroPC.length) {
+      const tienePC = (exp.pedidos || []).some(pc => comprasFiltros.nroPC.includes(String(pc.nroPC || '').trim()));
+      if (!tienePC) return false;
+    }
+    if (comprasFiltros.destino.length) {
+      const tieneDestino = (exp.pedidos || []).some(pc => (pc.posiciones || []).some(pos => comprasFiltros.destino.includes(String(pos.destino || '').trim())));
+      if (!tieneDestino) return false;
+    }
+    return true;
+  });
+}
+document.querySelector('#comprasFiltersBar [data-cfilter="expediente"]').addEventListener('input', (e) => {
+  comprasFiltros.expediente = e.target.value.trim();
+  renderComprasTable();
+});
+document.getElementById('comprasClearFilters').addEventListener('click', () => {
+  COMPRAS_FILTER_KEYS.forEach(k => { comprasFiltros[k] = []; });
+  comprasFiltros.expediente = '';
+  const expEl = document.querySelector('#comprasFiltersBar [data-cfilter="expediente"]');
+  if (expEl) expEl.value = '';
+  populateComprasFilterOptions();
+  renderComprasTable();
+});
+
 async function abrirVistaCompras() {
   await cargarCompras();
   cerrarComprasForm();
@@ -3274,6 +3341,7 @@ async function cargarComprasDatos() {
 async function cargarCompras() {
   try {
     await cargarComprasDatos();
+    populateComprasFilterOptions();
     renderComprasTable();
   } catch (err) {
     showAppError('No se pudieron cargar las compras: ' + err.message);
@@ -3332,11 +3400,18 @@ function comprasBadgeTramo(label, pos, fechaKey, entregadoKey, desvioKey, vencid
 function renderComprasTable() {
   const wrap = document.getElementById('comprasTree');
   const puedeEditar = state.session && state.session.rol !== 'consulta';
+  const filtradas = comprasFiltered();
+  const countEl = document.getElementById('comprasResultsCount');
+  if (countEl) countEl.textContent = filtradas.length + ' expediente(s) encontrado(s) de ' + comprasCache.length + ' totales.';
   if (!comprasCache.length) {
     wrap.innerHTML = '<p class="empty-hint">Todavía no hay expedientes de Compras cargados.</p>';
     return;
   }
-  wrap.innerHTML = comprasCache.map(exp => {
+  if (!filtradas.length) {
+    wrap.innerHTML = '<p class="empty-hint">Ningún expediente coincide con los filtros aplicados.</p>';
+    return;
+  }
+  wrap.innerHTML = filtradas.map(exp => {
     const pedidosHtml = (exp.pedidos || []).map(pc => {
       const posHtml = (pc.posiciones || []).map(pos => `
         <div class="compras-pos-card">
