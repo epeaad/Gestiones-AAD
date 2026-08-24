@@ -3365,6 +3365,15 @@ function renderComprasTable() {
 function comprasCampos(nivel) {
   return nivel === 'exp' ? COMPRAS_EXP_FORM_FIELDS : (nivel === 'pc' ? COMPRAS_PC_FORM_FIELDS : COMPRAS_POS_FORM_FIELDS);
 }
+function comprasPospreOpciones() {
+  // Combina los Pospre ya usados en Contrataciones (state.registros) y los ya cargados en
+  // Compras (comprasCache), para que la lista desplegable sea la más completa posible.
+  const set = new Set();
+  (state.registros || []).forEach(r => { if (r.pospre) set.add(String(r.pospre).trim()); });
+  (comprasCache || []).forEach(e => { if (e.pospre) set.add(String(e.pospre).trim()); });
+  return Array.from(set).sort();
+}
+
 function abrirComprasForm(nivel, editId, parentId) {
   comprasFormNivel = nivel;
   comprasFormEditId = editId || null;
@@ -3383,6 +3392,22 @@ function abrirComprasForm(nivel, editId, parentId) {
   const cont = document.getElementById('comprasFormFields');
   cont.innerHTML = comprasCampos(nivel).map(f => {
     const val = registro[f.key] !== undefined && registro[f.key] !== null ? registro[f.key] : '';
+    // Pospre: desplegable dinámico (no texto libre), igual criterio que en Contrataciones —
+    // valida contra los Pospre ya existentes, con opción de agregar uno nuevo si hace falta.
+    if (f.key === 'pospre') {
+      const existentes = comprasPospreOpciones();
+      if (val && !existentes.includes(val)) existentes.unshift(val);
+      const opts = ['<option value="">— Elegí un Pospre existente —</option>'].concat(
+        existentes.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`)
+      ).concat(['<option value="' + DYNAMIC_SELECT_OTRO + '">+ Otro (nuevo)...</option>']);
+      return `<label>${escapeHtml(f.label)}
+        <select class="dyn-select" data-dyn-key="pospre">${opts.join('')}</select>
+        <div class="dyn-otro-row" hidden>
+          <input type="text" placeholder="Escribí el Pospre nuevo..." class="dyn-otro-input" />
+          <button type="button" class="dyn-otro-volver" title="Volver a elegir de la lista">↩ volver a la lista</button>
+        </div>
+      </label>`;
+    }
     if (f.type === 'select') {
       return `<label>${escapeHtml(f.label)}
         <select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
@@ -3392,6 +3417,32 @@ function abrirComprasForm(nivel, editId, parentId) {
       <input type="${f.type}" data-key="${f.key}" value="${escapeHtml(String(val))}" ${f.required ? 'required' : ''} />
     </label>`;
   }).join('');
+
+  // Cablea el comportamiento del desplegable de Pospre (elegir "+ Otro (nuevo)" muestra el input de texto).
+  const pospreSel = cont.querySelector('select[data-dyn-key="pospre"]');
+  if (pospreSel) {
+    const row = pospreSel.nextElementSibling;
+    const otroInput = row.querySelector('.dyn-otro-input');
+    const volverBtn = row.querySelector('.dyn-otro-volver');
+    pospreSel.dataset.key = 'pospre';
+    pospreSel.addEventListener('change', () => {
+      if (pospreSel.value === DYNAMIC_SELECT_OTRO) {
+        pospreSel.hidden = true;
+        delete pospreSel.dataset.key;
+        row.hidden = false;
+        otroInput.dataset.key = 'pospre';
+        otroInput.value = '';
+        otroInput.focus();
+      }
+    });
+    volverBtn.addEventListener('click', () => {
+      row.hidden = true;
+      delete otroInput.dataset.key;
+      pospreSel.hidden = false;
+      pospreSel.dataset.key = 'pospre';
+      pospreSel.value = '';
+    });
+  }
 
   document.getElementById('comprasFormMsg').hidden = true;
   document.getElementById('comprasFormPanel').hidden = false;
