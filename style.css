@@ -229,6 +229,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 /* ============ IMPRESIÓN A PDF ============ */
 .print-header{ display:none; }
 @media print {
+  @page{ size: landscape; margin: 10mm; }
   html, body{ height:auto !important; overflow:visible !important; }
   .app{ height:auto !important; }
   .sidebar{ display:none !important; }
@@ -241,6 +242,37 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   .print-subtitle{ margin:2px 0 0; font-size:11px; color:var(--text-soft); }
   .panel, .kpi-card, .contratista-card{ box-shadow:none !important; border:1px solid #ccc !important; break-inside:avoid; }
   body{ background:#fff !important; }
+
+  /* Las tablas anchas (p. ej. "Detalle por agrupación", con ~20 columnas) se ven bien en pantalla
+     porque .table-wrap tiene scroll horizontal (overflow-x:auto) — pero al imprimir no hay forma
+     de "scrollear" una hoja de papel: todo lo que quedaba fuera del recuadro visible se recortaba
+     en silencio, sin avisar. Layout en modo impresión, aparte: */
+  .table-wrap{
+    overflow:visible !important;        /* no recortar nada por ancho */
+    border:1px solid #ccc !important;
+    break-inside:auto;                  /* permite que la tabla continúe en la página siguiente */
+  }
+  .data-table{
+    width:100% !important;
+    table-layout:fixed !important;      /* reparte el ancho entre columnas en vez de expandirse sin límite */
+    white-space:normal !important;      /* el texto de cada celda pasa a la línea siguiente en vez de forzar ancho */
+    font-size:8px !important;
+  }
+  .data-table th, .data-table td{
+    padding:3px 4px !important;
+    white-space:normal !important;
+    word-break:break-word !important;
+    overflow-wrap:break-word !important;
+  }
+  /* Las celdas que en pantalla se truncan con "..." (Adjudicatario, Seguimiento) se muestran
+     completas: es justamente el dato que un reporte impreso necesita íntegro, no cortado. */
+  .data-table td.td-truncate{
+    max-width:none !important;
+    overflow:visible !important;
+    text-overflow:unset !important;
+    white-space:normal !important;
+  }
+  .data-table thead .col-sticky, .data-table tbody .col-sticky{ position:static !important; }
 }
 
 .chart-grid{ display:grid; grid-template-columns:1.2fr 1fr; gap:16px; margin-bottom:16px; }
