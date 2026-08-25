@@ -436,6 +436,13 @@ async function boot() {
   const puedeEditar = state.session.rol !== 'consulta';
   const navFormulario = document.querySelector('.nav-btn[data-view="formulario"]');
   if (navFormulario) navFormulario.hidden = !puedeEditar;
+  // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
+  // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
+  const puedeExportar = state.session.rol !== 'consulta';
+  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasExportBtn', 'printDashboardBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.hidden = !puedeExportar;
+  });
   hideAppError();
 
   try {
