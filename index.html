@@ -630,6 +630,14 @@
               <option value="admin">Administrador</option>
             </select>
           </label>
+          <label>Restringir a una o más Sucursales (opcional)
+            <div class="multiselect" id="newSucursalRestringida"></div>
+          </label>
+          <p class="table-note" style="margin-top:-6px;">
+            Si tildás una o varias sucursales, ese usuario solo va a ver los trámites (y sus Certificaciones/Proyectos)
+            de esas sucursales — en Registros, Dashboard y Calendario de Vencimientos. Dejalo sin tildar
+            para que vea todas. Combinalo con Rol "Solo consulta" si además no debe poder editar nada.
+          </p>
           <button type="submit" class="btn btn-primary btn-block">Crear usuario</button>
           <p id="userMsg" class="form-msg" hidden></p>
         </form>

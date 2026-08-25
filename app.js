@@ -132,7 +132,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   setLoginStatus('idle', '');
   try {
     const data = await apiCallLogin(usuario, clave);
-    state.session = { usuario: data.user.usuario, nombre: data.user.nombre, rol: data.user.rol, clave };
+    state.session = { usuario: data.user.usuario, nombre: data.user.nombre, rol: data.user.rol, sucursalesRestringidas: data.user.sucursalesRestringidas || [], clave };
     saveSession();
     setLoginStatus('ok', 'Ingreso correcto');
     setTimeout(() => boot(), 350); // deja ver el indicador verde un instante antes de entrar
@@ -431,7 +431,7 @@ function hideAppError() {
 async function boot() {
   document.getElementById('loginScreen').hidden = true;
   document.getElementById('app').hidden = false;
-  document.getElementById('userName').textContent = state.session.nombre + ' (' + state.session.rol + ')';
+  document.getElementById('userName').textContent = state.session.nombre + ' (' + state.session.rol + ')' + (state.session.sucursalesRestringidas && state.session.sucursalesRestringidas.length ? ' · ' + state.session.sucursalesRestringidas.join(', ') : '');
   document.getElementById('navUsuarios').hidden = state.session.rol !== 'admin';
   const puedeEditar = state.session.rol !== 'consulta';
   const navFormulario = document.querySelector('.nav-btn[data-view="formulario"]');
@@ -2107,13 +2107,25 @@ function formatMillions(v) {
 // ============================================================
 // USUARIOS (admin)
 // ============================================================
+let nuevoUsuarioSucursalesSeleccionadas = [];
 async function renderUsuarios() {
   if (state.session.rol !== 'admin') return;
   const data = await apiCall('usuarios_listar');
   const table = document.getElementById('usersTable');
-  table.innerHTML = '<thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th></tr></thead><tbody>' +
-    data.usuarios.map(u => `<tr><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.rol)}</td></tr>`).join('') +
+  table.innerHTML = '<thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Sucursales Restringidas</th></tr></thead><tbody>' +
+    data.usuarios.map(u => {
+      const texto = (u.sucursalesRestringidas && u.sucursalesRestringidas.length) ? u.sucursalesRestringidas.join(', ') : 'Sin restricción (ve todas)';
+      return `<tr><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.rol)}</td><td>${escapeHtml(texto)}</td></tr>`;
+    }).join('') +
     '</tbody>';
+
+  const contSucursal = document.getElementById('newSucursalRestringida');
+  if (contSucursal) {
+    nuevoUsuarioSucursalesSeleccionadas = nuevoUsuarioSucursalesSeleccionadas.filter(s => uniqueValues('sucursal').includes(s));
+    renderMultiselect(contSucursal, uniqueValues('sucursal'), nuevoUsuarioSucursalesSeleccionadas, (vals) => {
+      nuevoUsuarioSucursalesSeleccionadas = vals;
+    });
+  }
 }
 
 document.getElementById('userForm').addEventListener('submit', async (e) => {
@@ -2125,12 +2137,14 @@ document.getElementById('userForm').addEventListener('submit', async (e) => {
       usuario_nuevo: document.getElementById('newUsuario').value.trim(),
       nombre_nuevo: document.getElementById('newNombre').value.trim(),
       clave_nueva: document.getElementById('newClave').value,
-      rol_nuevo: document.getElementById('newRol').value
+      rol_nuevo: document.getElementById('newRol').value,
+      sucursales_restringidas_nuevas: nuevoUsuarioSucursalesSeleccionadas
     });
     msg.textContent = 'Usuario creado correctamente.';
     msg.className = 'form-msg ok';
     msg.hidden = false;
     document.getElementById('userForm').reset();
+    nuevoUsuarioSucursalesSeleccionadas = [];
     renderUsuarios();
   } catch (err) {
     msg.textContent = 'Error: ' + err.message;
