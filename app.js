@@ -39,7 +39,7 @@ const ESTADO_VACIO_LABEL = 'Vacío (sin adjudicar)';
 // Campos con opciones dinámicas: se cargan a partir de los valores ya existentes en la base
 // (evita errores de tipeo, obliga a elegir uno de los que ya existen).
 const DYNAMIC_SELECT_FIELDS = new Set(['pospre', 'sucursal']);
-const LONG_FIELDS = new Set(['detalleRubro','observaciones']);
+const LONG_FIELDS = new Set(['detalleRubro','observaciones','seguimiento']);
 
 // ---- Campos calculados automáticamente: no se editan a mano ----
 const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados']);
@@ -241,7 +241,7 @@ const AMPLIACION_BLANQUEAR_FIELDS = [
   'certificadosAAD','pctAvanceCertificacion','sumatoriaMultas','cantidadCertificadosProcesados',
   'cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados',
   'presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada',
-  'nroPedidoCompras'
+  'nroPedidoCompras','seguimiento'
 ];
 
 let ampliacionSeleccion = null; // registro elegido como base de la ampliación
@@ -1378,6 +1378,7 @@ const REGISTROS_COLS = [
   { key: 'cantidadProyectos', label: 'Cant. Proyectos' },
   { key: 'pctPresupuestoProyectado', label: '% Presup. Proyectado' },
   { key: 'pctIIBBProyectados', label: '% IIBB Proyectados / Gestionados' },
+  { key: 'seguimiento', label: 'Seguimiento' },
   { key: 'estado', label: 'Estado' }
 ];
 
@@ -1423,8 +1424,8 @@ function wireSortableHeaders(table, sortState, onChange) {
 }
 
 // Genera las filas <td> de un registro de trámite según REGISTROS_COLS (reutilizado por Registros y Dashboard "Todos")
-function registroTdsHtml(r) {
-  return REGISTROS_COLS.map(c => {
+function registroTdsHtml(r, cols) {
+  return (cols || REGISTROS_COLS).map(c => {
     if (c.key === 'estado') {
       const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
       const texto = r.estado ? r.estado : ESTADO_VACIO_LABEL;
@@ -1438,8 +1439,8 @@ function registroTdsHtml(r) {
     if (c.key === 'pctIIBBProyectados') return `<td class="mono">${num(r.pctIIBBProyectados).toFixed(1)}%</td>`;
     // Textos potencialmente largos (nombre del contratista): se truncan con "..." y el texto
     // completo queda disponible al pasar el mouse, para no forzar el ancho de toda la tabla.
-    if (c.key === 'adjudicatario') {
-      const texto = r.adjudicatario != null ? r.adjudicatario : '';
+    if (c.key === 'adjudicatario' || c.key === 'seguimiento') {
+      const texto = r[c.key] != null ? r[c.key] : '';
       return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
     }
     return `<td>${escapeHtml(r[c.key] != null ? r[c.key] : '')}</td>`;
@@ -1996,11 +1997,15 @@ function renderDashboard() {
 }
 
 // ---- Tabla de detalle completo (modo "Todos" de "Agrupar por"): un renglón por trámite, sin agrupar ----
+// Usa las mismas columnas que Registros, salvo "% Presup. Proyectado": en este detalle general del
+// Dashboard es redundante (ya está el $ Proyectados Acumulados y el % IIBB Proyectados) y no suma
+// al análisis — se mantiene, en cambio, en la pestaña Registros.
+const DASH_DETALLE_COLS = REGISTROS_COLS.filter(c => c.key !== 'pctPresupuestoProyectado');
 function renderDashDetalleCompleto(rows) {
   rows = sortRows(rows, state.dashDetalleSort, registroSortValue);
   const table = document.getElementById('dashTable');
-  table.innerHTML = sortableTheadHtml(REGISTROS_COLS, state.dashDetalleSort) +
-    '<tbody>' + rows.map(r => `<tr data-id="${r._id}"${rowClassForEstado(r)}>${registroTdsHtml(r)}</tr>`).join('') + '</tbody>';
+  table.innerHTML = sortableTheadHtml(DASH_DETALLE_COLS, state.dashDetalleSort) +
+    '<tbody>' + rows.map(r => `<tr data-id="${r._id}"${rowClassForEstado(r)}>${registroTdsHtml(r, DASH_DETALLE_COLS)}</tr>`).join('') + '</tbody>';
   wireSortableHeaders(table, state.dashDetalleSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
 
