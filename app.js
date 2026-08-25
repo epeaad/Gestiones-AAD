@@ -1616,7 +1616,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-let chartMontos, chartAdjCertSucursal, chartCertificacionPC;
+let chartAdjCertSucursal, chartCertificacionPC;
 
 document.getElementById('dashGroupBy').addEventListener('change', renderDashboard);
 
@@ -1741,8 +1741,9 @@ function renderDashboard() {
   ].join('');
 
 
-  // ---- Gráfico 1: Presupuesto Oficial vs Adjudicado vs Certificado, por Sucursal ----
-  // (siempre agrupado por Sucursal, respeta los filtros del dashboard incluido Pospre)
+  // ---- Datos por Sucursal (Presupuesto Oficial / Adjudicado / Certificado) ----
+  // Se sigue calculando acá porque lo usa el gráfico de abajo ("Adjudicado vs. Certificado por
+  // Sucursal — con % de Avance"), aunque el gráfico de barras de las 3 series juntas ya no se muestra.
   const bySucursal = {};
   rows.forEach(r => {
     const key = (r.sucursal || '(sin sucursal)').toString().trim() || '(sin sucursal)';
@@ -1752,31 +1753,6 @@ function renderDashboard() {
     bySucursal[key].certificado += num(r.certificadosAAD);
   });
   const sucursalEntries = Object.entries(bySucursal).sort((a,b) => b[1].presOficial - a[1].presOficial);
-
-  const ctx1 = document.getElementById('chartMontos').getContext('2d');
-  if (chartMontos) chartMontos.destroy();
-  chartMontos = new Chart(ctx1, {
-    type: 'bar',
-    data: {
-      labels: sucursalEntries.map(e => e[0]),
-      datasets: [
-        { label: 'Presupuesto Oficial', data: sucursalEntries.map(e => e[1].presOficial / 1000000), backgroundColor: '#2563EB' },
-        { label: 'Total Adjudicado', data: sucursalEntries.map(e => e[1].adjudicado / 1000000), backgroundColor: '#7C3AED' },
-        { label: 'Certificado AAD', data: sucursalEntries.map(e => e[1].certificado / 1000000), backgroundColor: '#16A34A' }
-      ]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      scales:{
-        x:{ ticks:{ autoSkip:false, maxRotation:60, minRotation:30 } },
-        y:{ beginAtZero:true, title:{ display:true, text:'Millones de $' } }
-      },
-      plugins:{
-        legend:{ position:'bottom' },
-        tooltip:{ callbacks:{ label: (ctx) => ctx.dataset.label + ': $ ' + ctx.parsed.y.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' M' } }
-      }
-    }
-  });
 
   // ---- Combo: Adjudicado vs Certificado por Sucursal, con % de Avance (semáforo) ----
   const pctPorSucursal = sucursalEntries.map(e => e[1].adjudicado > 0 ? (e[1].certificado / e[1].adjudicado) * 100 : 0);
