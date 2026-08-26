@@ -439,7 +439,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasExportBtn', 'printDashboardBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasExportBtn', 'printDashboardBtn', 'dashDetalleExportBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -2029,6 +2029,42 @@ document.getElementById('printDashboardBtn').addEventListener('click', () => {
   document.getElementById('printDate').textContent = new Date().toLocaleString('es-AR');
   window.print();
 });
+
+// Exporta a CSV exactamente lo que se está viendo en "Detalle por agrupación" — respeta el modo
+// de agrupación elegido (Sucursal, PosPre, Pedido de Compras, Contratista/Proveedor o Todos) y
+// los filtros del Dashboard, porque lee directamente la tabla ya renderizada en pantalla.
+document.getElementById('dashDetalleExportBtn').addEventListener('click', () => {
+  exportTableToCsv(document.getElementById('dashTable'), 'detalle_por_agrupacion.csv');
+});
+
+/** Exporta cualquier <table> del DOM a un archivo .csv, tomando el texto tal como se ve (respeta
+ *  el orden de columnas, el agrupamiento y los filtros ya aplicados en pantalla). Se le agrega BOM
+ *  UTF-8 al archivo para que Excel muestre bien los acentos y la "ñ" al abrirlo. */
+function exportTableToCsv(tableEl, filename) {
+  if (!tableEl) return;
+  const escapeCsv = (texto) => {
+    const limpio = (texto || '').replace(/\s+/g, ' ').trim();
+    return /[",;\n]/.test(limpio) ? '"' + limpio.replace(/"/g, '""') + '"' : limpio;
+  };
+  const filas = [];
+  tableEl.querySelectorAll('thead tr').forEach(tr => {
+    filas.push(Array.from(tr.querySelectorAll('th')).map(th => escapeCsv(th.textContent)).join(';'));
+  });
+  tableEl.querySelectorAll('tbody tr').forEach(tr => {
+    filas.push(Array.from(tr.querySelectorAll('td')).map(td => escapeCsv(td.textContent)).join(';'));
+  });
+  if (filas.length <= 1) { alert('No hay datos para exportar con los filtros actuales.'); return; }
+  const csv = '\uFEFF' + filas.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function renderContratistaResumen(rows) {
   const byContratista = {};
