@@ -216,7 +216,6 @@ function showView(name) {
   if (name === 'compras') abrirVistaCompras();
   if (name === 'usuarios') renderUsuarios();
   if (name === 'comparativa') renderComparativa();
-  if (name === 'estrategia') abrirVistaEstrategia();
 }
 
 document.getElementById('formNewBtn').addEventListener('click', () => {
@@ -2427,81 +2426,6 @@ document.getElementById('compExportBtn').addEventListener('click', () => {
   if (!table.querySelector('tbody tr')) { alert('No hay datos para exportar.'); return; }
   exportTableToCsv(table, 'comparativa_' + state.comp.anioA + '_vs_' + state.comp.anioB + '.csv');
 });
-
-// ============================================================
-// ESTRATEGIA DE GESTIÓN (matriz Sucursal × Lineamiento)
-// ------------------------------------------------------------
-// Una fila editable por Sucursal (Poda / MTTO / OM / Materiales MTTO / Materiales OM +
-// Ampliación disponible + Observaciones), igual que la tabla 6.2 de un informe de estrategia.
-// Cada fila se guarda individualmente con su botón "Guardar" — no hay autosave por celda, para
-// no disparar un POST por cada tecla en Observaciones.
-// ============================================================
-let estrategiaCache = []; // filas ya guardadas en la hoja "Estrategia", indexadas por sucursal
-let estrategiaOpcionesSiNo = ['SI', 'NO'];
-let estrategiaOpcionesLineamiento = ['GESTIONAR', 'NO GESTIONAR'];
-
-async function abrirVistaEstrategia() {
-  try {
-    const data = await apiCall('estrategia_listar');
-    estrategiaCache = data.estrategia || [];
-    estrategiaOpcionesSiNo = data.opcionesSiNo || estrategiaOpcionesSiNo;
-    estrategiaOpcionesLineamiento = data.opcionesLineamiento || estrategiaOpcionesLineamiento;
-    renderEstrategiaTable();
-  } catch (err) {
-    showAppError('No se pudo cargar la Estrategia de gestión: ' + err.message);
-  }
-}
-
-function renderEstrategiaTable() {
-  const sucursales = uniqueValues('sucursal').sort();
-  const puedeEditar = state.session && state.session.rol !== 'consulta';
-  const selectHtml = (id, valorActual, opciones) => `<select class="estrategia-select" data-estrategia-field="${id}" ${puedeEditar ? '' : 'disabled'}>` +
-    ['', ...opciones].map(o => `<option value="${escapeHtml(o)}" ${o === (valorActual || '') ? 'selected' : ''}>${o || '—'}</option>`).join('') +
-    '</select>';
-
-  const table = document.getElementById('estrategiaTable');
-  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Ampliación</th><th>Poda</th><th>MTTO</th><th>OM</th><th>Materiales MTTO</th><th>Materiales OM</th><th>Observaciones</th>' + (puedeEditar ? '<th></th>' : '') + '</tr></thead><tbody>' +
-    sucursales.map(sucursal => {
-      const fila = estrategiaCache.find(e => e.sucursal === sucursal) || {};
-      return `<tr data-sucursal="${escapeHtml(sucursal)}">
-        <td>${escapeHtml(sucursal)}</td>
-        <td>${selectHtml('ampliacion', fila.ampliacion, estrategiaOpcionesSiNo)}</td>
-        <td>${selectHtml('poda', fila.poda, estrategiaOpcionesLineamiento)}</td>
-        <td>${selectHtml('mtto', fila.mtto, estrategiaOpcionesLineamiento)}</td>
-        <td>${selectHtml('om', fila.om, estrategiaOpcionesLineamiento)}</td>
-        <td>${selectHtml('materialesMtto', fila.materialesMtto, estrategiaOpcionesLineamiento)}</td>
-        <td>${selectHtml('materialesOm', fila.materialesOm, estrategiaOpcionesLineamiento)}</td>
-        <td><input type="text" data-estrategia-field="observaciones" value="${escapeHtml(fila.observaciones || '')}" ${puedeEditar ? '' : 'disabled'} /></td>
-        ${puedeEditar ? '<td><button type="button" class="btn btn-secondary btn-sm" data-estrategia-guardar>Guardar</button></td>' : ''}
-      </tr>`;
-    }).join('') +
-    '</tbody>';
-
-  if (!puedeEditar) return;
-  table.querySelectorAll('[data-estrategia-guardar]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const sucursal = tr.dataset.sucursal;
-      const datos = { sucursal };
-      tr.querySelectorAll('[data-estrategia-field]').forEach(campo => {
-        datos[campo.dataset.estrategiaField] = campo.value;
-      });
-      btn.disabled = true;
-      btn.textContent = 'Guardando...';
-      try {
-        await apiCall('estrategia_guardar', { datos });
-        const idx = estrategiaCache.findIndex(e => e.sucursal === sucursal);
-        if (idx === -1) estrategiaCache.push(datos); else estrategiaCache[idx] = datos;
-        btn.textContent = 'Guardado ✓';
-        setTimeout(() => { btn.textContent = 'Guardar'; btn.disabled = false; }, 1200);
-      } catch (err) {
-        alert('No se pudo guardar: ' + err.message);
-        btn.textContent = 'Guardar';
-        btn.disabled = false;
-      }
-    });
-  });
-}
 
 // ============================================================
 // USUARIOS (admin)

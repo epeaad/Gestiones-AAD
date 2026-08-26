@@ -215,8 +215,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 #chartCertificacionPC{ height:520px !important; }
 #chartComparativa{ height:380px !important; }
 
-/* ============ COMPARATIVA / ESTRATEGIA ============ */
-.estrategia-select{ min-width:150px; }
+/* ============ COMPARATIVA ============ */
 
 
 /* ============ RESUMEN POR CONTRATISTA ============ */
