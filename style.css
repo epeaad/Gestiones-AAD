@@ -185,6 +185,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 
 /* ============ BUTTONS ============ */
 .btn{ border:none; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; }
+.btn-sm{ padding:5px 10px; font-size:12px; }
 .btn-primary{ background:var(--brand); color:#fff; }
 .btn-primary:hover{ background:var(--brand-dark); }
 .btn-secondary{ background:var(--brand-soft); color:var(--brand-dark); }
@@ -204,11 +205,18 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .kpi-card .kpi-label{ font-size:12px; color:var(--text-soft); font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
 .kpi-card .kpi-value{ font-family:var(--font-mono); font-size:22px; font-weight:600; margin-top:6px; }
 .kpi-card .kpi-sub{ font-size:12px; color:var(--text-soft); margin-top:4px; }
+#compKpiRow .kpi-card .kpi-value{ font-size:17px; }
+.text-success{ color:#16A34A !important; }
+.text-danger{ color:var(--danger) !important; }
 
 #chartMontos{ height:380px !important; }
 #chartAdjCertSucursal{ height:380px !important; }
 
 #chartCertificacionPC{ height:520px !important; }
+#chartComparativa{ height:380px !important; }
+
+/* ============ COMPARATIVA / ESTRATEGIA ============ */
+.estrategia-select{ min-width:150px; }
 
 
 /* ============ RESUMEN POR CONTRATISTA ============ */

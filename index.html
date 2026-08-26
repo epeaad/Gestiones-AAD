@@ -67,6 +67,12 @@
       <button class="nav-btn" data-view="registros">
         <span class="nav-icon">▤</span> Registros
       </button>
+      <button class="nav-btn" data-view="comparativa">
+        <span class="nav-icon">⇄</span> Comparativa
+      </button>
+      <button class="nav-btn" data-view="estrategia">
+        <span class="nav-icon">▥</span> Estrategia 2027
+      </button>
       <button class="nav-btn" data-view="formulario">
         <span class="nav-icon">＋</span> Nueva Contratación
       </button>
@@ -104,6 +110,7 @@
       <div class="view-header">
         <h2>Seguimiento presupuestario y de ejecución</h2>
         <div class="control-inline">
+          <button id="histSnapshotBtn" class="btn btn-ghost" title="Guarda una foto de los totales de hoy para poder comparar más adelante">Guardar snapshot de hoy</button>
           <button id="printDashboardBtn" class="btn btn-secondary">Imprimir a PDF</button>
         </div>
       </div>
@@ -201,6 +208,8 @@
             <label>Agrupar por
               <select id="dashGroupBy">
                 <option value="sucursal">Sucursal</option>
+                <option value="rubro">Rubro</option>
+                <option value="anio">Año</option>
                 <option value="pospre">PosPre</option>
                 <option value="nroPedidoCompras">Pedido de Compras</option>
                 <option value="adjudicatario">Contratista/Proveedor</option>
@@ -214,6 +223,97 @@
         <div class="table-wrap">
           <table id="dashTable" class="data-table"></table>
         </div>
+      </div>
+
+      <div class="panel">
+        <h3>Contratos vigentes por Sucursal — Adjudicados vs. Vacío (sin adjudicar)</h3>
+        <p class="table-note">Sobre el filtro actual: cuenta trámites con y sin Adjudicatario cargado, igual que la síntesis contrato por contrato de un informe de estrategia.</p>
+        <div class="table-wrap">
+          <table id="dashPivotTable" class="data-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- COMPARATIVA DE AÑOS ---------- -->
+    <section id="view-comparativa" class="view" hidden>
+      <div class="view-header">
+        <h2>Comparativa interanual</h2>
+        <div class="control-inline">
+          <button type="button" id="compExportBtn" class="btn btn-secondary">Exportar a CSV</button>
+        </div>
+      </div>
+
+      <div class="filters-bar" id="compControlsBar">
+        <div class="filter-field">
+          <label>Año A</label>
+          <select id="compAnioA"></select>
+        </div>
+        <div class="filter-field">
+          <label>Año B</label>
+          <select id="compAnioB"></select>
+        </div>
+        <div class="filter-field">
+          <label>Agrupar por</label>
+          <select id="compGroupBy">
+            <option value="sucursal">Sucursal</option>
+            <option value="rubro">Rubro</option>
+            <option value="pospre">PosPre</option>
+            <option value="adjudicatario">Contratista/Proveedor</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="filters-bar" id="compFiltersBar">
+        <div class="filter-field">
+          <label>Sucursal</label>
+          <div class="multiselect" data-compfilter="sucursal"></div>
+        </div>
+        <div class="filter-field">
+          <label>Rubro</label>
+          <div class="multiselect" data-compfilter="rubro"></div>
+        </div>
+        <div class="filter-field">
+          <label>Pospre</label>
+          <div class="multiselect" data-compfilter="pospre"></div>
+        </div>
+        <div class="filter-field">
+          <label>N° Pedido de Compras</label>
+          <div class="multiselect" data-compfilter="nroPedidoCompras"></div>
+        </div>
+        <div class="filter-field">
+          <label>Contratista/Proveedor</label>
+          <div class="multiselect" data-compfilter="adjudicatario"></div>
+        </div>
+        <div class="filter-field">
+          <label>Estado</label>
+          <div class="multiselect" data-compfilter="estado"></div>
+        </div>
+        <button id="compClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+      </div>
+
+      <div class="kpi-row" id="compKpiRow"></div>
+
+      <div class="panel">
+        <h3>% de Avance por grupo — Año A vs. Año B</h3>
+        <canvas id="chartComparativa" height="130"></canvas>
+      </div>
+
+      <div class="panel">
+        <div class="table-wrap">
+          <table id="compTable" class="data-table"></table>
+        </div>
+        <p class="table-note">Ordenado por variación (peor caída primero). Variación en p.p. (puntos porcentuales) porque compara dos valores que ya son %.</p>
+      </div>
+    </section>
+
+    <!-- ---------- ESTRATEGIA DE GESTIÓN ---------- -->
+    <section id="view-estrategia" class="view" hidden>
+      <div class="view-header">
+        <h2>Estrategia de gestión por sucursal</h2>
+      </div>
+      <p class="table-note">Definí, por sucursal, si se gestionan nuevos procesos o se cubre la demanda con los contratos vigentes y sus ampliaciones (igual que la matriz 6.2 de un informe de estrategia). Los cambios se guardan por fila.</p>
+      <div class="table-wrap">
+        <table id="estrategiaTable" class="data-table"></table>
       </div>
     </section>
 

@@ -63,7 +63,8 @@ const state = {
   activeStage: null,
   registrosSort: { key: null, dir: 1 },     // ordenamiento de la tabla de Registros
   dashSort: { key: null, dir: -1 },         // ordenamiento de la tabla de detalle del Dashboard (agrupada)
-  dashDetalleSort: { key: null, dir: 1 }    // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
+  dashDetalleSort: { key: null, dir: 1 },   // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
+  comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} } // módulo Comparativa de años
 };
 
 const DASH_FILTER_KEYS = ['anio','sucursal','rubro','pospre','nroPedidoCompras','adjudicatario','estado'];
@@ -214,6 +215,8 @@ function showView(name) {
   if (name === 'proyectos') abrirVistaProyectos();
   if (name === 'compras') abrirVistaCompras();
   if (name === 'usuarios') renderUsuarios();
+  if (name === 'comparativa') renderComparativa();
+  if (name === 'estrategia') abrirVistaEstrategia();
 }
 
 document.getElementById('formNewBtn').addEventListener('click', () => {
@@ -439,7 +442,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasExportBtn', 'printDashboardBtn', 'dashDetalleExportBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasExportBtn', 'printDashboardBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -473,6 +476,16 @@ async function boot() {
     await cargarComprasDatos();
   } catch (err) {
     console.error('No se pudieron precargar las compras para el Dashboard:', err);
+  }
+
+  // Historial de KPIs: se precarga (para mostrar "vs. último corte" en el Dashboard) y, si todavía
+  // no hay un snapshot guardado para hoy, se guarda uno automáticamente con los totales generales
+  // (sin filtros) tal como están en este momento.
+  try {
+    await cargarHistorialKPIs();
+    await guardarSnapshotHistorialSiCorresponde();
+  } catch (err) {
+    console.error('No se pudo precargar/guardar el historial de KPIs:', err);
   }
 
   populateFilterOptions();
@@ -1730,6 +1743,28 @@ function renderDashboard() {
   const sumaIIBBGestionadosOM = sumField(rowsObraMenor, 'cantidadesIIBB');
   const pctIIBBProyectadoGeneral = sumaIIBBGestionadosOM > 0 ? (sumaIIBBProyectados / sumaIIBBGestionadosOM) * 100 : 0;
 
+  // ---- Multas: variación vs. el último snapshot guardado del Historial de KPIs. Solo se muestra
+  // sin filtros activos, porque el snapshot guardado es siempre sobre los totales generales ----
+  const dashSinFiltrosActivos = DASH_FILTER_KEYS.every(k => !state.dashFiltros[k] || !state.dashFiltros[k].length)
+    && !state.dashFiltros.fechaPCDesde && !state.dashFiltros.fechaPCHasta
+    && !state.dashFiltros.pctAvanceDesde && !state.dashFiltros.pctAvanceHasta
+    && !state.dashFiltros.texto && !state.riesgoPlazoActivo;
+  let subMultas = 'sin IVA';
+  if (dashSinFiltrosActivos) {
+    const previo = snapshotAnteriorAHoy();
+    if (previo) {
+      const deltaMultas = totalMultas - num(previo.totalMultas);
+      const deltaPct = num(previo.totalMultas) > 0 ? (deltaMultas / num(previo.totalMultas)) * 100 : null;
+      subMultas = (deltaMultas >= 0 ? '+' : '') + formatMillions(deltaMultas) + ' vs. ' + previo.fecha
+        + (deltaPct != null ? ' (' + (deltaPct >= 0 ? '+' : '') + deltaPct.toFixed(1) + '%)' : '');
+    } else {
+      subMultas = 'sin IVA · sin snapshot anterior para comparar todavía';
+    }
+  }
+
+  // ---- Contratistas en semáforo rojo (mismo criterio de "Resumen por Contratista": <40% de avance) ----
+  const contratistaStats = computeContratistaStats(rows);
+
   const kpiRow = document.getElementById('kpiRow');
   kpiRow.innerHTML = [
     kpiCard('Trámites (filtro actual)', rows.length, 'de ' + state.registros.length + ' totales'),
@@ -1738,10 +1773,11 @@ function renderDashboard() {
     kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'sin IVA'),
     kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado'),
     kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial'),
-    kpiCard('Multas acumuladas', formatMillions(totalMultas), 'sin IVA'),
+    kpiCard('Multas acumuladas', formatMillions(totalMultas), subMultas),
     kpiCard('$ Reconocimiento acumulado', formatMillions(totalReconocimiento), 'suma de certificaciones cargadas'),
     kpiCard('Erogación total real', formatMillions(erogacionTotalReal), 'Certificado por AAD + Reconocimiento'),
     kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
+    kpiCard('Contratistas en semáforo rojo', contratistaStats.rojo + ' / ' + contratistaStats.total, contratistaStats.total ? '<40% de avance · ' + ((contratistaStats.rojo / contratistaStats.total) * 100).toFixed(1) + '% del total' : 'sin contratistas en este filtro'),
     kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
     kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)'),
   ].join('');
@@ -1870,6 +1906,9 @@ function renderDashboard() {
 
   // ---- Resumen por Contratista (tarjetas con semáforo) ----
   renderContratistaResumen(rows);
+
+  // ---- Contratos vigentes por Sucursal: Adjudicados vs. Vacío (sin adjudicar) ----
+  renderPivotSucursalEstado(rows);
 
   // ---- Tabla de detalle (según "Agrupar por") ----
   // "Todos": en vez de agrupar, se muestra el detalle completo de cada trámite que pasa los filtros actuales.
@@ -2066,7 +2105,43 @@ function exportTableToCsv(tableEl, filename) {
   URL.revokeObjectURL(url);
 }
 
-function renderContratistaResumen(rows) {
+// ---- Contratos vigentes por Sucursal: cuenta trámites con y sin Adjudicatario cargado ----
+// "Vacío" = trámite sin Adjudicatario (no confundir con ESTADO_VACIO_LABEL, que es sobre el
+// campo Estado): es el mismo criterio de "sin contratista adjudicado" que usa la síntesis
+// contrato por contrato de un informe de estrategia (sección "Contratos Vigentes por Sucursal").
+function renderPivotSucursalEstado(rows) {
+  const bySucursal = {};
+  rows.forEach(r => {
+    const key = (r.sucursal || '(sin sucursal)').toString().trim() || '(sin sucursal)';
+    if (!bySucursal[key]) bySucursal[key] = { total: 0, adjudicados: 0 };
+    bySucursal[key].total++;
+    if (r.adjudicatario && String(r.adjudicatario).trim()) bySucursal[key].adjudicados++;
+  });
+
+  const filas = Object.entries(bySucursal).map(([sucursal, v]) => ({
+    sucursal, total: v.total, adjudicados: v.adjudicados, vacio: v.total - v.adjudicados,
+    pctAdjudicados: v.total > 0 ? (v.adjudicados / v.total) * 100 : 0
+  })).sort((a, b) => b.total - a.total);
+
+  const totales = filas.reduce((acc, f) => {
+    acc.total += f.total; acc.adjudicados += f.adjudicados; acc.vacio += f.vacio;
+    return acc;
+  }, { total: 0, adjudicados: 0, vacio: 0 });
+  const pctAdjudicadosTotal = totales.total > 0 ? (totales.adjudicados / totales.total) * 100 : 0;
+
+  const table = document.getElementById('dashPivotTable');
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Contratos vigentes</th><th>Adjudicados</th><th>Vacío (sin adjudicar)</th><th>% Adjudicados</th></tr></thead><tbody>' +
+    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.adjudicados}</td><td>${f.vacio}</td><td>${f.pctAdjudicados.toFixed(0)}%</td></tr>`).join('') +
+    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.adjudicados}</td><td>${totales.vacio}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td></tr>` +
+    '</tbody>';
+  setupScrollShadow(table.closest('.table-wrap'));
+}
+
+// Agrupa por Adjudicatario y calcula el semáforo de cada uno (🔴 <40% · 🟡 40-74% · 🟢 ≥75% de
+// avance). Función pura, sin tocar el DOM: la usan tanto el grid de tarjetas (renderContratistaResumen)
+// como el KPI "Contratistas en semáforo rojo" del Dashboard, para no calcular esto dos veces con
+// criterios que puedan divergir.
+function computeContratistaStats(rows) {
   const byContratista = {};
   rows.forEach(r => {
     if (!r.adjudicatario) return;
@@ -2086,6 +2161,14 @@ function renderContratistaResumen(rows) {
     avance: v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0
   })).sort((a, b) => b.adjudicado - a.adjudicado);
 
+  const rojo = entries.filter(c => c.avance < 40).length;
+  const amarillo = entries.filter(c => c.avance >= 40 && c.avance < 75).length;
+  const verde = entries.filter(c => c.avance >= 75).length;
+  return { entries, rojo, amarillo, verde, total: entries.length };
+}
+
+function renderContratistaResumen(rows) {
+  const { entries } = computeContratistaStats(rows);
   const shown = contratistaMode === 'top10' ? entries.slice(0, 10) : entries;
 
   const grid = document.getElementById('contratistaGrid');
@@ -2106,8 +2189,67 @@ function renderContratistaResumen(rows) {
 }
 
 function labelForGroup(key) {
-  return { sucursal:'Sucursal', pospre:'PosPre', nroPedidoCompras:'Pedido de Compras', adjudicatario:'Contratista/Proveedor' }[key] || key;
+  return { sucursal:'Sucursal', pospre:'PosPre', nroPedidoCompras:'Pedido de Compras', adjudicatario:'Contratista/Proveedor', rubro:'Rubro', anio:'Año' }[key] || key;
 }
+
+// ============================================================
+// HISTORIAL DE KPIs (snapshots fechados de los totales generales, sin filtros)
+// ------------------------------------------------------------
+// Un snapshot por día: al entrar a la app se guarda solo si todavía no existe uno para hoy (ver
+// boot()). El botón "Guardar snapshot de hoy" del Dashboard fuerza la actualización del snapshot
+// de HOY (por si los datos cambiaron durante el día), sin crear una fila nueva.
+// ============================================================
+let historialKPIsCache = []; // ordenado por fecha descendente (más reciente primero)
+
+async function cargarHistorialKPIs() {
+  const data = await apiCall('historial_kpis_listar');
+  historialKPIsCache = data.historial || [];
+}
+
+function hoyStrFrontend() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+async function guardarSnapshotHistorialSiCorresponde(forzar) {
+  if (!state.session || state.session.rol === 'consulta') return; // solo-consulta no puede escribir
+  const hoy = hoyStrFrontend();
+  const yaExiste = historialKPIsCache.some(h => h.fecha === hoy);
+  if (yaExiste && !forzar) return;
+  const rows = state.registros;
+  const snapshot = {
+    cantTramites: rows.length,
+    totalPresOficial: sumField(rows, 'presupuestoOficialRubro'),
+    totalAdjudicado: sumField(rows, 'totalAdjudicado'),
+    totalCertificado: sumField(rows, 'certificadosAAD'),
+    totalMultas: sumField(rows, 'sumatoriaMultas'),
+    cantDesiertos: rows.filter(r => r.estado === 'Desierto').length,
+    cantAdjudicados: rows.filter(r => r.estado === 'Adjudicado').length
+  };
+  await apiCall('historial_kpis_guardar', { datos: snapshot });
+  await cargarHistorialKPIs();
+}
+
+/** Devuelve el snapshot más reciente que NO sea el de hoy (para mostrar "vs. último corte"), o
+ *  null si todavía no hay ninguno anterior guardado. */
+function snapshotAnteriorAHoy() {
+  const hoy = hoyStrFrontend();
+  return historialKPIsCache.find(h => h.fecha !== hoy) || null;
+}
+
+document.getElementById('histSnapshotBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('histSnapshotBtn');
+  btn.disabled = true;
+  try {
+    await guardarSnapshotHistorialSiCorresponde(true);
+    renderDashboard();
+  } catch (err) {
+    alert('No se pudo guardar el snapshot: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 function kpiCard(label, value, sub) {
   return `<div class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
 }
@@ -2120,6 +2262,245 @@ function formatMoney(v) {
 function formatMillions(v) {
   const n = num(v) / 1000000;
   return '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' M';
+}
+
+// ============================================================
+// COMPARATIVA DE AÑOS
+// ------------------------------------------------------------
+// Compara dos ejercicios (Año A vs. Año B) lado a lado, agrupados por Sucursal/Rubro/PosPre/
+// Contratista, con variación en p.p. (cuando el campo ya es un %) o en % (cuando es un monto o
+// una cantidad). Reusa los mismos filtros del Dashboard salvo "Año", que acá se elige aparte con
+// dos selects en vez de un multiselect.
+// ============================================================
+const COMP_FILTER_KEYS = DASH_FILTER_KEYS.filter(k => k !== 'anio');
+let chartComparativa = null;
+
+// KPIs generales de un conjunto de filas, sin depender del DOM — usado para calcular Año A y
+// Año B por separado con la misma fórmula exacta que ya usa el Dashboard.
+function computeKpis(rows) {
+  const totalPresOficial = sumField(rows, 'presupuestoOficialRubro');
+  const totalAdjudicado = sumField(rows, 'totalAdjudicado');
+  const totalCertificado = sumField(rows, 'certificadosAAD');
+  const totalMultas = sumField(rows, 'sumatoriaMultas');
+  const pctEjecucion = totalAdjudicado > 0 ? (totalCertificado / totalAdjudicado) * 100 : 0;
+  const cantDesiertos = rows.filter(r => r.estado === 'Desierto').length;
+  const cantAdjudicados = rows.filter(r => r.estado === 'Adjudicado').length;
+  return { n: rows.length, totalPresOficial, totalAdjudicado, totalCertificado, totalMultas, pctEjecucion, cantDesiertos, cantAdjudicados };
+}
+
+// Totales agrupados por una clave (sucursal/rubro/pospre/adjudicatario), sin depender del DOM.
+function computeGroupStats(rows, groupKey) {
+  const groups = {};
+  rows.forEach(r => {
+    const key = (r[groupKey] || '(sin dato)').toString().trim() || '(sin dato)';
+    if (!groups[key]) groups[key] = { n: 0, presOficial: 0, adjudicado: 0, certificado: 0 };
+    groups[key].n++;
+    groups[key].presOficial += num(r.presupuestoOficialRubro);
+    groups[key].adjudicado += num(r.totalAdjudicado);
+    groups[key].certificado += num(r.certificadosAAD);
+  });
+  return Object.entries(groups).map(([grupo, v]) => ({
+    grupo, n: v.n, presOficial: v.presOficial, adjudicado: v.adjudicado, certificado: v.certificado,
+    avance: v.adjudicado > 0 ? (v.certificado / v.adjudicado) * 100 : 0
+  }));
+}
+
+function populateCompAnioSelects() {
+  const anios = uniqueValues('anio').map(a => String(a)).filter(Boolean).sort();
+  const selA = document.getElementById('compAnioA');
+  const selB = document.getElementById('compAnioB');
+  if (!selA || !anios.length) return;
+  const opciones = anios.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  if (selA.innerHTML !== opciones) selA.innerHTML = opciones;
+  if (selB.innerHTML !== opciones) selB.innerHTML = opciones;
+  if (!state.comp.anioA || !anios.includes(state.comp.anioA)) state.comp.anioA = anios[Math.max(0, anios.length - 2)];
+  if (!state.comp.anioB || !anios.includes(state.comp.anioB)) state.comp.anioB = anios[anios.length - 1];
+  selA.value = state.comp.anioA;
+  selB.value = state.comp.anioB;
+}
+
+function populateCompFilterOptions() {
+  COMP_FILTER_KEYS.forEach(key => {
+    const el = document.querySelector('#compFiltersBar [data-compfilter="' + key + '"]');
+    if (!el) return;
+    const opts = uniqueValues(key);
+    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
+    state.comp.filtros[key] = (state.comp.filtros[key] || []).filter(v => opts.includes(v));
+    renderMultiselect(el, opts, state.comp.filtros[key], (vals) => {
+      state.comp.filtros[key] = vals;
+      renderComparativa();
+    });
+  });
+}
+
+function renderComparativa() {
+  populateCompAnioSelects();
+  populateCompFilterOptions();
+  if (!state.comp.anioA || !state.comp.anioB) {
+    document.getElementById('compKpiRow').innerHTML = '<div class="empty-state">No hay años cargados todavía para comparar.</div>';
+    return;
+  }
+
+  const groupKey = state.comp.groupBy || 'sucursal';
+  const baseFiltrada = applyFilters(state.registros, state.comp.filtros, COMP_FILTER_KEYS);
+  const rowsA = baseFiltrada.filter(r => String(r.anio) === state.comp.anioA);
+  const rowsB = baseFiltrada.filter(r => String(r.anio) === state.comp.anioB);
+
+  const kA = computeKpis(rowsA);
+  const kB = computeKpis(rowsB);
+
+  const kpiCompHtml = (label, valA, valB, delta, unidad) => {
+    const claseColor = delta == null ? '' : (delta > 0 ? 'text-success' : (delta < 0 ? 'text-danger' : ''));
+    const deltaTxt = delta == null ? 's/d' : (delta >= 0 ? '+' : '') + delta.toFixed(1) + unidad;
+    return `<div class="kpi-card">
+      <div class="kpi-label">${escapeHtml(label)}</div>
+      <div class="kpi-value">${valA} &rarr; ${valB}</div>
+      <div class="kpi-sub ${claseColor}">${deltaTxt}</div>
+    </div>`;
+  };
+  const deltaPct = (a, b) => (a > 0 ? ((b - a) / a) * 100 : (b > 0 ? null : 0));
+
+  document.getElementById('compKpiRow').innerHTML = [
+    kpiCompHtml('Trámites', kA.n, kB.n, deltaPct(kA.n, kB.n), '%'),
+    kpiCompHtml('% Ejecución', kA.pctEjecucion.toFixed(1) + '%', kB.pctEjecucion.toFixed(1) + '%', kB.pctEjecucion - kA.pctEjecucion, ' p.p.'),
+    kpiCompHtml('Total Adjudicado', formatMillions(kA.totalAdjudicado), formatMillions(kB.totalAdjudicado), deltaPct(kA.totalAdjudicado, kB.totalAdjudicado), '%'),
+    kpiCompHtml('Certificado AAD', formatMillions(kA.totalCertificado), formatMillions(kB.totalCertificado), deltaPct(kA.totalCertificado, kB.totalCertificado), '%'),
+    kpiCompHtml('Multas', formatMillions(kA.totalMultas), formatMillions(kB.totalMultas), deltaPct(kA.totalMultas, kB.totalMultas), '%'),
+    kpiCompHtml('Desiertos', kA.cantDesiertos, kB.cantDesiertos, deltaPct(kA.cantDesiertos, kB.cantDesiertos), '%')
+  ].join('');
+
+  const statsA = computeGroupStats(rowsA, groupKey);
+  const statsB = computeGroupStats(rowsB, groupKey);
+  const grupos = Array.from(new Set([...statsA.map(s => s.grupo), ...statsB.map(s => s.grupo)])).sort();
+  const filas = grupos.map(g => {
+    const a = statsA.find(s => s.grupo === g) || { n: 0, adjudicado: 0, certificado: 0, avance: 0 };
+    const b = statsB.find(s => s.grupo === g) || { n: 0, adjudicado: 0, certificado: 0, avance: 0 };
+    return { grupo: g, nA: a.n, nB: b.n, adjudicadoA: a.adjudicado, adjudicadoB: b.adjudicado, avanceA: a.avance, avanceB: b.avance, variacionPP: b.avance - a.avance };
+  }).sort((f1, f2) => f1.variacionPP - f2.variacionPP);
+
+  const table = document.getElementById('compTable');
+  table.innerHTML = `<thead><tr>
+      <th>${escapeHtml(labelForGroup(groupKey))}</th>
+      <th>Trámites ${escapeHtml(state.comp.anioA)}</th><th>Trámites ${escapeHtml(state.comp.anioB)}</th>
+      <th>Adjudicado ${escapeHtml(state.comp.anioA)}</th><th>Adjudicado ${escapeHtml(state.comp.anioB)}</th>
+      <th>% Avance ${escapeHtml(state.comp.anioA)}</th><th>% Avance ${escapeHtml(state.comp.anioB)}</th>
+      <th>Variación</th>
+    </tr></thead><tbody>` +
+    filas.map(f => `<tr>
+      <td>${escapeHtml(f.grupo)}</td>
+      <td>${f.nA}</td><td>${f.nB}</td>
+      <td>${formatMillions(f.adjudicadoA)}</td><td>${formatMillions(f.adjudicadoB)}</td>
+      <td>${f.avanceA.toFixed(1)}%</td><td>${f.avanceB.toFixed(1)}%</td>
+      <td class="${f.variacionPP < 0 ? 'text-danger' : (f.variacionPP > 0 ? 'text-success' : '')}">${f.variacionPP >= 0 ? '+' : ''}${f.variacionPP.toFixed(1)} p.p.</td>
+    </tr>`).join('') +
+    '</tbody>';
+  setupScrollShadow(table.closest('.table-wrap'));
+
+  const ctx = document.getElementById('chartComparativa').getContext('2d');
+  if (chartComparativa) chartComparativa.destroy();
+  chartComparativa = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: filas.map(f => f.grupo),
+      datasets: [
+        { label: '% Avance ' + state.comp.anioA, data: filas.map(f => f.avanceA), borderColor: '#94A3B8', backgroundColor: '#94A3B8', pointBackgroundColor: filas.map(f => semColor(f.avanceA)), pointRadius: 5, tension: 0.3 },
+        { label: '% Avance ' + state.comp.anioB, data: filas.map(f => f.avanceB), borderColor: '#0F6E56', backgroundColor: '#0F6E56', pointBackgroundColor: filas.map(f => semColor(f.avanceB)), pointRadius: 5, tension: 0.3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 30 } }, y: { beginAtZero: true, max: 130, title: { display: true, text: '% Avance' } } },
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+}
+
+document.getElementById('compAnioA').addEventListener('change', (e) => { state.comp.anioA = e.target.value; renderComparativa(); });
+document.getElementById('compAnioB').addEventListener('change', (e) => { state.comp.anioB = e.target.value; renderComparativa(); });
+document.getElementById('compGroupBy').addEventListener('change', (e) => { state.comp.groupBy = e.target.value; renderComparativa(); });
+document.getElementById('compClearFilters').addEventListener('click', () => {
+  COMP_FILTER_KEYS.forEach(k => { state.comp.filtros[k] = []; });
+  renderComparativa();
+});
+document.getElementById('compExportBtn').addEventListener('click', () => {
+  const table = document.getElementById('compTable');
+  if (!table.querySelector('tbody tr')) { alert('No hay datos para exportar.'); return; }
+  exportTableToCsv(table, 'comparativa_' + state.comp.anioA + '_vs_' + state.comp.anioB + '.csv');
+});
+
+// ============================================================
+// ESTRATEGIA DE GESTIÓN (matriz Sucursal × Lineamiento)
+// ------------------------------------------------------------
+// Una fila editable por Sucursal (Poda / MTTO / OM / Materiales MTTO / Materiales OM +
+// Ampliación disponible + Observaciones), igual que la tabla 6.2 de un informe de estrategia.
+// Cada fila se guarda individualmente con su botón "Guardar" — no hay autosave por celda, para
+// no disparar un POST por cada tecla en Observaciones.
+// ============================================================
+let estrategiaCache = []; // filas ya guardadas en la hoja "Estrategia", indexadas por sucursal
+let estrategiaOpcionesSiNo = ['SI', 'NO'];
+let estrategiaOpcionesLineamiento = ['GESTIONAR', 'NO GESTIONAR'];
+
+async function abrirVistaEstrategia() {
+  try {
+    const data = await apiCall('estrategia_listar');
+    estrategiaCache = data.estrategia || [];
+    estrategiaOpcionesSiNo = data.opcionesSiNo || estrategiaOpcionesSiNo;
+    estrategiaOpcionesLineamiento = data.opcionesLineamiento || estrategiaOpcionesLineamiento;
+    renderEstrategiaTable();
+  } catch (err) {
+    showAppError('No se pudo cargar la Estrategia de gestión: ' + err.message);
+  }
+}
+
+function renderEstrategiaTable() {
+  const sucursales = uniqueValues('sucursal').sort();
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  const selectHtml = (id, valorActual, opciones) => `<select class="estrategia-select" data-estrategia-field="${id}" ${puedeEditar ? '' : 'disabled'}>` +
+    ['', ...opciones].map(o => `<option value="${escapeHtml(o)}" ${o === (valorActual || '') ? 'selected' : ''}>${o || '—'}</option>`).join('') +
+    '</select>';
+
+  const table = document.getElementById('estrategiaTable');
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Ampliación</th><th>Poda</th><th>MTTO</th><th>OM</th><th>Materiales MTTO</th><th>Materiales OM</th><th>Observaciones</th>' + (puedeEditar ? '<th></th>' : '') + '</tr></thead><tbody>' +
+    sucursales.map(sucursal => {
+      const fila = estrategiaCache.find(e => e.sucursal === sucursal) || {};
+      return `<tr data-sucursal="${escapeHtml(sucursal)}">
+        <td>${escapeHtml(sucursal)}</td>
+        <td>${selectHtml('ampliacion', fila.ampliacion, estrategiaOpcionesSiNo)}</td>
+        <td>${selectHtml('poda', fila.poda, estrategiaOpcionesLineamiento)}</td>
+        <td>${selectHtml('mtto', fila.mtto, estrategiaOpcionesLineamiento)}</td>
+        <td>${selectHtml('om', fila.om, estrategiaOpcionesLineamiento)}</td>
+        <td>${selectHtml('materialesMtto', fila.materialesMtto, estrategiaOpcionesLineamiento)}</td>
+        <td>${selectHtml('materialesOm', fila.materialesOm, estrategiaOpcionesLineamiento)}</td>
+        <td><input type="text" data-estrategia-field="observaciones" value="${escapeHtml(fila.observaciones || '')}" ${puedeEditar ? '' : 'disabled'} /></td>
+        ${puedeEditar ? '<td><button type="button" class="btn btn-secondary btn-sm" data-estrategia-guardar>Guardar</button></td>' : ''}
+      </tr>`;
+    }).join('') +
+    '</tbody>';
+
+  if (!puedeEditar) return;
+  table.querySelectorAll('[data-estrategia-guardar]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const tr = btn.closest('tr');
+      const sucursal = tr.dataset.sucursal;
+      const datos = { sucursal };
+      tr.querySelectorAll('[data-estrategia-field]').forEach(campo => {
+        datos[campo.dataset.estrategiaField] = campo.value;
+      });
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+      try {
+        await apiCall('estrategia_guardar', { datos });
+        const idx = estrategiaCache.findIndex(e => e.sucursal === sucursal);
+        if (idx === -1) estrategiaCache.push(datos); else estrategiaCache[idx] = datos;
+        btn.textContent = 'Guardado ✓';
+        setTimeout(() => { btn.textContent = 'Guardar'; btn.disabled = false; }, 1200);
+      } catch (err) {
+        alert('No se pudo guardar: ' + err.message);
+        btn.textContent = 'Guardar';
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 // ============================================================
