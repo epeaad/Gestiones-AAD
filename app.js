@@ -458,6 +458,8 @@ async function boot() {
   const puedeEditar = state.session.rol !== 'consulta';
   const navFormulario = document.querySelector('.nav-btn[data-view="formulario"]');
   if (navFormulario) navFormulario.hidden = !puedeEditar;
+  // Los usuarios "Solo consulta" tampoco ven el módulo de Compras.
+  document.getElementById('navCompras').hidden = state.session.rol === 'consulta';
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
@@ -517,7 +519,8 @@ async function boot() {
   const vistaValida = ultimaVista && document.getElementById('view-' + ultimaVista);
   const vistaPermitida = vistaValida
     && !(ultimaVista === 'usuarios' && state.session.rol !== 'admin')
-    && !(ultimaVista === 'formulario' && !puedeEditar);
+    && !(ultimaVista === 'formulario' && !puedeEditar)
+    && !(ultimaVista === 'compras' && state.session.rol === 'consulta');
   showView(vistaPermitida ? ultimaVista : 'dashboard');
 }
 
