@@ -73,26 +73,45 @@ const DASH_FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPe
 // ============================================================
 // API
 // ============================================================
+// ---- Indicador de carga global: una barra fina arriba del contenido que aparece mientras hay
+// alguna llamada al servidor en curso (Apps Script puede tardar 1-3 seg). Al envolver apiCall en
+// vez de cada botón por separado, esto cubre automáticamente TODAS las acciones de la app
+// (guardar, eliminar, cambiar de módulo, etc.) sin tener que instrumentar cada una a mano. ----
+let apiCallsEnCurso = 0;
+function mostrarCargandoGlobal() {
+  apiCallsEnCurso++;
+  document.getElementById('topLoadingBar').classList.add('is-active');
+}
+function ocultarCargandoGlobal() {
+  apiCallsEnCurso = Math.max(0, apiCallsEnCurso - 1);
+  if (apiCallsEnCurso === 0) document.getElementById('topLoadingBar').classList.remove('is-active');
+}
+
 async function apiCall(action, payload) {
   const body = Object.assign({ action }, payload || {});
   if (state.session) {
     body.usuario = state.session.usuario;
     body.clave = state.session.clave;
   }
-  let res;
+  mostrarCargandoGlobal();
   try {
-    res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
-      body: JSON.stringify(body)
-    });
-  } catch (networkErr) {
-    throw new Error('No se pudo conectar con el servidor. Puede ser un corte de conexión momentáneo o que Google esté demorado — esperá unos segundos y volvé a intentar.');
+    let res;
+    try {
+      res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
+        body: JSON.stringify(body)
+      });
+    } catch (networkErr) {
+      throw new Error('No se pudo conectar con el servidor. Puede ser un corte de conexión momentáneo o que Google esté demorado — esperá unos segundos y volvé a intentar.');
+    }
+    if (!res.ok) throw new Error('Error de red (' + res.status + ')');
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error desconocido');
+    return data;
+  } finally {
+    ocultarCargandoGlobal();
   }
-  if (!res.ok) throw new Error('Error de red (' + res.status + ')');
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'Error desconocido');
-  return data;
 }
 
 // ============================================================
@@ -1068,6 +1087,33 @@ document.getElementById('riesgoPlazoBtnReg').addEventListener('click', () => {
   renderRegistros();
 });
 
+// ---- Toggle de "Filtros avanzados": colapsa/expande la segunda fila de filtros más
+// específicos (Fecha P.C., % de Avance, Buscar palabra, Riesgo por Plazo), tanto en Dashboard
+// como en Registros. Si alguno de esos filtros ya tiene un valor cargado, se muestra expandido
+// de entrada (no queremos esconder un filtro activo sin que se note). ----
+function tieneFiltrosAvanzadosActivos(filtros, riesgoActivo) {
+  return !!(filtros.fechaPCDesde || filtros.fechaPCHasta || filtros.pctAvanceDesde || filtros.pctAvanceHasta || filtros.texto || riesgoActivo);
+}
+function wireToggleFiltrosAvanzados(btnId, panelId) {
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  btn.addEventListener('click', () => {
+    const abierto = panel.hidden;
+    panel.hidden = !abierto;
+    btn.classList.toggle('is-open', abierto);
+  });
+}
+wireToggleFiltrosAvanzados('dashFiltrosAvanzadosToggle', 'dashFiltersBarAvanzados');
+wireToggleFiltrosAvanzados('filtrosAvanzadosToggle', 'filtersBarAvanzados');
+if (tieneFiltrosAvanzadosActivos(state.dashFiltros, state.riesgoPlazoActivo)) {
+  document.getElementById('dashFiltersBarAvanzados').hidden = false;
+  document.getElementById('dashFiltrosAvanzadosToggle').classList.add('is-open');
+}
+if (tieneFiltrosAvanzadosActivos(state.filtros, state.riesgoPlazoActivoRegistros)) {
+  document.getElementById('filtersBarAvanzados').hidden = false;
+  document.getElementById('filtrosAvanzadosToggle').classList.add('is-open');
+}
+
 document.getElementById('dashClearFilters').addEventListener('click', () => {
   DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = (k === 'expediente') ? '' : []; });
   const dashExpEl = document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]');
@@ -1786,14 +1832,11 @@ function renderDashboard() {
 
   // ---- $ Reconocimiento acumulado: suma de "$ de Reconocimiento" de TODAS las certificaciones
   // cargadas cuyo trámite pasa el filtro actual del Dashboard. No es un dato del trámite en sí (no
-  // se guarda ahí), se cruza en vivo con las certificaciones ya cargadas en la otra pestaña. La
-  // "Erogación total real" suma esto al Certificado por AAD, para reflejar todo lo efectivamente
-  // reconocido/pagado (certificado + reconocimientos), no solo el monto certificado base.
+  // se guarda ahí), se cruza en vivo con las certificaciones ya cargadas en la otra pestaña.
   const idsFiltrados = new Set(rows.map(r => r._id));
   const totalReconocimiento = (certListaCache || [])
     .filter(c => idsFiltrados.has(c.idTramite))
     .reduce((acc, c) => acc + num(c.montoReconocimiento), 0);
-  const erogacionTotalReal = totalCertificado + totalReconocimiento;
 
   // ---- Desiertos vs. Adjudicados: sobre los trámites del filtro actual que ya tienen uno de estos dos estados ----
   const cantDesiertos = rows.filter(r => r.estado === 'Desierto').length;
@@ -1829,21 +1872,28 @@ function renderDashboard() {
   // ---- Contratistas en semáforo rojo (mismo criterio de "Resumen por Contratista": <40% de avance) ----
   const contratistaStats = computeContratistaStats(rows);
 
+  // ---- Semáforo de los KPIs porcentuales: mismo criterio de color que el resto de la app
+  // (semColor: ≥75% verde, ≥40% amarillo, <40% rojo) para % Ejecución y % IIBB Proyectados
+  // (donde más alto es mejor). El Desvío presupuestario es al revés: 0% o negativo (por debajo
+  // del oficial) es lo deseable, y recién se pone rojo si el sobrecosto supera el 15%. ----
+  const colorPctEjecucion = semColor(pctEjecucion);
+  const colorDesvio = desvioPresupuestario <= 0 ? '#16A34A' : (desvioPresupuestario <= 15 ? '#D97706' : '#DC2626');
+  const colorPctIIBB = semColor(pctIIBBProyectadoGeneral);
+
   const kpiRow = document.getElementById('kpiRow');
   kpiRow.innerHTML = [
     kpiCard('Trámites (filtro actual)', rows.length, 'de ' + state.registros.length + ' totales'),
     kpiCard('Presupuesto oficial total', formatMillions(totalPresOficial), 'sin IVA'),
     kpiCard('Total adjudicado', formatMillions(totalAdjudicado), 'sin IVA'),
     kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'sin IVA'),
-    kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado'),
-    kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial'),
+    kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado', colorPctEjecucion),
+    kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial', colorDesvio),
     kpiCard('Multas acumuladas', formatMillions(totalMultas), subMultas),
     kpiCard('$ Reconocimiento acumulado', formatMillions(totalReconocimiento), 'suma de certificaciones cargadas'),
-    kpiCard('Erogación total real', formatMillions(erogacionTotalReal), 'Certificado por AAD + Reconocimiento'),
     kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
     kpiCard('Contratistas en semáforo rojo', contratistaStats.rojo + ' / ' + contratistaStats.total, contratistaStats.total ? '<40% de avance · ' + ((contratistaStats.rojo / contratistaStats.total) * 100).toFixed(1) + '% del total' : 'sin contratistas en este filtro'),
     kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
-    kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)'),
+    kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)', colorPctIIBB),
   ].join('');
 
 
@@ -1857,12 +1907,26 @@ function renderDashboard() {
   const bySucursal = {};
   rows.forEach(r => {
     const key = (r[chartAgruparPor] || '(sin ' + chartEtiquetaGrupo.toLowerCase() + ')').toString().trim() || '(sin ' + chartEtiquetaGrupo.toLowerCase() + ')';
-    if (!bySucursal[key]) bySucursal[key] = { presOficial:0, adjudicado:0, certificado:0 };
+    if (!bySucursal[key]) bySucursal[key] = { presOficial:0, adjudicado:0, certificado:0, contratistas: new Set(), pospres: new Set() };
     bySucursal[key].presOficial += num(r.presupuestoOficialRubro);
     bySucursal[key].adjudicado += num(r.totalAdjudicado);
     bySucursal[key].certificado += num(r.certificadosAAD);
+    if (sucursalUnicaSeleccionada) {
+      if (r.adjudicatario && String(r.adjudicatario).trim()) bySucursal[key].contratistas.add(String(r.adjudicatario).trim());
+      if (r.pospre && String(r.pospre).trim()) bySucursal[key].pospres.add(String(r.pospre).trim());
+    }
   });
   const sucursalEntries = Object.entries(bySucursal).sort((a,b) => b[1].presOficial - a[1].presOficial);
+
+  // ---- En modo desagregado (una sola Sucursal seleccionada), la etiqueta de cada Pedido de Compras
+  // suma Contratista y Pospre, para poder identificarlo sin tener que ir a Registros a buscarlo. ----
+  const etiquetaGrupoChart = (key, info) => {
+    if (!sucursalUnicaSeleccionada) return key;
+    const contratista = info.contratistas.size ? Array.from(info.contratistas).join(' / ') : '(sin contratista)';
+    const pospre = info.pospres.size ? Array.from(info.pospres).join(' / ') : '';
+    return key + ' — ' + contratista + (pospre ? ' (' + pospre + ')' : '');
+  };
+  const chartLabels = sucursalEntries.map(([key, info]) => etiquetaGrupoChart(key, info));
 
   document.getElementById('chartAdjCertTitulo').textContent = sucursalUnicaSeleccionada
     ? 'Adjudicado vs. Certificado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% de Avance)'
@@ -1883,7 +1947,7 @@ function renderDashboard() {
   chartAdjCertSucursal = new Chart(ctxAC, {
     type: 'bar',
     data: {
-      labels: sucursalEntries.map(e => e[0]),
+      labels: chartLabels,
       datasets: [
         { type:'bar', label:'Adjudicado', data: sucursalEntries.map(e => e[1].adjudicado / 1000000), backgroundColor:'#93C5FD', order:2 },
         { type:'bar', label:'Certificado', data: sucursalEntries.map(e => e[1].certificado / 1000000), backgroundColor:'#6EE7B7', order:2 },
@@ -1897,7 +1961,7 @@ function renderDashboard() {
     options: {
       responsive:true, maintainAspectRatio:false,
       scales:{
-        x:{ ticks:{ autoSkip:false, maxRotation:60, minRotation:30 } },
+        x:{ ticks:{ autoSkip:false, maxRotation:60, minRotation:30, callback: function(value) { return truncateLabel(this.getLabelForValue(value), 26); } } },
         y:{ beginAtZero:true, title:{ display:true, text:'Millones de $' } },
         y1:{ beginAtZero:true, max:EJE_MAX, position:'right', grid:{ drawOnChartArea:false }, title:{ display:true, text:'% Avance' } }
       },
@@ -1907,7 +1971,7 @@ function renderDashboard() {
 
   const notaSospechosos = document.getElementById('chartAdjCertNota');
   const sucursalesSospechosas = sucursalEntries
-    .map((e, i) => ({ nombre: e[0], pct: pctPorSucursal[i] }))
+    .map(([key, info], i) => ({ nombre: etiquetaGrupoChart(key, info), pct: pctPorSucursal[i] }))
     .filter(s => s.pct > UMBRAL_SOSPECHOSO);
   if (sucursalesSospechosas.length) {
     notaSospechosos.innerHTML = '⚠ Valores fuera de rango (revisar Cantidad/IIBB o $ Adjudicado Unitario en los trámites de ' + (sucursalUnicaSeleccionada ? 'estos pedidos' : 'estas sucursales') + '): ' +
@@ -2322,8 +2386,9 @@ document.getElementById('histSnapshotBtn').addEventListener('click', async () =>
     btn.disabled = false;
   }
 });
-function kpiCard(label, value, sub) {
-  return `<div class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+function kpiCard(label, value, sub, colorSemaforo) {
+  const dot = colorSemaforo ? `<span class="kpi-dot" style="background:${colorSemaforo}"></span>` : '';
+  return `<div class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${dot}${value}</div><div class="kpi-sub">${sub}</div></div>`;
 }
 function sumField(rows, key) { return rows.reduce((acc, r) => acc + num(r[key]), 0); }
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
