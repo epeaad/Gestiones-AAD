@@ -1847,18 +1847,26 @@ function renderDashboard() {
   ].join('');
 
 
-  // ---- Datos por Sucursal (Presupuesto Oficial / Adjudicado / Certificado) ----
-  // Se sigue calculando acá porque lo usa el gráfico de abajo ("Adjudicado vs. Certificado por
-  // Sucursal — con % de Avance"), aunque el gráfico de barras de las 3 series juntas ya no se muestra.
+  // ---- Datos por Sucursal (Presupuesto Oficial / Adjudicado / Certificado) — o por Pedido de
+  // Compras cuando hay una única Sucursal seleccionada en el filtro, para poder ver el detalle
+  // interno de esa sucursal en vez de una sola barra plana. ----
+  const sucursalUnicaSeleccionada = state.dashFiltros.sucursal && state.dashFiltros.sucursal.length === 1 ? state.dashFiltros.sucursal[0] : null;
+  const chartAgruparPor = sucursalUnicaSeleccionada ? 'nroPedidoCompras' : 'sucursal';
+  const chartEtiquetaGrupo = sucursalUnicaSeleccionada ? 'Pedido de Compras' : 'Sucursal';
+
   const bySucursal = {};
   rows.forEach(r => {
-    const key = (r.sucursal || '(sin sucursal)').toString().trim() || '(sin sucursal)';
+    const key = (r[chartAgruparPor] || '(sin ' + chartEtiquetaGrupo.toLowerCase() + ')').toString().trim() || '(sin ' + chartEtiquetaGrupo.toLowerCase() + ')';
     if (!bySucursal[key]) bySucursal[key] = { presOficial:0, adjudicado:0, certificado:0 };
     bySucursal[key].presOficial += num(r.presupuestoOficialRubro);
     bySucursal[key].adjudicado += num(r.totalAdjudicado);
     bySucursal[key].certificado += num(r.certificadosAAD);
   });
   const sucursalEntries = Object.entries(bySucursal).sort((a,b) => b[1].presOficial - a[1].presOficial);
+
+  document.getElementById('chartAdjCertTitulo').textContent = sucursalUnicaSeleccionada
+    ? 'Adjudicado vs. Certificado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% de Avance)'
+    : 'Adjudicado vs. Certificado por Sucursal — con % de Avance';
 
   // ---- Combo: Adjudicado vs Certificado por Sucursal, con % de Avance (semáforo) ----
   const pctPorSucursal = sucursalEntries.map(e => e[1].adjudicado > 0 ? (e[1].certificado / e[1].adjudicado) * 100 : 0);
@@ -1902,7 +1910,7 @@ function renderDashboard() {
     .map((e, i) => ({ nombre: e[0], pct: pctPorSucursal[i] }))
     .filter(s => s.pct > UMBRAL_SOSPECHOSO);
   if (sucursalesSospechosas.length) {
-    notaSospechosos.innerHTML = '⚠ Valores fuera de rango (revisar Cantidad/IIBB o $ Adjudicado Unitario en los trámites de estas sucursales): ' +
+    notaSospechosos.innerHTML = '⚠ Valores fuera de rango (revisar Cantidad/IIBB o $ Adjudicado Unitario en los trámites de ' + (sucursalUnicaSeleccionada ? 'estos pedidos' : 'estas sucursales') + '): ' +
       sucursalesSospechosas.map(s => `<strong>${escapeHtml(s.nombre)}</strong> (${s.pct.toFixed(0)}%)`).join(', ');
     notaSospechosos.hidden = false;
   } else {
