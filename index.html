@@ -114,6 +114,14 @@
 
       <div class="filters-bar" id="dashFiltersBar">
         <div class="filter-field">
+          <label>Pospre</label>
+          <div class="multiselect" data-dashfilter="pospre"></div>
+        </div>
+        <div class="filter-field">
+          <label>Expediente</label>
+          <input type="text" data-dashfilter="expediente" placeholder="Buscar..." />
+        </div>
+        <div class="filter-field">
           <label>Año</label>
           <div class="multiselect" data-dashfilter="anio"></div>
         </div>
@@ -126,20 +134,8 @@
           <div class="multiselect" data-dashfilter="rubro"></div>
         </div>
         <div class="filter-field">
-          <label>Pospre</label>
-          <div class="multiselect" data-dashfilter="pospre"></div>
-        </div>
-        <div class="filter-field">
           <label>N° Pedido de Compras</label>
           <div class="multiselect" data-dashfilter="nroPedidoCompras"></div>
-        </div>
-        <div class="filter-field">
-          <label>Contratista/Proveedor</label>
-          <div class="multiselect" data-dashfilter="adjudicatario"></div>
-        </div>
-        <div class="filter-field">
-          <label>Estado</label>
-          <div class="multiselect" data-dashfilter="estado"></div>
         </div>
         <div class="filter-field">
           <label>Fecha P.C. desde</label>
@@ -148,6 +144,10 @@
         <div class="filter-field">
           <label>Fecha P.C. hasta</label>
           <input type="date" id="dashFechaPCHasta" />
+        </div>
+        <div class="filter-field">
+          <label>Contratista/Proveedor</label>
+          <div class="multiselect" data-dashfilter="adjudicatario"></div>
         </div>
         <div class="filter-field">
           <label>% de Avance desde</label>
@@ -168,6 +168,10 @@
           </div>
         </div>
         <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
+        <div class="filter-field">
+          <label>Estado</label>
+          <div class="multiselect" data-dashfilter="estado"></div>
+        </div>
         <button id="dashClearFilters" class="btn btn-ghost">Limpiar filtros</button>
       </div>
 
@@ -326,14 +330,6 @@
           <div class="multiselect" data-filter="anio"></div>
         </div>
         <div class="filter-field">
-          <label>Pedido de Compras</label>
-          <div class="multiselect" data-filter="nroPedidoCompras"></div>
-        </div>
-        <div class="filter-field">
-          <label>Contratista/Proveedor</label>
-          <div class="multiselect" data-filter="adjudicatario"></div>
-        </div>
-        <div class="filter-field">
           <label>Sucursal</label>
           <div class="multiselect" data-filter="sucursal"></div>
         </div>
@@ -341,6 +337,41 @@
           <label>Rubro</label>
           <div class="multiselect" data-filter="rubro"></div>
         </div>
+        <div class="filter-field">
+          <label>Pedido de Compras</label>
+          <div class="multiselect" data-filter="nroPedidoCompras"></div>
+        </div>
+        <div class="filter-field">
+          <label>Fecha P.C. desde</label>
+          <input type="date" id="regFechaPCDesde" />
+        </div>
+        <div class="filter-field">
+          <label>Fecha P.C. hasta</label>
+          <input type="date" id="regFechaPCHasta" />
+        </div>
+        <div class="filter-field">
+          <label>Contratista/Proveedor</label>
+          <div class="multiselect" data-filter="adjudicatario"></div>
+        </div>
+        <div class="filter-field">
+          <label>% de Avance desde</label>
+          <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="regPctAvanceDesde" placeholder="0" />
+        </div>
+        <div class="filter-field">
+          <label>% de Avance hasta</label>
+          <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="regPctAvanceHasta" placeholder="100" />
+        </div>
+        <div class="filter-field filter-field-wide">
+          <label>Buscar palabra</label>
+          <div class="filter-texto-group">
+            <select id="regTextoModo">
+              <option value="contiene">Contiene</option>
+              <option value="no_contiene">No contiene</option>
+            </select>
+            <input type="text" id="regTextoBuscar" placeholder="Palabra o frase..." />
+          </div>
+        </div>
+        <button id="riesgoPlazoBtnReg" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeReg">0</span></button>
         <div class="filter-field">
           <label>Estado</label>
           <div class="multiselect" data-filter="estado"></div>

@@ -48,7 +48,7 @@ const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','a
 // Campos "acumulador": tienen un mini sumador al lado para ir agregando valores sin calcular a mano
 const SUM_HELPER_FIELDS = new Set([]);
 
-const FILTER_KEYS = ['pospre','expediente','anio','nroPedidoCompras','adjudicatario','sucursal','rubro','estado'];
+const FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
 
 // ---- Estado en memoria ----
 const state = {
@@ -56,9 +56,10 @@ const state = {
   campos: [],
   etapas: [],
   registros: [],
-  filtros: {},
+  filtros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
   dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
   riesgoPlazoActivo: false,
+  riesgoPlazoActivoRegistros: false,
   editingId: null,
   activeStage: null,
   registrosSort: { key: null, dir: 1 },     // ordenamiento de la tabla de Registros
@@ -67,7 +68,7 @@ const state = {
   comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} } // módulo Comparativa de años
 };
 
-const DASH_FILTER_KEYS = ['anio','sucursal','rubro','pospre','nroPedidoCompras','adjudicatario','estado'];
+const DASH_FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
 
 // ============================================================
 // API
@@ -994,7 +995,7 @@ function populateFilterOptions() {
     });
   });
 
-  DASH_FILTER_KEYS.forEach(key => {
+  DASH_FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
     const el = document.querySelector('#dashFiltersBar [data-dashfilter="' + key + '"]');
     if (!el) return;
     const opts = uniqueValues(key);
@@ -1011,16 +1012,66 @@ document.querySelector('#filtersBar [data-filter="expediente"]').addEventListene
   state.filtros.expediente = e.target.value.trim();
   renderRegistros();
 });
+document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]').addEventListener('input', (e) => {
+  state.dashFiltros.expediente = e.target.value.trim();
+  renderDashboard();
+});
 document.getElementById('clearFilters').addEventListener('click', () => {
   FILTER_KEYS.forEach(k => { state.filtros[k] = (k === 'expediente') ? '' : []; });
   const expEl = document.querySelector('#filtersBar [data-filter="expediente"]');
   if (expEl) expEl.value = '';
+  state.filtros.fechaPCDesde = '';
+  state.filtros.fechaPCHasta = '';
+  state.filtros.pctAvanceDesde = '';
+  state.filtros.pctAvanceHasta = '';
+  state.filtros.texto = '';
+  state.filtros.textoModo = 'contiene';
+  document.getElementById('regFechaPCDesde').value = '';
+  document.getElementById('regFechaPCHasta').value = '';
+  document.getElementById('regPctAvanceDesde').value = '';
+  document.getElementById('regPctAvanceHasta').value = '';
+  document.getElementById('regTextoBuscar').value = '';
+  document.getElementById('regTextoModo').value = 'contiene';
+  state.riesgoPlazoActivoRegistros = false;
+  document.getElementById('riesgoPlazoBtnReg').classList.remove('active');
   populateFilterOptions();
   renderRegistros();
 });
 
+document.getElementById('regFechaPCDesde').addEventListener('change', (e) => {
+  state.filtros.fechaPCDesde = e.target.value;
+  renderRegistros();
+});
+document.getElementById('regFechaPCHasta').addEventListener('change', (e) => {
+  state.filtros.fechaPCHasta = e.target.value;
+  renderRegistros();
+});
+document.getElementById('regPctAvanceDesde').addEventListener('input', (e) => {
+  state.filtros.pctAvanceDesde = e.target.value;
+  renderRegistros();
+});
+document.getElementById('regPctAvanceHasta').addEventListener('input', (e) => {
+  state.filtros.pctAvanceHasta = e.target.value;
+  renderRegistros();
+});
+document.getElementById('regTextoBuscar').addEventListener('input', (e) => {
+  state.filtros.texto = e.target.value;
+  renderRegistros();
+});
+document.getElementById('regTextoModo').addEventListener('change', (e) => {
+  state.filtros.textoModo = e.target.value;
+  renderRegistros();
+});
+document.getElementById('riesgoPlazoBtnReg').addEventListener('click', () => {
+  state.riesgoPlazoActivoRegistros = !state.riesgoPlazoActivoRegistros;
+  document.getElementById('riesgoPlazoBtnReg').classList.toggle('active', state.riesgoPlazoActivoRegistros);
+  renderRegistros();
+});
+
 document.getElementById('dashClearFilters').addEventListener('click', () => {
-  DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = []; });
+  DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = (k === 'expediente') ? '' : []; });
+  const dashExpEl = document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]');
+  if (dashExpEl) dashExpEl.value = '';
   state.dashFiltros.fechaPCDesde = '';
   state.dashFiltros.fechaPCHasta = '';
   state.dashFiltros.pctAvanceDesde = '';
@@ -1313,16 +1364,18 @@ function pctPresupuestoProyectado(r) {
   return adj > 0 ? (num(r.proyectadosAcumulados) / adj) * 100 : 0;
 }
 
-// ---- Campos de texto sobre los que busca el filtro "Contiene / No contiene" del Dashboard ----
+// ---- Campos de texto sobre los que busca el filtro "Contiene / No contiene" (Dashboard y Registros) ----
 const DASH_TEXTO_CAMPOS = [
   'pospre', 'expediente', 'sucursal', 'rubro', 'detalleRubro', 'nroPedidoCompras',
   'adjudicatario', 'estado', 'agenciaSector', 'observaciones'
 ];
 
-function filteredForDashboardBase() {
-  let rows = applyFilters(state.registros, state.dashFiltros, DASH_FILTER_KEYS);
-  const desde = state.dashFiltros.fechaPCDesde;
-  const hasta = state.dashFiltros.fechaPCHasta;
+// ---- Filtros avanzados compartidos por Dashboard y Registros: Fecha P.C. desde/hasta, % de
+// Avance desde/hasta, y Buscar palabra (Contiene/No contiene). Recibe el objeto de filtros
+// (state.dashFiltros o state.filtros) para no duplicar esta lógica en cada módulo. ----
+function aplicarFiltrosAvanzados(rows, filtros) {
+  const desde = filtros.fechaPCDesde;
+  const hasta = filtros.fechaPCHasta;
   if (desde || hasta) {
     rows = rows.filter(r => {
       const v = r.fechaPedidoCompras;
@@ -1333,8 +1386,8 @@ function filteredForDashboardBase() {
     });
   }
 
-  const pctDesde = state.dashFiltros.pctAvanceDesde;
-  const pctHasta = state.dashFiltros.pctAvanceHasta;
+  const pctDesde = filtros.pctAvanceDesde;
+  const pctHasta = filtros.pctAvanceHasta;
   if ((pctDesde !== '' && pctDesde != null) || (pctHasta !== '' && pctHasta != null)) {
     rows = rows.filter(r => {
       const pct = pctAvanceTramite(r);
@@ -1344,9 +1397,9 @@ function filteredForDashboardBase() {
     });
   }
 
-  const texto = (state.dashFiltros.texto || '').trim().toLowerCase();
+  const texto = (filtros.texto || '').trim().toLowerCase();
   if (texto) {
-    const modo = state.dashFiltros.textoModo || 'contiene';
+    const modo = filtros.textoModo || 'contiene';
     rows = rows.filter(r => {
       const contiene = DASH_TEXTO_CAMPOS.some(k => String(r[k] || '').toLowerCase().includes(texto));
       return modo === 'no_contiene' ? !contiene : contiene;
@@ -1354,6 +1407,11 @@ function filteredForDashboardBase() {
   }
 
   return rows;
+}
+
+function filteredForDashboardBase() {
+  const rows = applyFilters(state.registros, state.dashFiltros, DASH_FILTER_KEYS);
+  return aplicarFiltrosAvanzados(rows, state.dashFiltros);
 }
 
 function filteredForDashboard() {
@@ -1378,8 +1436,12 @@ function applyFilters(rows, filtros, keys) {
   });
 }
 
+function filteredRecordsBase() {
+  return aplicarFiltrosAvanzados(applyFilters(state.registros, state.filtros, FILTER_KEYS), state.filtros);
+}
 function filteredRecords() {
-  return applyFilters(state.registros, state.filtros, FILTER_KEYS);
+  const rows = filteredRecordsBase();
+  return state.riesgoPlazoActivoRegistros ? rows.filter(esRiesgoPorPlazo) : rows;
 }
 
 const REGISTROS_COLS = [
@@ -1480,6 +1542,9 @@ function rowClassForEstado(r) {
 }
 
 function renderRegistros() {
+  // ---- Badge de "Riesgo por Plazo": cuenta sobre el resto de los filtros, sin aplicar el toggle de riesgo ----
+  document.getElementById('riesgoPlazoBadgeReg').textContent = filteredRecordsBase().filter(esRiesgoPorPlazo).length;
+
   let rows = filteredRecords();
   rows = sortRows(rows, state.registrosSort, registroSortValue);
   document.getElementById('resultsCount').textContent = rows.length + ' trámite(s) encontrados de ' + state.registros.length + ' totales.';
