@@ -431,6 +431,7 @@ function iniciarAmpliacionContrato(base, pct) {
 // ARRANQUE
 // ============================================================
 function showAppError(msg) {
+  document.getElementById('bootLoadingOverlay').hidden = true; // si falla, no dejamos el overlay de carga tapando el error
   const box = document.getElementById('appError');
   box.innerHTML = '';
   const span = document.createElement('span');
@@ -522,6 +523,7 @@ async function boot() {
     && !(ultimaVista === 'formulario' && !puedeEditar)
     && !(ultimaVista === 'compras' && state.session.rol === 'consulta');
   showView(vistaPermitida ? ultimaVista : 'dashboard');
+  document.getElementById('bootLoadingOverlay').hidden = true; // recién acá los datos ya están cargados y la vista ya se renderizó
 }
 
 window.addEventListener('DOMContentLoaded', () => {

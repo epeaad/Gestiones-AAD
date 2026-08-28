@@ -176,6 +176,24 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .main-area{ flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; min-width:0; position:relative; }
 
 /* ---- Barra de carga global: aparece mientras hay alguna llamada al servidor en curso ---- */
+/* ---- Overlay de carga inicial: cubre el área de contenido desde que se hace login hasta que
+   terminan de llegar los datos iniciales, para que quede claro que la app está trabajando y no
+   trabada. El sidebar queda visible (usuario, logout) para dar contexto de que sí se entró. ---- */
+.boot-loading-overlay{
+  position:absolute; inset:0; z-index:45;
+  background:var(--bg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  transition:opacity .25s ease;
+}
+.boot-loading-overlay[hidden]{ display:none; }
+.boot-loading-overlay p{ margin:0; font-size:13px; font-weight:600; color:var(--text-soft); letter-spacing:0.02em; }
+.boot-loading-spinner{
+  width:34px; height:34px; border-radius:50%;
+  border:3px solid var(--brand-soft); border-top-color:var(--brand);
+  animation: bootSpin .8s linear infinite;
+}
+@keyframes bootSpin{ to{ transform:rotate(360deg); } }
+
 .top-loading-bar{
   position:sticky; top:0; left:0; right:0; height:3px; z-index:40;
   background:transparent; overflow:hidden;
