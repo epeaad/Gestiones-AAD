@@ -627,10 +627,80 @@
           <h3 style="margin:0;">Certificaciones cargadas</h3>
           <button id="certExportBtn" class="btn btn-secondary">Exportar a Excel</button>
         </div>
+
+        <div class="filters-bar" id="certFiltersBar">
+          <div class="filter-field">
+            <label>Pospre</label>
+            <div class="multiselect" data-certfilter="pospre"></div>
+          </div>
+          <div class="filter-field">
+            <label>Expediente</label>
+            <input type="text" data-certfilter="expediente" placeholder="Buscar..." />
+          </div>
+          <div class="filter-field">
+            <label>Año</label>
+            <div class="multiselect" data-certfilter="anio"></div>
+          </div>
+          <div class="filter-field">
+            <label>Sucursal</label>
+            <div class="multiselect" data-certfilter="sucursal"></div>
+          </div>
+          <div class="filter-field">
+            <label>Rubro</label>
+            <div class="multiselect" data-certfilter="rubro"></div>
+          </div>
+          <div class="filter-field">
+            <label>N° Pedido de Compras</label>
+            <div class="multiselect" data-certfilter="nroPedidoCompras"></div>
+          </div>
+          <div class="filter-field">
+            <label>Contratista/Proveedor</label>
+            <div class="multiselect" data-certfilter="adjudicatario"></div>
+          </div>
+          <div class="filter-field">
+            <label>Estado</label>
+            <div class="multiselect" data-certfilter="estado"></div>
+          </div>
+          <button type="button" id="certFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
+            Filtros avanzados <span class="chevron">▾</span>
+          </button>
+          <button id="certClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+        </div>
+        <div class="filters-bar filters-bar-avanzados" id="certFiltersBarAvanzados" hidden>
+          <div class="filter-field">
+            <label>Fecha P.C. desde</label>
+            <input type="date" id="certFechaPCDesde" />
+          </div>
+          <div class="filter-field">
+            <label>Fecha P.C. hasta</label>
+            <input type="date" id="certFechaPCHasta" />
+          </div>
+          <div class="filter-field">
+            <label>% de Avance desde</label>
+            <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="certPctAvanceDesde" placeholder="0" />
+          </div>
+          <div class="filter-field">
+            <label>% de Avance hasta</label>
+            <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="certPctAvanceHasta" placeholder="100" />
+          </div>
+          <div class="filter-field filter-field-wide">
+            <label>Buscar palabra (en el trámite)</label>
+            <div class="filter-texto-group">
+              <select id="certTextoModo">
+                <option value="contiene">Contiene</option>
+                <option value="no_contiene">No contiene</option>
+              </select>
+              <input type="text" id="certTextoBuscar" placeholder="Palabra o frase..." />
+            </div>
+          </div>
+          <button id="riesgoPlazoBtnCert" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeCert">0</span></button>
+        </div>
+        <p class="table-note">Los filtros de arriba acotan por trámite (igual que en Dashboard/Registros/Seguimiento). El campo "Buscar" de abajo busca puntualmente dentro de los datos de la certificación (N° de Certificado, Expediente de Certificación, etc.).</p>
+
         <div class="filters-bar">
           <div class="filter-field">
-            <label>Buscar</label>
-            <input type="text" id="certFiltroTexto" placeholder="Pospre, expediente, contratista..." />
+            <label>Buscar en la certificación</label>
+            <input type="text" id="certFiltroTexto" placeholder="N° certificado, expediente de certificación..." />
           </div>
         </div>
         <div class="table-wrap">
@@ -713,10 +783,80 @@
           <h3 style="margin:0;">Proyectos cargados</h3>
           <button id="proyExportBtn" class="btn btn-secondary">Exportar a Excel</button>
         </div>
+
+        <div class="filters-bar" id="proyFiltersBar">
+          <div class="filter-field">
+            <label>Pospre</label>
+            <div class="multiselect" data-proyfilter="pospre"></div>
+          </div>
+          <div class="filter-field">
+            <label>Expediente</label>
+            <input type="text" data-proyfilter="expediente" placeholder="Buscar..." />
+          </div>
+          <div class="filter-field">
+            <label>Año</label>
+            <div class="multiselect" data-proyfilter="anio"></div>
+          </div>
+          <div class="filter-field">
+            <label>Sucursal</label>
+            <div class="multiselect" data-proyfilter="sucursal"></div>
+          </div>
+          <div class="filter-field">
+            <label>Rubro</label>
+            <div class="multiselect" data-proyfilter="rubro"></div>
+          </div>
+          <div class="filter-field">
+            <label>N° Pedido de Compras</label>
+            <div class="multiselect" data-proyfilter="nroPedidoCompras"></div>
+          </div>
+          <div class="filter-field">
+            <label>Contratista/Proveedor</label>
+            <div class="multiselect" data-proyfilter="adjudicatario"></div>
+          </div>
+          <div class="filter-field">
+            <label>Estado</label>
+            <div class="multiselect" data-proyfilter="estado"></div>
+          </div>
+          <button type="button" id="proyFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
+            Filtros avanzados <span class="chevron">▾</span>
+          </button>
+          <button id="proyClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+        </div>
+        <div class="filters-bar filters-bar-avanzados" id="proyFiltersBarAvanzados" hidden>
+          <div class="filter-field">
+            <label>Fecha P.C. desde</label>
+            <input type="date" id="proyFechaPCDesde" />
+          </div>
+          <div class="filter-field">
+            <label>Fecha P.C. hasta</label>
+            <input type="date" id="proyFechaPCHasta" />
+          </div>
+          <div class="filter-field">
+            <label>% de Avance desde</label>
+            <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="proyPctAvanceDesde" placeholder="0" />
+          </div>
+          <div class="filter-field">
+            <label>% de Avance hasta</label>
+            <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="proyPctAvanceHasta" placeholder="100" />
+          </div>
+          <div class="filter-field filter-field-wide">
+            <label>Buscar palabra (en el trámite)</label>
+            <div class="filter-texto-group">
+              <select id="proyTextoModo">
+                <option value="contiene">Contiene</option>
+                <option value="no_contiene">No contiene</option>
+              </select>
+              <input type="text" id="proyTextoBuscar" placeholder="Palabra o frase..." />
+            </div>
+          </div>
+          <button id="riesgoPlazoBtnProy" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeProy">0</span></button>
+        </div>
+        <p class="table-note">Los filtros de arriba acotan por trámite (igual que en Dashboard/Registros/Seguimiento). El campo "Buscar" de abajo busca puntualmente dentro de los datos del proyecto (N° de Proyecto, Expediente de Proyecto, etc.).</p>
+
         <div class="filters-bar">
           <div class="filter-field">
-            <label>Buscar</label>
-            <input type="text" id="proyFiltroTexto" placeholder="Pospre, expediente, contratista..." />
+            <label>Buscar en el proyecto</label>
+            <input type="text" id="proyFiltroTexto" placeholder="N° de proyecto, expediente de proyecto..." />
           </div>
         </div>
         <div class="table-wrap">

@@ -1047,7 +1047,9 @@ function opcionesFacetadas(key) {
 const FILTROS_COMPARTIDOS_BARRAS = [
   { selector: '#dashFiltersBar', attr: 'data-dashfilter', onChange: () => renderDashboard() },
   { selector: '#filtersBar', attr: 'data-filter', onChange: () => renderRegistros() },
-  { selector: '#seguFiltersBar', attr: 'data-segufilter', onChange: () => renderSeguimiento() }
+  { selector: '#seguFiltersBar', attr: 'data-segufilter', onChange: () => renderSeguimiento() },
+  { selector: '#certFiltersBar', attr: 'data-certfilter', onChange: () => renderCertTable() },
+  { selector: '#proyFiltersBar', attr: 'data-proyfilter', onChange: () => renderProyTable() }
 ];
 function populateFilterOptions() {
   SHARED_FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
@@ -1072,7 +1074,9 @@ function populateFilterOptions() {
 const FILTROS_AVANZADOS_UI = [
   { prefijo: 'dash', expedienteSelector: '#dashFiltersBar [data-dashfilter="expediente"]', riesgoBtn: 'riesgoPlazoBtn', riesgoBadge: 'riesgoPlazoBadge' },
   { prefijo: 'reg', expedienteSelector: '#filtersBar [data-filter="expediente"]', riesgoBtn: 'riesgoPlazoBtnReg', riesgoBadge: 'riesgoPlazoBadgeReg' },
-  { prefijo: 'segu', expedienteSelector: '#seguFiltersBar [data-segufilter="expediente"]', riesgoBtn: 'riesgoPlazoBtnSegu', riesgoBadge: 'riesgoPlazoBadgeSegu' }
+  { prefijo: 'segu', expedienteSelector: '#seguFiltersBar [data-segufilter="expediente"]', riesgoBtn: 'riesgoPlazoBtnSegu', riesgoBadge: 'riesgoPlazoBadgeSegu' },
+  { prefijo: 'cert', expedienteSelector: '#certFiltersBar [data-certfilter="expediente"]', riesgoBtn: 'riesgoPlazoBtnCert', riesgoBadge: 'riesgoPlazoBadgeCert' },
+  { prefijo: 'proy', expedienteSelector: '#proyFiltersBar [data-proyfilter="expediente"]', riesgoBtn: 'riesgoPlazoBtnProy', riesgoBadge: 'riesgoPlazoBadgeProy' }
 ];
 function sincronizarFiltrosAvanzadosUI() {
   const f = state.filtrosCompartidos;
@@ -1101,6 +1105,15 @@ function sincronizarFiltrosAvanzadosUI() {
 // cada módulo antes de decidir si aplica o no ese toggle. ----
 function filtrosCompartidosBase() {
   return aplicarFiltrosAvanzados(applyFilters(state.registros, state.filtrosCompartidos, SHARED_FILTER_KEYS), state.filtrosCompartidos);
+}
+
+// ---- Set de _id de trámites que pasan el filtro compartido (con el toggle de riesgo aplicado si
+// está activo). Lo usan Certificaciones y Proyectos para filtrar sus propias tablas por trámite,
+// ya que sus registros no tienen todos los campos del filtro (Sucursal/Año/Estado, etc.) y hay
+// que ir a buscarlos al trámite vinculado (idTramite). ----
+function idsTramitesPermitidosPorFiltroCompartido() {
+  const rows = state.riesgoPlazoActivoCompartido ? filtrosCompartidosBase().filter(esRiesgoPorPlazo) : filtrosCompartidosBase();
+  return new Set(rows.map(r => r._id));
 }
 
 document.querySelector('#filtersBar [data-filter="expediente"]').addEventListener('input', (e) => {
@@ -1136,6 +1149,47 @@ function limpiarFiltrosCompartidos(renderActual) {
 document.getElementById('clearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderRegistros));
 document.getElementById('dashClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderDashboard));
 document.getElementById('seguClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderSeguimiento));
+document.getElementById('certClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderCertTable));
+document.getElementById('proyClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderProyTable));
+
+document.querySelector('#certFiltersBar [data-certfilter="expediente"]').addEventListener('input', (e) => {
+  state.filtrosCompartidos.expediente = e.target.value.trim();
+  renderCertTable();
+});
+document.getElementById('certFechaPCDesde').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCDesde = e.target.value; renderCertTable(); });
+document.getElementById('certFechaPCHasta').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCHasta = e.target.value; renderCertTable(); });
+document.getElementById('certPctAvanceDesde').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderCertTable(); });
+document.getElementById('certPctAvanceHasta').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderCertTable(); });
+document.getElementById('certTextoBuscar').addEventListener('input', (e) => { state.filtrosCompartidos.texto = e.target.value; renderCertTable(); });
+document.getElementById('certTextoModo').addEventListener('change', (e) => { state.filtrosCompartidos.textoModo = e.target.value; renderCertTable(); });
+document.getElementById('riesgoPlazoBtnCert').addEventListener('click', () => {
+  state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
+  renderCertTable();
+});
+
+document.querySelector('#proyFiltersBar [data-proyfilter="expediente"]').addEventListener('input', (e) => {
+  state.filtrosCompartidos.expediente = e.target.value.trim();
+  renderProyTable();
+});
+document.getElementById('proyFechaPCDesde').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCDesde = e.target.value; renderProyTable(); });
+document.getElementById('proyFechaPCHasta').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCHasta = e.target.value; renderProyTable(); });
+document.getElementById('proyPctAvanceDesde').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderProyTable(); });
+document.getElementById('proyPctAvanceHasta').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderProyTable(); });
+document.getElementById('proyTextoBuscar').addEventListener('input', (e) => { state.filtrosCompartidos.texto = e.target.value; renderProyTable(); });
+document.getElementById('proyTextoModo').addEventListener('change', (e) => { state.filtrosCompartidos.textoModo = e.target.value; renderProyTable(); });
+document.getElementById('riesgoPlazoBtnProy').addEventListener('click', () => {
+  state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
+  renderProyTable();
+});
+
+wireToggleFiltrosAvanzados('certFiltrosAvanzadosToggle', 'certFiltersBarAvanzados');
+wireToggleFiltrosAvanzados('proyFiltrosAvanzadosToggle', 'proyFiltersBarAvanzados');
+if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActivoCompartido)) {
+  document.getElementById('certFiltersBarAvanzados').hidden = false;
+  document.getElementById('certFiltrosAvanzadosToggle').classList.add('is-open');
+  document.getElementById('proyFiltersBarAvanzados').hidden = false;
+  document.getElementById('proyFiltrosAvanzadosToggle').classList.add('is-open');
+}
 
 document.getElementById('regFechaPCDesde').addEventListener('change', (e) => {
   state.filtrosCompartidos.fechaPCDesde = e.target.value;
@@ -3325,8 +3379,12 @@ function certSortValue(c, key) {
 }
 
 function renderCertTable() {
+  populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados de las 5 barras compartidas
+
+  const idsPermitidos = idsTramitesPermitidosPorFiltroCompartido();
   const q = document.getElementById('certFiltroTexto').value.trim().toLowerCase();
   let rows = certListaCache.filter(c => {
+    if (!idsPermitidos.has(c.idTramite)) return false;
     if (!q) return true;
     return ['pospre','expediente','rubro','nroPedidoCompras','contratista','numeroCertificado','expedienteCertificacion'].some(k =>
       String(c[k] || '').toLowerCase().includes(q)
@@ -3880,8 +3938,12 @@ function proySortValue(p, key) {
 }
 
 function renderProyTable() {
+  populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados de las 5 barras compartidas
+
+  const idsPermitidos = idsTramitesPermitidosPorFiltroCompartido();
   const q = document.getElementById('proyFiltroTexto').value.trim().toLowerCase();
   let rows = proyListaCache.filter(p => {
+    if (!idsPermitidos.has(p.idTramite)) return false;
     if (!q) return true;
     return ['pospre','nroPedidoCompras','contratista','numeroProyecto','nroExpedienteProyecto'].some(k =>
       String(p[k] || '').toLowerCase().includes(q)
