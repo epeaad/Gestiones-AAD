@@ -371,6 +371,12 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .filtros-avanzados-toggle .chevron{ display:inline-block; transition:transform .15s ease; margin-left:2px; }
 .filtros-avanzados-toggle.is-open .chevron{ transform:rotate(180deg); }
 .filters-bar-avanzados{ margin-top:-6px; padding-top:14px; border-top:1px dashed var(--border); }
+
+/* ---- Seguimiento de Avance: contratos sin ninguna certificación cargada en el filtro actual
+   se ven atenuados, para distinguirlos de un 0% "real" (contrato recién arrancado vs. contrato
+   sin datos cargados). ---- */
+.row-sin-certificaciones{ color:var(--text-soft); }
+.row-sin-certificaciones td{ opacity:0.75; }
 .filter-texto-group{ display:flex; gap:6px; }
 .filter-texto-group select{ flex:0 0 auto; }
 .filter-texto-group input{ flex:1; min-width:0; }
