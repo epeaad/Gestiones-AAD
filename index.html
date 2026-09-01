@@ -64,9 +64,6 @@
       <button class="nav-btn active" data-view="dashboard">
         <span class="nav-icon">◆</span> Dashboard
       </button>
-      <button class="nav-btn" data-view="seguimiento">
-        <span class="nav-icon">◔</span> Seguimiento de Avance
-      </button>
       <button class="nav-btn" data-view="comparativa">
         <span class="nav-icon">⇄</span> Comparativa
       </button>
@@ -249,101 +246,6 @@
         <p class="table-note" id="dashTableNota" hidden></p>
         <div class="table-wrap">
           <table id="dashTable" class="data-table"></table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- SEGUIMIENTO DE AVANCE ---------- -->
-    <section id="view-seguimiento" class="view" hidden>
-      <div class="view-header">
-        <h2>Seguimiento de Avance</h2>
-        <div class="control-inline">
-          <button type="button" id="seguExportBtn" class="btn btn-secondary">Exportar a CSV</button>
-        </div>
-      </div>
-
-      <div class="filters-bar" id="seguFiltersBar">
-        <div class="filter-field">
-          <label>Pospre</label>
-          <div class="multiselect" data-segufilter="pospre"></div>
-        </div>
-        <div class="filter-field">
-          <label>Expediente</label>
-          <input type="text" data-segufilter="expediente" placeholder="Buscar..." />
-        </div>
-        <div class="filter-field">
-          <label>Año</label>
-          <div class="multiselect" data-segufilter="anio"></div>
-        </div>
-        <div class="filter-field">
-          <label>Sucursal</label>
-          <div class="multiselect" data-segufilter="sucursal"></div>
-        </div>
-        <div class="filter-field">
-          <label>Rubro</label>
-          <div class="multiselect" data-segufilter="rubro"></div>
-        </div>
-        <div class="filter-field">
-          <label>N° Pedido de Compras</label>
-          <div class="multiselect" data-segufilter="nroPedidoCompras"></div>
-        </div>
-        <div class="filter-field">
-          <label>Contratista/Proveedor</label>
-          <div class="multiselect" data-segufilter="adjudicatario"></div>
-        </div>
-        <div class="filter-field">
-          <label>Estado</label>
-          <div class="multiselect" data-segufilter="estado"></div>
-        </div>
-        <button type="button" id="seguFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
-          Filtros avanzados <span class="chevron">▾</span>
-        </button>
-        <button id="seguClearFilters" class="btn btn-ghost">Limpiar filtros</button>
-      </div>
-
-      <div class="filters-bar filters-bar-avanzados" id="seguFiltersBarAvanzados" hidden>
-        <div class="filter-field">
-          <label>Fecha P.C. desde</label>
-          <input type="date" id="seguFechaPCDesde" />
-        </div>
-        <div class="filter-field">
-          <label>Fecha P.C. hasta</label>
-          <input type="date" id="seguFechaPCHasta" />
-        </div>
-        <div class="filter-field">
-          <label>% de Avance desde</label>
-          <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="seguPctAvanceDesde" placeholder="0" />
-        </div>
-        <div class="filter-field">
-          <label>% de Avance hasta</label>
-          <input type="text" inputmode="decimal" class="num-decimal" min="0" max="100" id="seguPctAvanceHasta" placeholder="100" />
-        </div>
-        <div class="filter-field filter-field-wide">
-          <label>Buscar palabra</label>
-          <div class="filter-texto-group">
-            <select id="seguTextoModo">
-              <option value="contiene">Contiene</option>
-              <option value="no_contiene">No contiene</option>
-            </select>
-            <input type="text" id="seguTextoBuscar" placeholder="Palabra o frase..." />
-          </div>
-        </div>
-        <button id="riesgoPlazoBtnSegu" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeSegu">0</span></button>
-      </div>
-
-      <div class="section-label">Evolución general</div>
-      <div class="panel panel-primary">
-        <h3>% de Avance acumulado — promedio ponderado por mes/año</h3>
-        <canvas id="chartSeguimientoAvance" height="110"></canvas>
-        <p class="table-note">Promedio ponderado por $ Adjudicado sobre los contratos del filtro actual que ya tienen al menos una certificación cargada.</p>
-      </div>
-
-      <div class="section-label">Detalle por contrato</div>
-      <div class="panel">
-        <p class="table-note">Cada fila es un contrato (Pospre / N° PC / Contratista / Sucursal siempre visibles). Las columnas de mes muestran el % de avance <strong>acumulado</strong> a esa fecha; un contrato sin certificaciones en el filtro actual muestra 0% en todas las columnas.</p>
-        <div class="scroll-top-bar" id="seguimientoScrollTop"><div class="scroll-top-inner" id="seguimientoScrollTopInner"></div></div>
-        <div class="table-wrap">
-          <table id="seguimientoTable" class="data-table"></table>
         </div>
       </div>
     </section>
