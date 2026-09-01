@@ -385,6 +385,25 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .segu-leyenda{ display:flex; gap:14px; font-size:12px; color:var(--text-soft); }
 .segu-leyenda span{ display:flex; align-items:center; gap:5px; }
 .segu-dot{ display:inline-block; width:10px; height:10px; border-radius:3px; border:1px solid; }
+
+/* ---- Columnas Pospre / N° PC / Contratista / Sucursal fijas a la izquierda mientras se
+   recorren los meses con scroll horizontal, para no perder de vista a qué contrato corresponde
+   cada fila. Anchos fijos porque position:sticky necesita un "left" conocido para cada una. ---- */
+.data-table-heatmap .segu-col-1, .data-table-heatmap .segu-col-2,
+.data-table-heatmap .segu-col-3, .data-table-heatmap .segu-col-4{
+  position:sticky; z-index:5; background:var(--surface);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.data-table-heatmap thead .segu-col-1, .data-table-heatmap thead .segu-col-2,
+.data-table-heatmap thead .segu-col-3, .data-table-heatmap thead .segu-col-4{ background:#F8FAFB; z-index:6; }
+.data-table-heatmap .segu-col-1{ left:0; width:130px; min-width:130px; max-width:130px; }
+.data-table-heatmap .segu-col-2{ left:130px; width:90px; min-width:90px; max-width:90px; }
+.data-table-heatmap .segu-col-3{ left:220px; width:190px; min-width:190px; max-width:190px; }
+.data-table-heatmap .segu-col-4{ left:410px; width:120px; min-width:120px; max-width:120px; box-shadow:4px 0 6px -4px rgba(15,25,35,0.18); }
+.data-table-heatmap tbody tr:hover .segu-col-1, .data-table-heatmap tbody tr:hover .segu-col-2,
+.data-table-heatmap tbody tr:hover .segu-col-3, .data-table-heatmap tbody tr:hover .segu-col-4{ background:var(--brand-soft); }
+.data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-1, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-2,
+.data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-3, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-4{ background:var(--surface); }
 .filter-texto-group{ display:flex; gap:6px; }
 .filter-texto-group select{ flex:0 0 auto; }
 .filter-texto-group input{ flex:1; min-width:0; }

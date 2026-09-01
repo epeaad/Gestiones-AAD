@@ -2656,22 +2656,19 @@ function renderSeguimiento() {
     return;
   }
 
-  // ---- % de avance acumulado por contrato y por mes: $ Certificados acumulados hasta ese mes
-  // (inclusive) / $ Total Adjudicado del contrato. La columna final "% Avance actual" usa
-  // pctAvanceTramite(), la misma fuente de verdad que Dashboard/Registros (Certificado por AAD),
-  // que puede diferir levemente de la última columna de mes si hay certificaciones sin
-  // Mes/Año cargado. ----
+  // ---- % certificado EN CADA MES (no acumulado): $ Certificados de ese mes en particular / $
+  // Total Adjudicado del contrato. Si un mismo mes tiene más de una certificación, se suman. La
+  // columna final "% Acumulado total" sí es acumulada, y usa pctAvanceTramite() — la misma fuente
+  // de verdad que Dashboard/Registros (Certificado por AAD) — que puede diferir levemente de la
+  // suma de las columnas de mes si hay certificaciones sin Mes/Año cargado. ----
   const filas = rows.map(r => {
     const certs = certsPorTramite[r._id] || [];
     const adj = num(r.totalAdjudicado);
-    let acumulado = 0, certIdx = 0;
-    const porMes = meses.map(m => {
-      while (certIdx < certs.length && certs[certIdx].mesAnioCertificacion <= m) {
-        acumulado += num(certs[certIdx].montoCertificado);
-        certIdx++;
-      }
-      return adj > 0 ? (acumulado / adj) * 100 : 0;
+    const montoPorMes = {};
+    certs.forEach(c => {
+      montoPorMes[c.mesAnioCertificacion] = (montoPorMes[c.mesAnioCertificacion] || 0) + num(c.montoCertificado);
     });
+    const porMes = meses.map(m => adj > 0 ? ((montoPorMes[m] || 0) / adj) * 100 : 0);
     return {
       id: r._id, pospre: r.pospre, nroPedidoCompras: r.nroPedidoCompras, adjudicatario: r.adjudicatario,
       sucursal: r.sucursal, adj, porMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0
@@ -2684,20 +2681,24 @@ function renderSeguimiento() {
 
   const celdaSemaforo = (pct) => {
     const t = semTinte(pct);
-    return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${pct.toFixed(0)}%</td>`;
+    const redondeado = pct.toFixed(0);
+    // "0%" confunde (¿no certificó nada, o certificó poquito y redondeó a 0?): se muestra "-" en
+    // su lugar. El fondo rojo se mantiene igual, porque sigue siendo una señal de "sin avance".
+    const texto = redondeado === '0' ? '-' : redondeado + '%';
+    return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${texto}</td>`;
   };
 
   const theadMeses = meses.map(m => `<th class="mono" style="text-align:right;">${escapeHtml(formatMesCorto(m))}</th>`).join('');
   table.innerHTML = `<thead><tr>
-      <th>Pospre</th><th>N° PC</th><th>Contratista</th><th>Sucursal</th>
+      <th class="segu-col-1">Pospre</th><th class="segu-col-2">N° PC</th><th class="segu-col-3">Contratista</th><th class="segu-col-4">Sucursal</th>
       ${theadMeses}
-      <th class="mono sortable-th" id="seguThActual" style="text-align:right; cursor:pointer;">% Avance actual ${state.seguSort.dir === 1 ? '▲' : '▼'}</th>
+      <th class="mono sortable-th" id="seguThActual" style="text-align:right; cursor:pointer;">% Acumulado total ${state.seguSort.dir === 1 ? '▲' : '▼'}</th>
     </tr></thead><tbody>` +
     filas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
-      <td>${escapeHtml(f.pospre || '')}</td>
-      <td class="mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
-      <td>${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
-      <td>${escapeHtml(f.sucursal || '')}</td>
+      <td class="segu-col-1" title="${escapeHtml(f.pospre || '')}">${escapeHtml(f.pospre || '')}</td>
+      <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
+      <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
+      <td class="segu-col-4" title="${escapeHtml(f.sucursal || '')}">${escapeHtml(f.sucursal || '')}</td>
       ${f.porMes.map(celdaSemaforo).join('')}
       ${celdaSemaforo(f.pctActual)}
     </tr>`).join('') +
