@@ -68,7 +68,7 @@ const state = {
   dashDetalleSort: { key: null, dir: 1 },   // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
   comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} }, // módulo Comparativa de años
   seguFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' }, // módulo Seguimiento de Avance
-  seguSort: { dir: 1 } // orden de la tabla de Seguimiento (1 = peor % avance primero)
+  seguSort: { key: 'pctActual', dir: 1 } // orden de la tabla de Seguimiento (por defecto: peor % acumulado primero)
 };
 
 const DASH_FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
@@ -2675,9 +2675,18 @@ function renderSeguimiento() {
     };
   });
 
-  // ---- Orden: peor % de avance actual primero, para detectar rápido lo atrasado (clic en el
-  // encabezado de esa columna invierte el orden) ----
-  filas.sort((a, b) => state.seguSort.dir * (a.pctActual - b.pctActual));
+  // ---- Orden: por defecto, peor % acumulado primero (para detectar rápido lo atrasado), pero
+  // se puede ordenar por cualquier columna con un clic en su encabezado — incluidas las de mes. ----
+  const seguSortValue = (fila, key) => {
+    if (key === 'pospre') return fila.pospre || '';
+    if (key === 'nroPedidoCompras') return fila.nroPedidoCompras || '';
+    if (key === 'adjudicatario') return fila.adjudicatario || '';
+    if (key === 'sucursal') return fila.sucursal || '';
+    if (key === 'pctActual') return fila.pctActual;
+    const idx = meses.indexOf(key); // key es un mes ("AAAA-MM") cuando no es ninguno de los anteriores
+    return idx === -1 ? 0 : fila.porMes[idx];
+  };
+  const filasOrdenadas = sortRows(filas, state.seguSort, seguSortValue);
 
   const celdaSemaforo = (pct) => {
     const t = semTinte(pct);
@@ -2688,13 +2697,23 @@ function renderSeguimiento() {
     return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${texto}</td>`;
   };
 
-  const theadMeses = meses.map(m => `<th class="mono" style="text-align:right;">${escapeHtml(formatMesCorto(m))}</th>`).join('');
+  // ---- Encabezados: los 4 fijos + uno por mes + el acumulado final, todos ordenables (misma
+  // flechita ▲▼ que el resto de las tablas de la app cuando esa columna es la que ordena). ----
+  const thSort = (key, label, claseExtra) => {
+    const activo = state.seguSort.key === key;
+    const flecha = activo ? (state.seguSort.dir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable${claseExtra ? ' ' + claseExtra : ''}" data-sort-key="${key}">${label}${flecha}</th>`;
+  };
+  const theadMeses = meses.map(m => thSort(m, escapeHtml(formatMesCorto(m)), 'mono')).join('');
   table.innerHTML = `<thead><tr>
-      <th class="segu-col-1">Pospre</th><th class="segu-col-2">N° PC</th><th class="segu-col-3">Contratista</th><th class="segu-col-4">Sucursal</th>
+      ${thSort('pospre', 'Pospre', 'segu-col-1')}
+      ${thSort('nroPedidoCompras', 'N° PC', 'segu-col-2')}
+      ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
+      ${thSort('sucursal', 'Sucursal', 'segu-col-4')}
       ${theadMeses}
-      <th class="mono sortable-th" id="seguThActual" style="text-align:right; cursor:pointer;">% Acumulado total ${state.seguSort.dir === 1 ? '▲' : '▼'}</th>
+      ${thSort('pctActual', '% Acumulado total', 'mono')}
     </tr></thead><tbody>` +
-    filas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
+    filasOrdenadas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
       <td class="segu-col-1" title="${escapeHtml(f.pospre || '')}">${escapeHtml(f.pospre || '')}</td>
       <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
@@ -2704,8 +2723,7 @@ function renderSeguimiento() {
     </tr>`).join('') +
     '</tbody>';
   setupScrollShadow(table.closest('.table-wrap'), 'seguimientoScrollTop', 'seguimientoScrollTopInner');
-  const th = document.getElementById('seguThActual');
-  if (th) th.addEventListener('click', () => { state.seguSort.dir *= -1; renderSeguimiento(); });
+  wireSortableHeaders(table, state.seguSort, renderSeguimiento);
 }
 
 document.getElementById('seguClearFilters').addEventListener('click', () => {

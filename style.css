@@ -381,21 +381,35 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 /* ---- Heatmap de % de avance: cada celda de mes/año lleva el color de semáforo de fondo (mismos
    3 tonos que las pastillas de Estado), para leer de un vistazo sin gráfico ni animaciones. ---- */
 .data-table-heatmap td.segu-celda{ font-weight:600; text-align:right; min-width:56px; }
-.data-table-heatmap thead th{ white-space:nowrap; }
+.data-table-heatmap th.mono{ text-align:right; font-family:var(--font-mono); }
 .segu-leyenda{ display:flex; gap:14px; font-size:12px; color:var(--text-soft); }
 .segu-leyenda span{ display:flex; align-items:center; gap:5px; }
 .segu-dot{ display:inline-block; width:10px; height:10px; border-radius:3px; border:1px solid; }
 
-/* ---- Columnas Pospre / N° PC / Contratista / Sucursal fijas a la izquierda mientras se
-   recorren los meses con scroll horizontal, para no perder de vista a qué contrato corresponde
-   cada fila. Anchos fijos porque position:sticky necesita un "left" conocido para cada una. ---- */
-.data-table-heatmap .segu-col-1, .data-table-heatmap .segu-col-2,
-.data-table-heatmap .segu-col-3, .data-table-heatmap .segu-col-4{
-  position:sticky; z-index:5; background:var(--surface);
+/* ---- Seguimiento de Avance: scroll propio y acotado (no el de toda la página), con el
+   encabezado (meses) siempre visible arriba mientras se baja por las filas, y las 4 columnas de
+   identificación siempre visibles a la izquierda mientras se recorren los meses — para nunca
+   perder de referencia "qué mes" ni "qué contrato" se está mirando. ---- */
+.table-wrap-seguimiento{ max-height:65vh; overflow-y:auto; }
+.data-table-heatmap thead th{
+  position:sticky; top:0; z-index:3;
+  background:#F8FAFB; white-space:nowrap;
+}
+
+/* Columnas Pospre / N° PC / Contratista / Sucursal fijas a la izquierda mientras se recorren los
+   meses con scroll horizontal. Anchos fijos porque position:sticky necesita un "left" conocido
+   para cada una. */
+.data-table-heatmap tbody .segu-col-1, .data-table-heatmap tbody .segu-col-2,
+.data-table-heatmap tbody .segu-col-3, .data-table-heatmap tbody .segu-col-4{
+  position:sticky; z-index:2; background:var(--surface);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+/* Las 4 celdas de la esquina superior izquierda quedan fijas en los DOS sentidos a la vez (arriba
+   Y a la izquierda), por eso llevan el z-index más alto de la tabla. */
 .data-table-heatmap thead .segu-col-1, .data-table-heatmap thead .segu-col-2,
-.data-table-heatmap thead .segu-col-3, .data-table-heatmap thead .segu-col-4{ background:#F8FAFB; z-index:6; }
+.data-table-heatmap thead .segu-col-3, .data-table-heatmap thead .segu-col-4{
+  position:sticky; z-index:4; background:#F8FAFB;
+}
 .data-table-heatmap .segu-col-1{ left:0; width:130px; min-width:130px; max-width:130px; }
 .data-table-heatmap .segu-col-2{
   left:130px; width:150px; min-width:150px; max-width:150px;
@@ -403,12 +417,14 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
      "..." que sí aplica al resto de las columnas fijas. */
   white-space:normal; overflow:visible; text-overflow:unset; word-break:break-word;
 }
+.data-table-heatmap thead .segu-col-2{ white-space:nowrap; } /* en el encabezado "N° PC" sí entra en una línea */
 .data-table-heatmap .segu-col-3{ left:280px; width:190px; min-width:190px; max-width:190px; }
 .data-table-heatmap .segu-col-4{ left:470px; width:120px; min-width:120px; max-width:120px; box-shadow:4px 0 6px -4px rgba(15,25,35,0.18); }
 .data-table-heatmap tbody tr:hover .segu-col-1, .data-table-heatmap tbody tr:hover .segu-col-2,
 .data-table-heatmap tbody tr:hover .segu-col-3, .data-table-heatmap tbody tr:hover .segu-col-4{ background:var(--brand-soft); }
 .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-1, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-2,
 .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-3, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-4{ background:var(--surface); }
+
 .filter-texto-group{ display:flex; gap:6px; }
 .filter-texto-group select{ flex:0 0 auto; }
 .filter-texto-group input{ flex:1; min-width:0; }
