@@ -60,12 +60,15 @@ const state = {
   dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
   riesgoPlazoActivo: false,
   riesgoPlazoActivoRegistros: false,
+  riesgoPlazoActivoSeguimiento: false,
   editingId: null,
   activeStage: null,
   registrosSort: { key: null, dir: 1 },     // ordenamiento de la tabla de Registros
   dashSort: { key: null, dir: -1 },         // ordenamiento de la tabla de detalle del Dashboard (agrupada)
   dashDetalleSort: { key: null, dir: 1 },   // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
-  comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} } // módulo Comparativa de años
+  comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} }, // módulo Comparativa de años
+  seguFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' }, // módulo Seguimiento de Avance
+  seguSort: { dir: 1 } // orden de la tabla de Seguimiento (1 = peor % avance primero)
 };
 
 const DASH_FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
@@ -217,6 +220,10 @@ document.getElementById('sidenav').addEventListener('click', (e) => {
     abrirSelectorOrigenTramite();
     return;
   }
+  // Si ya estás en esa misma pestaña, no volvemos a disparar showView: evita que un clic
+  // repetido (por error, o doble clic) recargue datos del servidor y corte lo que estabas
+  // completando (una certificación, un proyecto o una compra a medio cargar, por ejemplo).
+  if (btn.classList.contains('active')) return;
   showView(btn.dataset.view);
 });
 
@@ -235,6 +242,7 @@ function showView(name) {
   if (name === 'proyectos') abrirVistaProyectos();
   if (name === 'compras') abrirVistaCompras();
   if (name === 'usuarios') renderUsuarios();
+  if (name === 'seguimiento') renderSeguimiento();
   if (name === 'comparativa') renderComparativa();
 }
 
@@ -1614,7 +1622,7 @@ function renderRegistros() {
   }).join('') + '</tbody>';
   table.innerHTML = thead + tbody;
   table.classList.toggle('solo-consulta', !puedeEditar);
-  setupScrollShadow(table.closest('.table-wrap'));
+  setupScrollShadow(table.closest('.table-wrap'), 'recordsScrollTop', 'recordsScrollTopInner');
   wireSortableHeaders(table, state.registrosSort, renderRegistros);
 
   table.querySelectorAll('tbody tr').forEach(tr => {
@@ -1640,8 +1648,9 @@ function renderRegistros() {
 }
 
 // ---- Oculta la sombra de "hay más contenido" cuando el scroll horizontal llega al final,
-//      y sincroniza la barra de scroll duplicada de arriba con la tabla de abajo ----
-function setupScrollShadow(wrap) {
+//      y sincroniza la barra de scroll duplicada de arriba con la tabla de abajo (si se pasan
+//      los IDs de esa barra — solo las tablas que pueden ser muy anchas la tienen). ----
+function setupScrollShadow(wrap, topBarId, topInnerId) {
   if (!wrap) return;
   function update() {
     const alFinal = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
@@ -1654,10 +1663,10 @@ function setupScrollShadow(wrap) {
     window.addEventListener('resize', update);
   }
 
-  // Barra superior duplicada (solo aplica a la tabla de Registros, que es la que puede ser muy ancha)
-  const topBar = document.getElementById('recordsScrollTop');
-  const topInner = document.getElementById('recordsScrollTopInner');
-  if (topBar && topInner && wrap.querySelector('#recordsTable')) {
+  if (!topBarId) return;
+  const topBar = document.getElementById(topBarId);
+  const topInner = document.getElementById(topInnerId);
+  if (topBar && topInner) {
     topInner.style.width = wrap.scrollWidth + 'px';
     if (!topBar.dataset.scrollWired) {
       topBar.dataset.scrollWired = '1';
@@ -2571,6 +2580,180 @@ document.getElementById('compExportBtn').addEventListener('click', () => {
 });
 
 // ============================================================
+// SEGUIMIENTO DE AVANCE
+// ------------------------------------------------------------
+// Para cada contrato (trámite) del filtro actual, muestra el % de avance ACUMULADO de sus
+// certificaciones mes a mes (no el % de cada certificado individual, sino cuánto llevaba
+// certificado ese contrato a esa fecha). Usa exactamente los mismos filtros que el Dashboard,
+// con la misma barra colapsable de "Filtros avanzados". Pospre / N° PC / Contratista / Sucursal
+// son siempre las primeras 4 columnas de cada fila, sin excepción.
+// ============================================================
+const SEGU_FILTER_KEYS = DASH_FILTER_KEYS.slice();
+
+// ---- "AAAA-MM" -> "Mar/25", para que las columnas de mes se lean cómodo en la tabla y el gráfico ----
+const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function formatMesCorto(v) {
+  const m = String(v || '').match(/^(\d{4})-(\d{2})/);
+  if (!m) return String(v || '');
+  const idx = parseInt(m[2], 10) - 1;
+  return (MESES_CORTOS[idx] || m[2]) + '/' + m[1].slice(2);
+}
+
+function populateSeguFilterOptions() {
+  SEGU_FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
+    const el = document.querySelector('#seguFiltersBar [data-segufilter="' + key + '"]');
+    if (!el) return;
+    const opts = uniqueValues(key);
+    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
+    state.seguFiltros[key] = (state.seguFiltros[key] || []).filter(v => opts.includes(v));
+    renderMultiselect(el, opts, state.seguFiltros[key], (vals) => {
+      state.seguFiltros[key] = vals;
+      renderSeguimiento();
+    });
+  });
+}
+
+function filteredForSeguimientoBase() {
+  return aplicarFiltrosAvanzados(applyFilters(state.registros, state.seguFiltros, SEGU_FILTER_KEYS), state.seguFiltros);
+}
+function filteredForSeguimiento() {
+  const rows = filteredForSeguimientoBase();
+  return state.riesgoPlazoActivoSeguimiento ? rows.filter(esRiesgoPorPlazo) : rows;
+}
+
+// ---- Tinte de fondo para el heatmap de % de avance (mismos 3 colores que las pastillas de
+// Estado en el resto de la app, para no inventar una paleta nueva) ----
+function semTinte(pct) {
+  if (pct >= 75) return { bg: '#DCFCE7', color: '#166534' };
+  if (pct >= 40) return { bg: '#FEF3C7', color: '#92400E' };
+  return { bg: '#FEE2E2', color: '#991B1B' };
+}
+
+function renderSeguimiento() {
+  populateSeguFilterOptions();
+  document.getElementById('riesgoPlazoBadgeSegu').textContent = filteredForSeguimientoBase().filter(esRiesgoPorPlazo).length;
+
+  const rows = filteredForSeguimiento();
+  const idsFiltrados = new Set(rows.map(r => r._id));
+
+  // ---- Certificaciones de estos contratos, agrupadas por trámite y ordenadas por mes/año ----
+  const certsPorTramite = {};
+  (certListaCache || []).forEach(c => {
+    if (!idsFiltrados.has(c.idTramite) || !c.mesAnioCertificacion) return;
+    if (!certsPorTramite[c.idTramite]) certsPorTramite[c.idTramite] = [];
+    certsPorTramite[c.idTramite].push(c);
+  });
+  Object.values(certsPorTramite).forEach(list => list.sort((a, b) => String(a.mesAnioCertificacion).localeCompare(String(b.mesAnioCertificacion))));
+
+  // ---- Columnas de mes: todos los meses con al menos 1 certificación en el filtro actual ----
+  const mesesSet = new Set();
+  Object.values(certsPorTramite).forEach(list => list.forEach(c => mesesSet.add(c.mesAnioCertificacion)));
+  const meses = Array.from(mesesSet).sort();
+
+  const table = document.getElementById('seguimientoTable');
+  if (!meses.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">No hay certificaciones cargadas para los contratos del filtro actual.</td></tr></tbody>';
+    return;
+  }
+
+  // ---- % de avance acumulado por contrato y por mes: $ Certificados acumulados hasta ese mes
+  // (inclusive) / $ Total Adjudicado del contrato. La columna final "% Avance actual" usa
+  // pctAvanceTramite(), la misma fuente de verdad que Dashboard/Registros (Certificado por AAD),
+  // que puede diferir levemente de la última columna de mes si hay certificaciones sin
+  // Mes/Año cargado. ----
+  const filas = rows.map(r => {
+    const certs = certsPorTramite[r._id] || [];
+    const adj = num(r.totalAdjudicado);
+    let acumulado = 0, certIdx = 0;
+    const porMes = meses.map(m => {
+      while (certIdx < certs.length && certs[certIdx].mesAnioCertificacion <= m) {
+        acumulado += num(certs[certIdx].montoCertificado);
+        certIdx++;
+      }
+      return adj > 0 ? (acumulado / adj) * 100 : 0;
+    });
+    return {
+      id: r._id, pospre: r.pospre, nroPedidoCompras: r.nroPedidoCompras, adjudicatario: r.adjudicatario,
+      sucursal: r.sucursal, adj, porMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0
+    };
+  });
+
+  // ---- Orden: peor % de avance actual primero, para detectar rápido lo atrasado (clic en el
+  // encabezado de esa columna invierte el orden) ----
+  filas.sort((a, b) => state.seguSort.dir * (a.pctActual - b.pctActual));
+
+  const celdaSemaforo = (pct) => {
+    const t = semTinte(pct);
+    return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${pct.toFixed(0)}%</td>`;
+  };
+
+  const theadMeses = meses.map(m => `<th class="mono" style="text-align:right;">${escapeHtml(formatMesCorto(m))}</th>`).join('');
+  table.innerHTML = `<thead><tr>
+      <th>Pospre</th><th>N° PC</th><th>Contratista</th><th>Sucursal</th>
+      ${theadMeses}
+      <th class="mono sortable-th" id="seguThActual" style="text-align:right; cursor:pointer;">% Avance actual ${state.seguSort.dir === 1 ? '▲' : '▼'}</th>
+    </tr></thead><tbody>` +
+    filas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
+      <td>${escapeHtml(f.pospre || '')}</td>
+      <td class="mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
+      <td>${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
+      <td>${escapeHtml(f.sucursal || '')}</td>
+      ${f.porMes.map(celdaSemaforo).join('')}
+      ${celdaSemaforo(f.pctActual)}
+    </tr>`).join('') +
+    '</tbody>';
+  setupScrollShadow(table.closest('.table-wrap'), 'seguimientoScrollTop', 'seguimientoScrollTopInner');
+  const th = document.getElementById('seguThActual');
+  if (th) th.addEventListener('click', () => { state.seguSort.dir *= -1; renderSeguimiento(); });
+}
+
+document.getElementById('seguClearFilters').addEventListener('click', () => {
+  SEGU_FILTER_KEYS.forEach(k => { state.seguFiltros[k] = (k === 'expediente') ? '' : []; });
+  const seguExpEl = document.querySelector('#seguFiltersBar [data-segufilter="expediente"]');
+  if (seguExpEl) seguExpEl.value = '';
+  state.seguFiltros.fechaPCDesde = '';
+  state.seguFiltros.fechaPCHasta = '';
+  state.seguFiltros.pctAvanceDesde = '';
+  state.seguFiltros.pctAvanceHasta = '';
+  state.seguFiltros.texto = '';
+  state.seguFiltros.textoModo = 'contiene';
+  document.getElementById('seguFechaPCDesde').value = '';
+  document.getElementById('seguFechaPCHasta').value = '';
+  document.getElementById('seguPctAvanceDesde').value = '';
+  document.getElementById('seguPctAvanceHasta').value = '';
+  document.getElementById('seguTextoBuscar').value = '';
+  document.getElementById('seguTextoModo').value = 'contiene';
+  state.riesgoPlazoActivoSeguimiento = false;
+  document.getElementById('riesgoPlazoBtnSegu').classList.remove('active');
+  renderSeguimiento();
+});
+document.querySelector('#seguFiltersBar [data-segufilter="expediente"]').addEventListener('input', (e) => {
+  state.seguFiltros.expediente = e.target.value.trim();
+  renderSeguimiento();
+});
+document.getElementById('seguFechaPCDesde').addEventListener('change', (e) => { state.seguFiltros.fechaPCDesde = e.target.value; renderSeguimiento(); });
+document.getElementById('seguFechaPCHasta').addEventListener('change', (e) => { state.seguFiltros.fechaPCHasta = e.target.value; renderSeguimiento(); });
+document.getElementById('seguPctAvanceDesde').addEventListener('input', (e) => { state.seguFiltros.pctAvanceDesde = e.target.value; renderSeguimiento(); });
+document.getElementById('seguPctAvanceHasta').addEventListener('input', (e) => { state.seguFiltros.pctAvanceHasta = e.target.value; renderSeguimiento(); });
+document.getElementById('seguTextoBuscar').addEventListener('input', (e) => { state.seguFiltros.texto = e.target.value; renderSeguimiento(); });
+document.getElementById('seguTextoModo').addEventListener('change', (e) => { state.seguFiltros.textoModo = e.target.value; renderSeguimiento(); });
+document.getElementById('riesgoPlazoBtnSegu').addEventListener('click', () => {
+  state.riesgoPlazoActivoSeguimiento = !state.riesgoPlazoActivoSeguimiento;
+  document.getElementById('riesgoPlazoBtnSegu').classList.toggle('active', state.riesgoPlazoActivoSeguimiento);
+  renderSeguimiento();
+});
+document.getElementById('seguExportBtn').addEventListener('click', () => {
+  const table = document.getElementById('seguimientoTable');
+  if (!table.querySelector('tbody tr')) { alert('No hay datos para exportar.'); return; }
+  exportTableToCsv(table, 'seguimiento_avance.csv');
+});
+wireToggleFiltrosAvanzados('seguFiltrosAvanzadosToggle', 'seguFiltersBarAvanzados');
+if (tieneFiltrosAvanzadosActivos(state.seguFiltros, state.riesgoPlazoActivoSeguimiento)) {
+  document.getElementById('seguFiltersBarAvanzados').hidden = false;
+  document.getElementById('seguFiltrosAvanzadosToggle').classList.add('is-open');
+}
+
+// ============================================================
 // USUARIOS (admin)
 // ============================================================
 let nuevoUsuarioSucursalesSeleccionadas = [];
@@ -2732,10 +2915,12 @@ async function abrirVistaCertificaciones() {
     const rec = state.registros.find(r => r._id === certTramitePreseleccionado);
     certTramitePreseleccionado = null;
     if (rec && puedeEditar) seleccionarTramiteParaCertificar(rec);
-  } else {
+  } else if (!certTramiteActual) {
+    // Solo mostramos el estado "sin trámite elegido" si no había uno ya seleccionado. Si el
+    // usuario estaba a mitad de cargar una certificación y solo pasó por otra pestaña (por
+    // ejemplo, a mirar el Dashboard), al volver acá no le borramos lo que tenía en curso.
     document.getElementById('certTramiteSeleccionado').hidden = true;
     document.getElementById('certForm').hidden = true;
-    certTramiteActual = null;
     certEditingId = null;
   }
 }
@@ -3205,10 +3390,11 @@ async function abrirVistaProyectos() {
     proyEditingId = null;      // llegar acá (ej: "Ver / cargar proyectos" desde un trámite) siempre arranca en modo carga, nunca "edición pegada"
     proyDatosHuerfano = null;
     if (rec && puedeEditar) seleccionarTramiteParaProyecto(rec);
-  } else {
+  } else if (!proyTramiteActual) {
+    // Igual que en Certificaciones: si ya había un trámite elegido con el formulario a medio
+    // completar, y el usuario solo pasó por otra pestaña, no se lo borramos al volver.
     document.getElementById('proyTramiteSeleccionado').hidden = true;
     document.getElementById('proyForm').hidden = true;
-    proyTramiteActual = null;
     proyEditingId = null;
     proyDatosHuerfano = null;
   }
@@ -3851,7 +4037,9 @@ document.getElementById('comprasClearFilters').addEventListener('click', () => {
 
 async function abrirVistaCompras() {
   await cargarCompras();
-  cerrarComprasForm();
+  // Si el usuario ya tenía el formulario de Compras abierto (alta/edición a medio completar) y
+  // solo pasó por otra pestaña, no se lo cerramos al volver — solo arranca cerrado la primera vez.
+  if (!comprasFormNivel) cerrarComprasForm();
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   document.getElementById('comprasToolbar').hidden = !puedeEditar;
 }
