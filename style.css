@@ -397,9 +397,14 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .data-table-heatmap thead .segu-col-1, .data-table-heatmap thead .segu-col-2,
 .data-table-heatmap thead .segu-col-3, .data-table-heatmap thead .segu-col-4{ background:#F8FAFB; z-index:6; }
 .data-table-heatmap .segu-col-1{ left:0; width:130px; min-width:130px; max-width:130px; }
-.data-table-heatmap .segu-col-2{ left:130px; width:90px; min-width:90px; max-width:90px; }
-.data-table-heatmap .segu-col-3{ left:220px; width:190px; min-width:190px; max-width:190px; }
-.data-table-heatmap .segu-col-4{ left:410px; width:120px; min-width:120px; max-width:120px; box-shadow:4px 0 6px -4px rgba(15,25,35,0.18); }
+.data-table-heatmap .segu-col-2{
+  left:130px; width:150px; min-width:150px; max-width:150px;
+  /* El N° de Pedido de Compras siempre tiene que verse completo: acá anulamos el truncado con
+     "..." que sí aplica al resto de las columnas fijas. */
+  white-space:normal; overflow:visible; text-overflow:unset; word-break:break-word;
+}
+.data-table-heatmap .segu-col-3{ left:280px; width:190px; min-width:190px; max-width:190px; }
+.data-table-heatmap .segu-col-4{ left:470px; width:120px; min-width:120px; max-width:120px; box-shadow:4px 0 6px -4px rgba(15,25,35,0.18); }
 .data-table-heatmap tbody tr:hover .segu-col-1, .data-table-heatmap tbody tr:hover .segu-col-2,
 .data-table-heatmap tbody tr:hover .segu-col-3, .data-table-heatmap tbody tr:hover .segu-col-4{ background:var(--brand-soft); }
 .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-1, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-2,
