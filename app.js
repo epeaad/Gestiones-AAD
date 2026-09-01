@@ -48,7 +48,12 @@ const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','a
 // Campos "acumulador": tienen un mini sumador al lado para ir agregando valores sin calcular a mano
 const SUM_HELPER_FIELDS = new Set([]);
 
-const FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
+// Un único set de claves para los 3 filtros que ahora comparten estado (Dashboard/Registros/
+// Seguimiento). Se mantienen los 3 nombres históricos (FILTER_KEYS, DASH_FILTER_KEYS,
+// SEGU_FILTER_KEYS) como alias del mismo array para no tener que renombrar cada referencia
+// existente en el resto del archivo.
+const SHARED_FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
+const FILTER_KEYS = SHARED_FILTER_KEYS;
 
 // ---- Estado en memoria ----
 const state = {
@@ -56,22 +61,22 @@ const state = {
   campos: [],
   etapas: [],
   registros: [],
-  filtros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
-  dashFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' },
-  riesgoPlazoActivo: false,
-  riesgoPlazoActivoRegistros: false,
-  riesgoPlazoActivoSeguimiento: false,
+  // Filtro ÚNICO compartido por Dashboard, Registros y Seguimiento de Avance: cambiarlo en
+  // cualquiera de esos 3 módulos se refleja automáticamente en los otros dos (misma referencia
+  // de objeto), para que navegar entre ellos sea un solo flujo de trabajo continuo. Comparativa
+  // de Años queda aparte (state.comp.filtros) porque su lógica es distinta (compara Año A vs. B).
+  filtrosCompartidos: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene', expediente: '' },
+  riesgoPlazoActivoCompartido: false,
   editingId: null,
   activeStage: null,
   registrosSort: { key: null, dir: 1 },     // ordenamiento de la tabla de Registros
   dashSort: { key: null, dir: -1 },         // ordenamiento de la tabla de detalle del Dashboard (agrupada)
   dashDetalleSort: { key: null, dir: 1 },   // ordenamiento de la tabla de detalle del Dashboard (modo "Todos")
-  comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} }, // módulo Comparativa de años
-  seguFiltros: { fechaPCDesde: '', fechaPCHasta: '', pctAvanceDesde: '', pctAvanceHasta: '', texto: '', textoModo: 'contiene' }, // módulo Seguimiento de Avance
+  comp: { anioA: '', anioB: '', groupBy: 'sucursal', filtros: {} }, // módulo Comparativa de años (filtro propio, no compartido)
   seguSort: { key: 'pctActual', dir: 1 } // orden de la tabla de Seguimiento (por defecto: peor % acumulado primero)
 };
 
-const DASH_FILTER_KEYS = ['pospre','expediente','anio','sucursal','rubro','nroPedidoCompras','adjudicatario','estado'];
+const DASH_FILTER_KEYS = SHARED_FILTER_KEYS;
 
 // ============================================================
 // API
@@ -920,12 +925,6 @@ function openRecordForEdit(record) {
 // ============================================================
 // REGISTROS + FILTROS
 // ============================================================
-function uniqueValues(key) {
-  const set = new Set();
-  state.registros.forEach(r => { if (r[key]) set.add(String(r[key]).trim()); });
-  return Array.from(set).sort();
-}
-
 // ---- Componente de selección múltiple por tildado (checkboxes) ----
 function closeAllMultiselects(except) {
   document.querySelectorAll('.multiselect.open').forEach(ms => { if (ms !== except) ms.classList.remove('open'); });
@@ -1014,89 +1013,157 @@ function filtrarOpcionesMultiselect(el, query) {
   });
 }
 
+function uniqueValues(key) {
+  return uniqueValuesFrom(state.registros, key);
+}
+function uniqueValuesFrom(rows, key) {
+  const set = new Set();
+  rows.forEach(r => { if (r[key]) set.add(String(r[key]).trim()); });
+  return Array.from(set).sort();
+}
+
+// ---- Opciones "facetadas" del filtro compartido: las opciones disponibles para cada campo se
+// calculan sobre las filas que ya pasan TODOS los demás filtros activos (sin contar el propio
+// campo) — así, elegir Sucursal "Centro" deja en el combo de Pedido de Compras solo los que
+// existen en Centro, y en Contratista solo los que tienen algún Pedido de Compras en Centro, y
+// así en cadena con el resto de los campos. ----
+function opcionesFacetadas(key) {
+  const otrasKeys = SHARED_FILTER_KEYS.filter(k => k !== key);
+  let rows = aplicarFiltrosAvanzados(
+    applyFilters(state.registros, state.filtrosCompartidos, otrasKeys),
+    state.filtrosCompartidos
+  );
+  if (state.riesgoPlazoActivoCompartido) rows = rows.filter(esRiesgoPorPlazo);
+  const opts = uniqueValuesFrom(rows, key);
+  if (key === 'estado' && rows.some(r => !r.estado)) opts.push(ESTADO_VACIO_LABEL);
+  return opts;
+}
+
+// ---- Repuebla los 3 combos de filtros (Dashboard/Registros/Seguimiento comparten el mismo
+// estado, pero cada uno tiene su propia barra de multiselects en el DOM) con las opciones ya
+// facetadas, y descarta de la selección actual cualquier valor que haya dejado de ser posible
+// por culpa de otro filtro más restrictivo. Se llama al arrancar cada una de las 3 vistas y cada
+// vez que cambia cualquier filtro, para que las tres queden siempre en sincro. ----
+const FILTROS_COMPARTIDOS_BARRAS = [
+  { selector: '#dashFiltersBar', attr: 'data-dashfilter', onChange: () => renderDashboard() },
+  { selector: '#filtersBar', attr: 'data-filter', onChange: () => renderRegistros() },
+  { selector: '#seguFiltersBar', attr: 'data-segufilter', onChange: () => renderSeguimiento() }
+];
 function populateFilterOptions() {
-  FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
-    const el = document.querySelector('#filtersBar [data-filter="' + key + '"]');
-    if (!el) return;
-    const opts = uniqueValues(key);
-    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
-    state.filtros[key] = (state.filtros[key] || []).filter(v => opts.includes(v));
-    renderMultiselect(el, opts, state.filtros[key], (vals) => {
-      state.filtros[key] = vals;
-      renderRegistros();
+  SHARED_FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
+    const opts = opcionesFacetadas(key);
+    state.filtrosCompartidos[key] = (state.filtrosCompartidos[key] || []).filter(v => opts.includes(v));
+    FILTROS_COMPARTIDOS_BARRAS.forEach(bar => {
+      const el = document.querySelector(bar.selector + ' [' + bar.attr + '="' + key + '"]');
+      if (!el) return;
+      renderMultiselect(el, opts, state.filtrosCompartidos[key], (vals) => {
+        state.filtrosCompartidos[key] = vals;
+        bar.onChange();
+      });
     });
   });
+  sincronizarFiltrosAvanzadosUI();
+}
 
-  DASH_FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
-    const el = document.querySelector('#dashFiltersBar [data-dashfilter="' + key + '"]');
-    if (!el) return;
-    const opts = uniqueValues(key);
-    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
-    state.dashFiltros[key] = (state.dashFiltros[key] || []).filter(v => opts.includes(v));
-    renderMultiselect(el, opts, state.dashFiltros[key], (vals) => {
-      state.dashFiltros[key] = vals;
-      renderDashboard();
-    });
+// ---- Sincroniza visualmente los inputs de "Filtros avanzados" (Fecha P.C., % de Avance, Buscar
+// palabra) y el botón + badge de "Riesgo por Plazo" de las 3 barras (Dashboard/Registros/
+// Seguimiento) con el estado compartido. Se llama cada vez que se repueblan los combos, para que
+// al entrar a un módulo sus inputs ya reflejen lo que se cargó en cualquiera de los otros dos. ----
+const FILTROS_AVANZADOS_UI = [
+  { prefijo: 'dash', expedienteSelector: '#dashFiltersBar [data-dashfilter="expediente"]', riesgoBtn: 'riesgoPlazoBtn', riesgoBadge: 'riesgoPlazoBadge' },
+  { prefijo: 'reg', expedienteSelector: '#filtersBar [data-filter="expediente"]', riesgoBtn: 'riesgoPlazoBtnReg', riesgoBadge: 'riesgoPlazoBadgeReg' },
+  { prefijo: 'segu', expedienteSelector: '#seguFiltersBar [data-segufilter="expediente"]', riesgoBtn: 'riesgoPlazoBtnSegu', riesgoBadge: 'riesgoPlazoBadgeSegu' }
+];
+function sincronizarFiltrosAvanzadosUI() {
+  const f = state.filtrosCompartidos;
+  FILTROS_AVANZADOS_UI.forEach(ui => {
+    const setVal = (idSuffix, val) => {
+      const el = document.getElementById(ui.prefijo + idSuffix);
+      if (el && el !== document.activeElement) el.value = val; // no pisar lo que se está tipeando en ese momento
+    };
+    setVal('FechaPCDesde', f.fechaPCDesde || '');
+    setVal('FechaPCHasta', f.fechaPCHasta || '');
+    setVal('PctAvanceDesde', f.pctAvanceDesde || '');
+    setVal('PctAvanceHasta', f.pctAvanceHasta || '');
+    setVal('TextoBuscar', f.texto || '');
+    setVal('TextoModo', f.textoModo || 'contiene');
+    const expEl = document.querySelector(ui.expedienteSelector);
+    if (expEl && expEl !== document.activeElement) expEl.value = f.expediente || '';
+    const btn = document.getElementById(ui.riesgoBtn);
+    if (btn) btn.classList.toggle('active', !!state.riesgoPlazoActivoCompartido);
+    const badge = document.getElementById(ui.riesgoBadge);
+    if (badge) badge.textContent = filtrosCompartidosBase().filter(esRiesgoPorPlazo).length;
   });
 }
 
+// ---- Filas que pasan el filtro compartido completo (categóricos + avanzados), SIN aplicar el
+// toggle de "Riesgo por Plazo" — la usan tanto el badge (para contar cuántos calificarían) como
+// cada módulo antes de decidir si aplica o no ese toggle. ----
+function filtrosCompartidosBase() {
+  return aplicarFiltrosAvanzados(applyFilters(state.registros, state.filtrosCompartidos, SHARED_FILTER_KEYS), state.filtrosCompartidos);
+}
+
 document.querySelector('#filtersBar [data-filter="expediente"]').addEventListener('input', (e) => {
-  state.filtros.expediente = e.target.value.trim();
+  state.filtrosCompartidos.expediente = e.target.value.trim();
   renderRegistros();
 });
 document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]').addEventListener('input', (e) => {
-  state.dashFiltros.expediente = e.target.value.trim();
+  state.filtrosCompartidos.expediente = e.target.value.trim();
   renderDashboard();
 });
-document.getElementById('clearFilters').addEventListener('click', () => {
-  FILTER_KEYS.forEach(k => { state.filtros[k] = (k === 'expediente') ? '' : []; });
-  const expEl = document.querySelector('#filtersBar [data-filter="expediente"]');
-  if (expEl) expEl.value = '';
-  state.filtros.fechaPCDesde = '';
-  state.filtros.fechaPCHasta = '';
-  state.filtros.pctAvanceDesde = '';
-  state.filtros.pctAvanceHasta = '';
-  state.filtros.texto = '';
-  state.filtros.textoModo = 'contiene';
-  document.getElementById('regFechaPCDesde').value = '';
-  document.getElementById('regFechaPCHasta').value = '';
-  document.getElementById('regPctAvanceDesde').value = '';
-  document.getElementById('regPctAvanceHasta').value = '';
-  document.getElementById('regTextoBuscar').value = '';
-  document.getElementById('regTextoModo').value = 'contiene';
-  state.riesgoPlazoActivoRegistros = false;
-  document.getElementById('riesgoPlazoBtnReg').classList.remove('active');
-  populateFilterOptions();
-  renderRegistros();
+document.querySelector('#seguFiltersBar [data-segufilter="expediente"]').addEventListener('input', (e) => {
+  state.filtrosCompartidos.expediente = e.target.value.trim();
+  renderSeguimiento();
 });
 
+// ---- Limpiar TODOS los filtros compartidos de una sola vez (categóricos + avanzados + riesgo).
+// Cualquiera de los 3 botones "Limpiar filtros" (Dashboard/Registros/Seguimiento) dispara esto
+// mismo, porque los 3 módulos comparten el mismo filtro — no tendría sentido limpiar "solo la
+// mitad". El único parámetro es qué función de render llamar al final (la del módulo donde se
+// tocó el botón; las otras dos se ponen al día solas la próxima vez que se entra a esa vista). ----
+function limpiarFiltrosCompartidos(renderActual) {
+  SHARED_FILTER_KEYS.forEach(k => { state.filtrosCompartidos[k] = (k === 'expediente') ? '' : []; });
+  state.filtrosCompartidos.fechaPCDesde = '';
+  state.filtrosCompartidos.fechaPCHasta = '';
+  state.filtrosCompartidos.pctAvanceDesde = '';
+  state.filtrosCompartidos.pctAvanceHasta = '';
+  state.filtrosCompartidos.texto = '';
+  state.filtrosCompartidos.textoModo = 'contiene';
+  state.riesgoPlazoActivoCompartido = false;
+  populateFilterOptions(); // repuebla combos + sincroniza inputs avanzados de las 3 barras
+  renderActual();
+}
+document.getElementById('clearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderRegistros));
+document.getElementById('dashClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderDashboard));
+document.getElementById('seguClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderSeguimiento));
+
 document.getElementById('regFechaPCDesde').addEventListener('change', (e) => {
-  state.filtros.fechaPCDesde = e.target.value;
+  state.filtrosCompartidos.fechaPCDesde = e.target.value;
   renderRegistros();
 });
 document.getElementById('regFechaPCHasta').addEventListener('change', (e) => {
-  state.filtros.fechaPCHasta = e.target.value;
+  state.filtrosCompartidos.fechaPCHasta = e.target.value;
   renderRegistros();
 });
 document.getElementById('regPctAvanceDesde').addEventListener('input', (e) => {
-  state.filtros.pctAvanceDesde = e.target.value;
+  state.filtrosCompartidos.pctAvanceDesde = e.target.value;
   renderRegistros();
 });
 document.getElementById('regPctAvanceHasta').addEventListener('input', (e) => {
-  state.filtros.pctAvanceHasta = e.target.value;
+  state.filtrosCompartidos.pctAvanceHasta = e.target.value;
   renderRegistros();
 });
 document.getElementById('regTextoBuscar').addEventListener('input', (e) => {
-  state.filtros.texto = e.target.value;
+  state.filtrosCompartidos.texto = e.target.value;
   renderRegistros();
 });
 document.getElementById('regTextoModo').addEventListener('change', (e) => {
-  state.filtros.textoModo = e.target.value;
+  state.filtrosCompartidos.textoModo = e.target.value;
   renderRegistros();
 });
 document.getElementById('riesgoPlazoBtnReg').addEventListener('click', () => {
-  state.riesgoPlazoActivoRegistros = !state.riesgoPlazoActivoRegistros;
-  document.getElementById('riesgoPlazoBtnReg').classList.toggle('active', state.riesgoPlazoActivoRegistros);
+  state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
+  document.getElementById('riesgoPlazoBtnReg').classList.toggle('active', state.riesgoPlazoActivoCompartido);
   renderRegistros();
 });
 
@@ -1118,64 +1185,42 @@ function wireToggleFiltrosAvanzados(btnId, panelId) {
 }
 wireToggleFiltrosAvanzados('dashFiltrosAvanzadosToggle', 'dashFiltersBarAvanzados');
 wireToggleFiltrosAvanzados('filtrosAvanzadosToggle', 'filtersBarAvanzados');
-if (tieneFiltrosAvanzadosActivos(state.dashFiltros, state.riesgoPlazoActivo)) {
+if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActivoCompartido)) {
   document.getElementById('dashFiltersBarAvanzados').hidden = false;
   document.getElementById('dashFiltrosAvanzadosToggle').classList.add('is-open');
 }
-if (tieneFiltrosAvanzadosActivos(state.filtros, state.riesgoPlazoActivoRegistros)) {
+if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActivoCompartido)) {
   document.getElementById('filtersBarAvanzados').hidden = false;
   document.getElementById('filtrosAvanzadosToggle').classList.add('is-open');
 }
 
-document.getElementById('dashClearFilters').addEventListener('click', () => {
-  DASH_FILTER_KEYS.forEach(k => { state.dashFiltros[k] = (k === 'expediente') ? '' : []; });
-  const dashExpEl = document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]');
-  if (dashExpEl) dashExpEl.value = '';
-  state.dashFiltros.fechaPCDesde = '';
-  state.dashFiltros.fechaPCHasta = '';
-  state.dashFiltros.pctAvanceDesde = '';
-  state.dashFiltros.pctAvanceHasta = '';
-  state.dashFiltros.texto = '';
-  state.dashFiltros.textoModo = 'contiene';
-  document.getElementById('dashFechaPCDesde').value = '';
-  document.getElementById('dashFechaPCHasta').value = '';
-  document.getElementById('dashPctAvanceDesde').value = '';
-  document.getElementById('dashPctAvanceHasta').value = '';
-  document.getElementById('dashTextoBuscar').value = '';
-  document.getElementById('dashTextoModo').value = 'contiene';
-  state.riesgoPlazoActivo = false;
-  document.getElementById('riesgoPlazoBtn').classList.remove('active');
-  populateFilterOptions();
-  renderDashboard();
-});
-
 document.getElementById('dashFechaPCDesde').addEventListener('change', (e) => {
-  state.dashFiltros.fechaPCDesde = e.target.value;
+  state.filtrosCompartidos.fechaPCDesde = e.target.value;
   renderDashboard();
 });
 document.getElementById('dashFechaPCHasta').addEventListener('change', (e) => {
-  state.dashFiltros.fechaPCHasta = e.target.value;
+  state.filtrosCompartidos.fechaPCHasta = e.target.value;
   renderDashboard();
 });
 document.getElementById('dashPctAvanceDesde').addEventListener('input', (e) => {
-  state.dashFiltros.pctAvanceDesde = e.target.value;
+  state.filtrosCompartidos.pctAvanceDesde = e.target.value;
   renderDashboard();
 });
 document.getElementById('dashPctAvanceHasta').addEventListener('input', (e) => {
-  state.dashFiltros.pctAvanceHasta = e.target.value;
+  state.filtrosCompartidos.pctAvanceHasta = e.target.value;
   renderDashboard();
 });
 document.getElementById('dashTextoBuscar').addEventListener('input', (e) => {
-  state.dashFiltros.texto = e.target.value;
+  state.filtrosCompartidos.texto = e.target.value;
   renderDashboard();
 });
 document.getElementById('dashTextoModo').addEventListener('change', (e) => {
-  state.dashFiltros.textoModo = e.target.value;
+  state.filtrosCompartidos.textoModo = e.target.value;
   renderDashboard();
 });
 document.getElementById('riesgoPlazoBtn').addEventListener('click', () => {
-  state.riesgoPlazoActivo = !state.riesgoPlazoActivo;
-  document.getElementById('riesgoPlazoBtn').classList.toggle('active', state.riesgoPlazoActivo);
+  state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
+  document.getElementById('riesgoPlazoBtn').classList.toggle('active', state.riesgoPlazoActivoCompartido);
   renderDashboard();
 });
 
@@ -1431,7 +1476,7 @@ const DASH_TEXTO_CAMPOS = [
 
 // ---- Filtros avanzados compartidos por Dashboard y Registros: Fecha P.C. desde/hasta, % de
 // Avance desde/hasta, y Buscar palabra (Contiene/No contiene). Recibe el objeto de filtros
-// (state.dashFiltros o state.filtros) para no duplicar esta lógica en cada módulo. ----
+// (state.filtrosCompartidos o state.filtrosCompartidos) para no duplicar esta lógica en cada módulo. ----
 function aplicarFiltrosAvanzados(rows, filtros) {
   const desde = filtros.fechaPCDesde;
   const hasta = filtros.fechaPCHasta;
@@ -1469,13 +1514,12 @@ function aplicarFiltrosAvanzados(rows, filtros) {
 }
 
 function filteredForDashboardBase() {
-  const rows = applyFilters(state.registros, state.dashFiltros, DASH_FILTER_KEYS);
-  return aplicarFiltrosAvanzados(rows, state.dashFiltros);
+  return filtrosCompartidosBase();
 }
 
 function filteredForDashboard() {
   const rows = filteredForDashboardBase();
-  return state.riesgoPlazoActivo ? rows.filter(esRiesgoPorPlazo) : rows;
+  return state.riesgoPlazoActivoCompartido ? rows.filter(esRiesgoPorPlazo) : rows;
 }
 
 function applyFilters(rows, filtros, keys) {
@@ -1496,11 +1540,11 @@ function applyFilters(rows, filtros, keys) {
 }
 
 function filteredRecordsBase() {
-  return aplicarFiltrosAvanzados(applyFilters(state.registros, state.filtros, FILTER_KEYS), state.filtros);
+  return filtrosCompartidosBase();
 }
 function filteredRecords() {
   const rows = filteredRecordsBase();
-  return state.riesgoPlazoActivoRegistros ? rows.filter(esRiesgoPorPlazo) : rows;
+  return state.riesgoPlazoActivoCompartido ? rows.filter(esRiesgoPorPlazo) : rows;
 }
 
 const REGISTROS_COLS = [
@@ -1601,8 +1645,7 @@ function rowClassForEstado(r) {
 }
 
 function renderRegistros() {
-  // ---- Badge de "Riesgo por Plazo": cuenta sobre el resto de los filtros, sin aplicar el toggle de riesgo ----
-  document.getElementById('riesgoPlazoBadgeReg').textContent = filteredRecordsBase().filter(esRiesgoPorPlazo).length;
+  populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados de las 3 barras compartidas
 
   let rows = filteredRecords();
   rows = sortRows(rows, state.registrosSort, registroSortValue);
@@ -1823,12 +1866,10 @@ function truncateLabel(text, maxLen) {
 }
 
 function renderDashboard() {
+  populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados de las 3 barras compartidas; puede podar selecciones que dejaron de ser válidas
+
   const groupKey = document.getElementById('dashGroupBy').value;
   const rows = filteredForDashboard();
-
-  // ---- Badge de "Riesgo por Plazo": cuenta sobre el resto de los filtros, sin aplicar el toggle de riesgo ----
-  const riesgoCount = filteredForDashboardBase().filter(esRiesgoPorPlazo).length;
-  document.getElementById('riesgoPlazoBadge').textContent = riesgoCount;
 
   // ---- Calendario de vencimientos ----
   renderCalendar();
@@ -1866,10 +1907,10 @@ function renderDashboard() {
 
   // ---- Multas: variación vs. el último snapshot guardado del Historial de KPIs. Solo se muestra
   // sin filtros activos, porque el snapshot guardado es siempre sobre los totales generales ----
-  const dashSinFiltrosActivos = DASH_FILTER_KEYS.every(k => !state.dashFiltros[k] || !state.dashFiltros[k].length)
-    && !state.dashFiltros.fechaPCDesde && !state.dashFiltros.fechaPCHasta
-    && !state.dashFiltros.pctAvanceDesde && !state.dashFiltros.pctAvanceHasta
-    && !state.dashFiltros.texto && !state.riesgoPlazoActivo;
+  const dashSinFiltrosActivos = DASH_FILTER_KEYS.every(k => !state.filtrosCompartidos[k] || !state.filtrosCompartidos[k].length)
+    && !state.filtrosCompartidos.fechaPCDesde && !state.filtrosCompartidos.fechaPCHasta
+    && !state.filtrosCompartidos.pctAvanceDesde && !state.filtrosCompartidos.pctAvanceHasta
+    && !state.filtrosCompartidos.texto && !state.riesgoPlazoActivoCompartido;
   let subMultas = 'sin IVA';
   if (dashSinFiltrosActivos) {
     const previo = snapshotAnteriorAHoy();
@@ -1914,7 +1955,7 @@ function renderDashboard() {
   // ---- Datos por Sucursal (Presupuesto Oficial / Adjudicado / Certificado) — o por Pedido de
   // Compras cuando hay una única Sucursal seleccionada en el filtro, para poder ver el detalle
   // interno de esa sucursal en vez de una sola barra plana. ----
-  const sucursalUnicaSeleccionada = state.dashFiltros.sucursal && state.dashFiltros.sucursal.length === 1 ? state.dashFiltros.sucursal[0] : null;
+  const sucursalUnicaSeleccionada = state.filtrosCompartidos.sucursal && state.filtrosCompartidos.sucursal.length === 1 ? state.filtrosCompartidos.sucursal[0] : null;
   const chartAgruparPor = sucursalUnicaSeleccionada ? 'nroPedidoCompras' : 'sucursal';
   const chartEtiquetaGrupo = sucursalUnicaSeleccionada ? 'Pedido de Compras' : 'Sucursal';
 
@@ -2588,7 +2629,7 @@ document.getElementById('compExportBtn').addEventListener('click', () => {
 // con la misma barra colapsable de "Filtros avanzados". Pospre / N° PC / Contratista / Sucursal
 // son siempre las primeras 4 columnas de cada fila, sin excepción.
 // ============================================================
-const SEGU_FILTER_KEYS = DASH_FILTER_KEYS.slice();
+const SEGU_FILTER_KEYS = SHARED_FILTER_KEYS;
 
 // ---- "AAAA-MM" -> "Mar/25", para que las columnas de mes se lean cómodo en la tabla y el gráfico ----
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -2599,26 +2640,12 @@ function formatMesCorto(v) {
   return (MESES_CORTOS[idx] || m[2]) + '/' + m[1].slice(2);
 }
 
-function populateSeguFilterOptions() {
-  SEGU_FILTER_KEYS.filter(k => k !== 'expediente').forEach(key => {
-    const el = document.querySelector('#seguFiltersBar [data-segufilter="' + key + '"]');
-    if (!el) return;
-    const opts = uniqueValues(key);
-    if (key === 'estado') opts.push(ESTADO_VACIO_LABEL);
-    state.seguFiltros[key] = (state.seguFiltros[key] || []).filter(v => opts.includes(v));
-    renderMultiselect(el, opts, state.seguFiltros[key], (vals) => {
-      state.seguFiltros[key] = vals;
-      renderSeguimiento();
-    });
-  });
-}
-
 function filteredForSeguimientoBase() {
-  return aplicarFiltrosAvanzados(applyFilters(state.registros, state.seguFiltros, SEGU_FILTER_KEYS), state.seguFiltros);
+  return filtrosCompartidosBase();
 }
 function filteredForSeguimiento() {
   const rows = filteredForSeguimientoBase();
-  return state.riesgoPlazoActivoSeguimiento ? rows.filter(esRiesgoPorPlazo) : rows;
+  return state.riesgoPlazoActivoCompartido ? rows.filter(esRiesgoPorPlazo) : rows;
 }
 
 // ---- Tinte de fondo para el heatmap de % de avance (mismos 3 colores que las pastillas de
@@ -2630,8 +2657,7 @@ function semTinte(pct) {
 }
 
 function renderSeguimiento() {
-  populateSeguFilterOptions();
-  document.getElementById('riesgoPlazoBadgeSegu').textContent = filteredForSeguimientoBase().filter(esRiesgoPorPlazo).length;
+  populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados + badges de riesgo de las 3 barras
 
   const rows = filteredForSeguimiento();
   const idsFiltrados = new Set(rows.map(r => r._id));
@@ -2726,39 +2752,15 @@ function renderSeguimiento() {
   wireSortableHeaders(table, state.seguSort, renderSeguimiento);
 }
 
-document.getElementById('seguClearFilters').addEventListener('click', () => {
-  SEGU_FILTER_KEYS.forEach(k => { state.seguFiltros[k] = (k === 'expediente') ? '' : []; });
-  const seguExpEl = document.querySelector('#seguFiltersBar [data-segufilter="expediente"]');
-  if (seguExpEl) seguExpEl.value = '';
-  state.seguFiltros.fechaPCDesde = '';
-  state.seguFiltros.fechaPCHasta = '';
-  state.seguFiltros.pctAvanceDesde = '';
-  state.seguFiltros.pctAvanceHasta = '';
-  state.seguFiltros.texto = '';
-  state.seguFiltros.textoModo = 'contiene';
-  document.getElementById('seguFechaPCDesde').value = '';
-  document.getElementById('seguFechaPCHasta').value = '';
-  document.getElementById('seguPctAvanceDesde').value = '';
-  document.getElementById('seguPctAvanceHasta').value = '';
-  document.getElementById('seguTextoBuscar').value = '';
-  document.getElementById('seguTextoModo').value = 'contiene';
-  state.riesgoPlazoActivoSeguimiento = false;
-  document.getElementById('riesgoPlazoBtnSegu').classList.remove('active');
-  renderSeguimiento();
-});
-document.querySelector('#seguFiltersBar [data-segufilter="expediente"]').addEventListener('input', (e) => {
-  state.seguFiltros.expediente = e.target.value.trim();
-  renderSeguimiento();
-});
-document.getElementById('seguFechaPCDesde').addEventListener('change', (e) => { state.seguFiltros.fechaPCDesde = e.target.value; renderSeguimiento(); });
-document.getElementById('seguFechaPCHasta').addEventListener('change', (e) => { state.seguFiltros.fechaPCHasta = e.target.value; renderSeguimiento(); });
-document.getElementById('seguPctAvanceDesde').addEventListener('input', (e) => { state.seguFiltros.pctAvanceDesde = e.target.value; renderSeguimiento(); });
-document.getElementById('seguPctAvanceHasta').addEventListener('input', (e) => { state.seguFiltros.pctAvanceHasta = e.target.value; renderSeguimiento(); });
-document.getElementById('seguTextoBuscar').addEventListener('input', (e) => { state.seguFiltros.texto = e.target.value; renderSeguimiento(); });
-document.getElementById('seguTextoModo').addEventListener('change', (e) => { state.seguFiltros.textoModo = e.target.value; renderSeguimiento(); });
+document.getElementById('seguFechaPCDesde').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCDesde = e.target.value; renderSeguimiento(); });
+document.getElementById('seguFechaPCHasta').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCHasta = e.target.value; renderSeguimiento(); });
+document.getElementById('seguPctAvanceDesde').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderSeguimiento(); });
+document.getElementById('seguPctAvanceHasta').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderSeguimiento(); });
+document.getElementById('seguTextoBuscar').addEventListener('input', (e) => { state.filtrosCompartidos.texto = e.target.value; renderSeguimiento(); });
+document.getElementById('seguTextoModo').addEventListener('change', (e) => { state.filtrosCompartidos.textoModo = e.target.value; renderSeguimiento(); });
 document.getElementById('riesgoPlazoBtnSegu').addEventListener('click', () => {
-  state.riesgoPlazoActivoSeguimiento = !state.riesgoPlazoActivoSeguimiento;
-  document.getElementById('riesgoPlazoBtnSegu').classList.toggle('active', state.riesgoPlazoActivoSeguimiento);
+  state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
+  document.getElementById('riesgoPlazoBtnSegu').classList.toggle('active', state.riesgoPlazoActivoCompartido);
   renderSeguimiento();
 });
 document.getElementById('seguExportBtn').addEventListener('click', () => {
@@ -2767,7 +2769,7 @@ document.getElementById('seguExportBtn').addEventListener('click', () => {
   exportTableToCsv(table, 'seguimiento_avance.csv');
 });
 wireToggleFiltrosAvanzados('seguFiltrosAvanzadosToggle', 'seguFiltersBarAvanzados');
-if (tieneFiltrosAvanzadosActivos(state.seguFiltros, state.riesgoPlazoActivoSeguimiento)) {
+if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActivoCompartido)) {
   document.getElementById('seguFiltersBarAvanzados').hidden = false;
   document.getElementById('seguFiltrosAvanzadosToggle').classList.add('is-open');
 }
