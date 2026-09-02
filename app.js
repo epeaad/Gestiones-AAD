@@ -2312,15 +2312,15 @@ function renderDashboard() {
     .concat([
       { key: 'n', label: 'Trámites' },
       { key: 'presOficial', label: 'Pres. Oficial' },
-      { key: 'adjudicado', label: 'Total Adjudicado' },
-      { key: 'certificado', label: 'Certificado AAD' },
-      { key: 'avance', label: '% de Avance' },
-      { key: 'certProcesados', label: 'Cant. Certificados Proc.' },
-      { key: 'proyectos', label: 'Cant. Proyectos' },
-      { key: 'pctPresupuestoProyectado', label: '% Presup. Proyectado' },
-      { key: 'pctIIBB', label: '% IIBB Proyectados' }
+      { key: 'adjudicado', label: 'Adjudicado' },
+      { key: 'certificado', label: 'Certificado' },
+      { key: 'avance', label: '% Avance' },
+      { key: 'certProcesados', label: 'Certif. Proc.' },
+      { key: 'proyectos', label: 'Proyectos' },
+      { key: 'pctPresupuestoProyectado', label: '% Presup. Proy.' },
+      { key: 'pctIIBB', label: '% IIBB Proy.' }
     ])
-    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }, { key: 'fechasFinContrato', label: 'Fecha Fin de Contrato' }] : []);
+    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }, { key: 'fechasFinContrato', label: 'Fin de Contrato' }] : []);
 
   const table = document.getElementById('dashTable');
   table.innerHTML = sortableTheadHtml(dashCols, state.dashSort) +
@@ -2346,8 +2346,27 @@ function renderDashboard() {
 // Usa las mismas columnas que Registros, salvo "% Presup. Proyectado": en este detalle general del
 // Dashboard es redundante (ya está el $ Proyectados Acumulados y el % IIBB Proyectados) y no suma
 // al análisis — se mantiene, en cambio, en la pestaña Registros.
-const DASH_DETALLE_COLS = REGISTROS_COLS.filter(c => c.key !== 'pctPresupuestoProyectado')
-  .concat([{ key: 'fechaFinContrato', label: 'Fecha Fin de Contrato' }]);
+// Columnas del detalle "Todos" del Dashboard: mismas claves que Registros, pero con etiquetas
+// propias más compactas (no se tocan las de REGISTROS_COLS para no afectar esa otra tabla) y
+// "Fin de Contrato" reubicada justo antes de "Seguimiento".
+const DASH_DETALLE_COLS = [
+  { key: 'pospre', label: 'Pospre' },
+  { key: 'expediente', label: 'Expediente' },
+  { key: 'anio', label: 'Año' },
+  { key: 'sucursal', label: 'Sucursal' },
+  { key: 'rubro', label: 'Rubro' },
+  { key: 'nroPedidoCompras', label: 'Pedido Compras' },
+  { key: 'adjudicatario', label: 'Contratista' },
+  { key: 'presupuestoOficialRubro', label: 'Pres. Oficial' },
+  { key: 'totalAdjudicado', label: 'Adjudicado' },
+  { key: 'certificadosAAD', label: 'Certificado' },
+  { key: 'pctAvance', label: '% Avance' },
+  { key: 'cantidadProyectos', label: 'Proyectos' },
+  { key: 'pctIIBBProyectados', label: '% IIBB Proy./Gest.' },
+  { key: 'fechaFinContrato', label: 'Fin de Contrato' },
+  { key: 'seguimiento', label: 'Seguimiento' },
+  { key: 'estado', label: 'Estado' }
+];
 function renderDashDetalleCompleto(rows) {
   rows = sortRows(rows, state.dashDetalleSort, registroSortValue);
   const table = document.getElementById('dashTable');
