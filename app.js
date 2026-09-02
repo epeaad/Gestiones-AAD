@@ -1669,13 +1669,6 @@ function wireSortableHeaders(table, sortState, onChange) {
 }
 
 // Genera las filas <td> de un registro de trámite según REGISTROS_COLS (reutilizado por Registros y Dashboard "Todos")
-// ---- "AAAA-MM-DD" -> "DD/MM/AAAA", para mostrar fechas de forma legible en tablas de detalle ----
-function formatFechaCorta(v) {
-  const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return v ? String(v) : '';
-  return m[3] + '/' + m[2] + '/' + m[1];
-}
-
 function registroTdsHtml(r, cols) {
   return (cols || REGISTROS_COLS).map(c => {
     if (c.key === 'estado') {
@@ -1683,7 +1676,6 @@ function registroTdsHtml(r, cols) {
       const texto = r.estado ? r.estado : ESTADO_VACIO_LABEL;
       return `<td><span class="state-pill ${cls}">${escapeHtml(texto)}</span></td>`;
     }
-    if (DATE_FIELDS.has(c.key)) return `<td class="mono">${escapeHtml(formatFechaCorta(r[c.key]))}</td>`;
     if (MONEY_COL_KEYS.has(c.key)) return `<td class="mono">${formatMoney(r[c.key])}</td>`;
     if (c.key === 'pctAvance') return `<td class="mono">${pctAvanceTramite(r).toFixed(1)}%</td>`;
     if (c.key === 'anio') return `<td class="mono">${escapeHtml(r.anio != null ? r.anio : '')}</td>`;
@@ -1872,7 +1864,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-let chartAdjCertSucursal, chartCertificacionPC, chartPresOficialAdjudicado;
+let chartAdjCertSucursal, chartCertificacionPC;
 
 document.getElementById('dashGroupBy').addEventListener('change', renderDashboard);
 
@@ -2056,52 +2048,6 @@ function renderDashboard() {
     ? 'Adjudicado vs. Certificado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% de Avance)'
     : 'Adjudicado vs. Certificado por Sucursal — con % de Avance';
 
-  // ---- Combo: Presupuesto Oficial vs. Adjudicado, con % de Adjudicado sobre el Oficial. El color
-  // de cada punto usa el mismo criterio que el KPI "Desvío presupuestario" (≤100% del oficial:
-  // verde · hasta 115%: amarillo · más de 115%: rojo), porque acá "más alto" NO es mejor como en
-  // el gráfico de avance de abajo — es plata adjudicada por encima de lo presupuestado. ----
-  document.getElementById('chartPresOficialAdjTitulo').textContent = sucursalUnicaSeleccionada
-    ? 'Presupuesto Oficial vs. Adjudicado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% sobre el Oficial)'
-    : 'Presupuesto Oficial vs. Adjudicado por Sucursal — con % sobre el Oficial';
-
-  const colorDesvioGrupo = (pctSobreOficial) => {
-    if (pctSobreOficial <= 100) return '#16A34A';
-    if (pctSobreOficial <= 115) return '#D97706';
-    return '#DC2626';
-  };
-  const pctSobreOficialPorGrupo = sucursalEntries.map(e => e[1].presOficial > 0 ? (e[1].adjudicado / e[1].presOficial) * 100 : 0);
-  const promedioSobreOficial = totalPresOficial > 0 ? (totalAdjudicado / totalPresOficial) * 100 : 0;
-  const EJE_MAX_OFICIAL = 150;
-  const pctSobreOficialParaGraficar = pctSobreOficialPorGrupo.map(p => Math.min(p, EJE_MAX_OFICIAL));
-  const colorPorGrupoOficial = pctSobreOficialPorGrupo.map(colorDesvioGrupo);
-
-  const ctxPO = document.getElementById('chartPresOficialAdjudicado').getContext('2d');
-  if (chartPresOficialAdjudicado) chartPresOficialAdjudicado.destroy();
-  chartPresOficialAdjudicado = new Chart(ctxPO, {
-    type: 'bar',
-    data: {
-      labels: chartLabels,
-      datasets: [
-        { type:'bar', label:'Presupuesto Oficial', data: sucursalEntries.map(e => e[1].presOficial / 1000000), backgroundColor:'#CBD5E1', order:2 },
-        { type:'bar', label:'Adjudicado', data: sucursalEntries.map(e => e[1].adjudicado / 1000000), backgroundColor:'#93C5FD', order:2 },
-        { type:'line', label:'% Adjudicado sobre el Oficial', data: pctSobreOficialParaGraficar, rawData: pctSobreOficialPorGrupo, yAxisID:'y1', borderColor:'#64748B', tension:0.3,
-          pointRadius:5, pointBackgroundColor: colorPorGrupoOficial, pointBorderColor: colorPorGrupoOficial, order:1 },
-        { type:'line', label:'Promedio General (' + promedioSobreOficial.toFixed(0) + '%)', data: sucursalEntries.map(() => Math.min(promedioSobreOficial, EJE_MAX_OFICIAL)),
-          yAxisID:'y1', borderColor:'#D97706', borderDash:[6,4], pointRadius:0, order:0 }
-      ]
-    },
-    plugins: [pointLabelPlugin],
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      scales:{
-        x:{ ticks:{ autoSkip:false, maxRotation:60, minRotation:30, callback: function(value) { return truncateLabel(this.getLabelForValue(value), 26); } } },
-        y:{ beginAtZero:true, title:{ display:true, text:'Millones de $' } },
-        y1:{ beginAtZero:true, max:EJE_MAX_OFICIAL, position:'right', grid:{ drawOnChartArea:false }, title:{ display:true, text:'% sobre el Oficial' } }
-      },
-      plugins:{ legend:{ position:'bottom' } }
-    }
-  });
-
   // ---- Combo: Adjudicado vs Certificado por Sucursal, con % de Avance (semáforo) ----
   const pctPorSucursal = sucursalEntries.map(e => e[1].adjudicado > 0 ? (e[1].certificado / e[1].adjudicado) * 100 : 0);
   const promedioAvanceSucursal = totalAdjudicado > 0 ? (totalCertificado / totalAdjudicado) * 100 : 0;
@@ -2227,7 +2173,7 @@ function renderDashboard() {
   rows.forEach(r => {
     const vacioLabel = groupKey === 'estado' ? ESTADO_VACIO_LABEL : '(sin dato)';
     const key = (r[groupKey] || vacioLabel).toString().trim() || vacioLabel;
-    if (!groups[key]) groups[key] = { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, proyectadosAcumulados:0, pctIIBBValores:[], sucursales:new Set(), contratistas:new Set(), fechasFinContrato:new Set() };
+    if (!groups[key]) groups[key] = { n:0, presOficial:0, adjudicado:0, certificado:0, certProcesados:0, proyectos:0, proyectadosAcumulados:0, pctIIBBValores:[], sucursales:new Set(), contratistas:new Set() };
     groups[key].n++;
     groups[key].presOficial += num(r.presupuestoOficialRubro);
     groups[key].adjudicado += num(r.totalAdjudicado);
@@ -2239,7 +2185,6 @@ function renderDashboard() {
     if (pctIIBB > 0) groups[key].pctIIBBValores.push(pctIIBB);
     if (r.sucursal) groups[key].sucursales.add(r.sucursal.trim());
     if (r.adjudicatario) groups[key].contratistas.add(r.adjudicatario.trim());
-    if (r.fechaFinContrato) groups[key].fechasFinContrato.add(formatFechaCorta(r.fechaFinContrato));
   });
   const promedioPctIIBB = (v) => v.pctIIBBValores.length ? v.pctIIBBValores.reduce((a,b) => a+b, 0) / v.pctIIBBValores.length : 0;
   const listaCorta = (set, max = 3) => {
@@ -2265,13 +2210,12 @@ function renderDashboard() {
     pctPresupuestoProyectado: v.adjudicado > 0 ? (v.proyectadosAcumulados / v.adjudicado) * 100 : 0,
     pctIIBB: promedioPctIIBB(v),
     sucursales: listaCorta(v.sucursales),
-    contratistas: listaCorta(v.contratistas),
-    fechasFinContrato: listaCorta(v.fechasFinContrato)
+    contratistas: listaCorta(v.contratistas)
   }));
 
   if (!state.dashSort.key) { state.dashSort.key = 'presOficial'; state.dashSort.dir = -1; }
   const dashValueFn = (f, key) => {
-    if (['grupo','sucursales','contratistas','fechasFinContrato'].includes(key)) return String(f[key] || '').toLowerCase();
+    if (['grupo','sucursales','contratistas'].includes(key)) return String(f[key] || '').toLowerCase();
     return num(f[key]);
   };
   filas = sortRows(filas, state.dashSort, dashValueFn);
@@ -2303,15 +2247,15 @@ function renderDashboard() {
       { key: 'pctPresupuestoProyectado', label: '% Presup. Proyectado' },
       { key: 'pctIIBB', label: '% IIBB Proyectados' }
     ])
-    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }, { key: 'fechasFinContrato', label: 'Fecha Fin de Contrato' }] : []);
+    .concat(mostrarSucursalContratista ? [{ key: 'sucursales', label: 'Sucursal' }, { key: 'contratistas', label: 'Contratista' }] : []);
 
   const table = document.getElementById('dashTable');
   table.innerHTML = sortableTheadHtml(dashCols, state.dashSort) +
     '<tbody>' + entries.map(f => {
-      const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td><td class="mono">${escapeHtml(f.fechasFinContrato)}</td>` : '';
+      const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td>` : '';
       return `<tr><td>${escapeHtml(f.grupo)}</td><td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctPresupuestoProyectado.toFixed(1)}%</td><td>${f.pctIIBB.toFixed(1)}%</td>${tdsExtra}</tr>`;
     }).join('') +
-    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${pctPresupuestoProyectadoGeneral.toFixed(1)}%</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td><td></td>' : ''}</tr>` +
+    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${pctPresupuestoProyectadoGeneral.toFixed(1)}%</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td>' : ''}</tr>` +
     '</tbody>';
   wireSortableHeaders(table, state.dashSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
@@ -2329,8 +2273,7 @@ function renderDashboard() {
 // Usa las mismas columnas que Registros, salvo "% Presup. Proyectado": en este detalle general del
 // Dashboard es redundante (ya está el $ Proyectados Acumulados y el % IIBB Proyectados) y no suma
 // al análisis — se mantiene, en cambio, en la pestaña Registros.
-const DASH_DETALLE_COLS = REGISTROS_COLS.filter(c => c.key !== 'pctPresupuestoProyectado')
-  .concat([{ key: 'fechaFinContrato', label: 'Fecha Fin de Contrato' }]);
+const DASH_DETALLE_COLS = REGISTROS_COLS.filter(c => c.key !== 'pctPresupuestoProyectado');
 function renderDashDetalleCompleto(rows) {
   rows = sortRows(rows, state.dashDetalleSort, registroSortValue);
   const table = document.getElementById('dashTable');
