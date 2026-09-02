@@ -624,34 +624,35 @@ function buildForm(record) {
       (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre O.D.P. / O.D.S. — Obra Menor)</span>' : '');
     panel.appendChild(title);
 
+    if (etapa.id === 'proyectos' && isOM) {
+      const notaKm = document.createElement('div');
+      notaKm.className = 'cert-nota';
+      notaKm.innerHTML = `<p>El <strong>$ Km de LAMT del Contrato</strong> y su <strong>Mes/Año de cálculo</strong> se definen una sola vez, apenas se tiene el Pedido de Compras, y aplican automáticamente a todos los proyectos que se carguen después en este PC (Obra Menor) — no hace falta volver a cargarlos en cada proyecto.</p>`;
+      panel.appendChild(notaKm);
+    }
+
     const grid = document.createElement('div');
     grid.className = 'field-grid';
     // Cada etapa puede tener uno o varios rangos de columnas (por ejemplo, "Certificación" agrupa
     // los campos de Ejecución y los de Certificación propiamente dicha, aunque no son columnas contiguas).
     let camposEtapa = (etapa.ranges || [[etapa.from, etapa.to]])
       .reduce((acc, [from, to]) => acc.concat(state.campos.filter(f => f.col >= from && f.col <= to)), []);
-    // El $ Km de LAMT y su Mes/Año de cálculo viven físicamente en las columnas de "Proyectos" (cols 27-28),
-    // pero conceptualmente son un dato de Ejecución del contrato: se definen una sola vez y valen para
-    // todos los proyectos de ese Pedido de Compras. Por eso se muestran en el panel de Certificación
-    // (editables, como cualquier otro campo) y se sacan del panel de Proyectos, que solo aplica a Obra Menor.
-    if (etapa.id === 'proyectos') camposEtapa = camposEtapa.filter(f => f.key !== 'kmLineaPC' && f.key !== 'mmAAkmLAMT');
-    if (etapa.id === 'certificacion' && isOM) {
+    // El $ Km de LAMT y su Mes/Año de cálculo ya viven físicamente en las columnas de "Proyectos"
+    // (cols 27-28), y conceptualmente pertenecen ahí: se definen apenas se tiene el Pedido de
+    // Compras (antes incluso de cargar el primer proyecto), valen para TODOS los proyectos de ese
+    // PC, y son independientes del resto de los datos de Ejecución/Certificación. Se muestran
+    // primero dentro del panel de Proyectos —antes de "Cantidad de Proyectos" y los totales
+    // calculados—, para que no queden escondidos ni se salteen por error.
+    if (etapa.id === 'proyectos' && isOM) {
       const kmLineaPCField = fieldByKey('kmLineaPC');
       const mmAAkmLAMTField = fieldByKey('mmAAkmLAMT');
-      if (kmLineaPCField) camposEtapa = camposEtapa.concat([kmLineaPCField]);
-      if (mmAAkmLAMTField) camposEtapa = camposEtapa.concat([mmAAkmLAMTField]);
+      const restoCampos = camposEtapa.filter(f => f.key !== 'kmLineaPC' && f.key !== 'mmAAkmLAMT');
+      camposEtapa = [kmLineaPCField, mmAAkmLAMTField].filter(Boolean).concat(restoCampos);
     }
     camposEtapa.forEach(f => {
       grid.appendChild(buildFieldInput(f, record));
     });
     panel.appendChild(grid);
-
-    if (etapa.id === 'certificacion' && isOM) {
-      const notaKm = document.createElement('div');
-      notaKm.className = 'cert-nota';
-      notaKm.innerHTML = `<p>El <strong>$ Km de LAMT</strong> y su <strong>Mes/Año de cálculo</strong> se cargan una sola vez acá y aplican automáticamente a todos los proyectos de este Pedido de Compras (Obra Menor) — no hace falta volver a cargarlos en cada proyecto.</p>`;
-      panel.appendChild(notaKm);
-    }
 
     if (etapa.id === 'certificacion') {
       const nota = document.createElement('div');
