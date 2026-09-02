@@ -685,6 +685,15 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .field-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px 16px; }
 .field-grid label{ display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; color:var(--text-soft); }
 .field-grid label.span-2{ grid-column:span 2; }
+/* La etiqueta y su badge ("calculado"/"acumulable") van en un mismo bloque, con una altura mínima
+   reservada de 2 líneas: así todos los campos de una misma fila —tengan o no badge— arrancan el
+   input a la misma altura, en vez de que los que sí tienen badge queden "empujados" más abajo. */
+.field-grid .field-label-text{ display:block; min-height:28px; }
+
+/* ---- Grilla separada para $ Km de LAMT / Mes-Año (etapa Proyectos): compacta y con un divisor
+   debajo, para que se lea como un dato aparte, no mezclado con los totales calculados. ---- */
+.field-grid-km-lamt{ grid-template-columns:repeat(auto-fill,minmax(220px,320px)); margin-bottom:18px; }
+.field-grid-divider{ height:1px; background:var(--border); margin:0 0 18px; }
 .field-grid input, .field-grid select, .field-grid textarea{
   padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-weight:400; color:var(--text);
 }

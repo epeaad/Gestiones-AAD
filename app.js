@@ -629,6 +629,19 @@ function buildForm(record) {
       notaKm.className = 'cert-nota';
       notaKm.innerHTML = `<p>El <strong>$ Km de LAMT del Contrato</strong> y su <strong>Mes/Año de cálculo</strong> se definen una sola vez, apenas se tiene el Pedido de Compras, y aplican automáticamente a todos los proyectos que se carguen después en este PC (Obra Menor) — no hace falta volver a cargarlos en cada proyecto.</p>`;
       panel.appendChild(notaKm);
+
+      // Van en su propia grilla, separada de "Cantidad de Proyectos" y los totales calculados de
+      // abajo: son datos independientes que se definen una sola vez, no parte del rollup de proyectos.
+      const gridKm = document.createElement('div');
+      gridKm.className = 'field-grid field-grid-km-lamt';
+      [fieldByKey('kmLineaPC'), fieldByKey('mmAAkmLAMT')].filter(Boolean).forEach(f => {
+        gridKm.appendChild(buildFieldInput(f, record));
+      });
+      panel.appendChild(gridKm);
+
+      const divider = document.createElement('div');
+      divider.className = 'field-grid-divider';
+      panel.appendChild(divider);
     }
 
     const grid = document.createElement('div');
@@ -637,17 +650,10 @@ function buildForm(record) {
     // los campos de Ejecución y los de Certificación propiamente dicha, aunque no son columnas contiguas).
     let camposEtapa = (etapa.ranges || [[etapa.from, etapa.to]])
       .reduce((acc, [from, to]) => acc.concat(state.campos.filter(f => f.col >= from && f.col <= to)), []);
-    // El $ Km de LAMT y su Mes/Año de cálculo ya viven físicamente en las columnas de "Proyectos"
-    // (cols 27-28), y conceptualmente pertenecen ahí: se definen apenas se tiene el Pedido de
-    // Compras (antes incluso de cargar el primer proyecto), valen para TODOS los proyectos de ese
-    // PC, y son independientes del resto de los datos de Ejecución/Certificación. Se muestran
-    // primero dentro del panel de Proyectos —antes de "Cantidad de Proyectos" y los totales
-    // calculados—, para que no queden escondidos ni se salteen por error.
+    // El $ Km de LAMT y su Mes/Año de cálculo ya se muestran arriba (grilla propia, ver más arriba)
+    // cuando la etapa es "Proyectos" de un trámite de Obra Menor — se sacan de acá para no duplicarlos.
     if (etapa.id === 'proyectos' && isOM) {
-      const kmLineaPCField = fieldByKey('kmLineaPC');
-      const mmAAkmLAMTField = fieldByKey('mmAAkmLAMT');
-      const restoCampos = camposEtapa.filter(f => f.key !== 'kmLineaPC' && f.key !== 'mmAAkmLAMT');
-      camposEtapa = [kmLineaPCField, mmAAkmLAMTField].filter(Boolean).concat(restoCampos);
+      camposEtapa = camposEtapa.filter(f => f.key !== 'kmLineaPC' && f.key !== 'mmAAkmLAMT');
     }
     camposEtapa.forEach(f => {
       grid.appendChild(buildFieldInput(f, record));
@@ -854,7 +860,7 @@ function buildFieldInput(f, record) {
         <button type="button" class="btn-mini-add" title="Sumar al total">+ Sumar</button>
       </div>`
     : '';
-  label.innerHTML = `${f.label}${isDerived ? ' <span class="calc-badge">calculado</span>' : ''}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}${inputHtml}${sumHelperHtml}`;
+  label.innerHTML = `<span class="field-label-text">${f.label}${isDerived ? ' <span class="calc-badge">calculado</span>' : ''}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}</span>${inputHtml}${sumHelperHtml}`;
   return label;
 }
 
