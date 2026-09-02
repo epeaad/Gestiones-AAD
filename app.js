@@ -1896,7 +1896,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-let chartAdjCertSucursal, chartCertificacionPC, chartPresOficialAdjudicado;
+let chartAdjCertSucursal, chartCertificacionPC;
 
 document.getElementById('dashGroupBy').addEventListener('change', renderDashboard);
 
@@ -2076,48 +2076,9 @@ function renderDashboard() {
   };
   const chartLabels = sucursalEntries.map(([key, info]) => etiquetaGrupoChart(key, info));
 
-  // ---- Barras: Presupuesto Oficial vs. Adjudicado por grupo. Solo 2 series de barras, sin línea
-  // ni eje secundario — mismo patrón simple que ya funciona bien en el resto de la app. Envuelto en
-  // try/catch: si algo puntual de los datos rompe la construcción del gráfico, ese panel muestra un
-  // aviso en vez de tirar abajo el resto del Dashboard (KPIs, tablas, el otro gráfico). ----
-  try {
-    document.getElementById('chartPresOficialAdjTitulo').textContent = sucursalUnicaSeleccionada
-      ? 'Presupuesto Oficial vs. Adjudicado por Pedido de Compras — ' + sucursalUnicaSeleccionada
-      : 'Presupuesto Oficial vs. Adjudicado por Sucursal';
-
-    const ctxPO = document.getElementById('chartPresOficialAdjudicado').getContext('2d');
-    if (chartPresOficialAdjudicado) chartPresOficialAdjudicado.destroy();
-    chartPresOficialAdjudicado = new Chart(ctxPO, {
-      type: 'bar',
-      data: {
-        labels: chartLabels,
-        datasets: [
-          { label: 'Presupuesto Oficial', data: sucursalEntries.map(e => num(e[1].presOficial) / 1000000), backgroundColor: '#CBD5E1' },
-          { label: 'Adjudicado', data: sucursalEntries.map(e => num(e[1].adjudicado) / 1000000), backgroundColor: '#93C5FD' }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 30, callback: function (value) { return truncateLabel(this.getLabelForValue(value), 26); } } },
-          y: { beginAtZero: true, title: { display: true, text: 'Millones de $' } }
-        },
-        plugins: { legend: { position: 'bottom' } }
-      }
-    });
-    document.getElementById('chartPresOficialAdjError').hidden = true;
-  } catch (err) {
-    console.error('No se pudo generar el gráfico Presupuesto Oficial vs. Adjudicado:', err);
-    const errBox = document.getElementById('chartPresOficialAdjError');
-    if (errBox) {
-      errBox.textContent = '⚠ No se pudo generar este gráfico con los datos del filtro actual. El resto del Dashboard sigue funcionando normalmente.';
-      errBox.hidden = false;
-    }
-  }
-
   document.getElementById('chartAdjCertTitulo').textContent = sucursalUnicaSeleccionada
-    ? 'Adjudicado vs. Certificado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% de Avance)'
-    : 'Adjudicado vs. Certificado por Sucursal — con % de Avance';
+    ? 'Presupuesto Oficial / Adjudicado / Certificado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% de Avance)'
+    : 'Presupuesto Oficial / Adjudicado / Certificado por Sucursal — con % de Avance';
 
   // ---- Combo: Adjudicado vs Certificado por Sucursal, con % de Avance (semáforo) ----
   const pctPorSucursal = sucursalEntries.map(e => e[1].adjudicado > 0 ? (e[1].certificado / e[1].adjudicado) * 100 : 0);
@@ -2136,6 +2097,7 @@ function renderDashboard() {
     data: {
       labels: chartLabels,
       datasets: [
+        { type:'bar', label:'Presupuesto Oficial', data: sucursalEntries.map(e => num(e[1].presOficial) / 1000000), backgroundColor:'#CBD5E1', order:2 },
         { type:'bar', label:'Adjudicado', data: sucursalEntries.map(e => e[1].adjudicado / 1000000), backgroundColor:'#93C5FD', order:2 },
         { type:'bar', label:'Certificado', data: sucursalEntries.map(e => e[1].certificado / 1000000), backgroundColor:'#6EE7B7', order:2 },
         { type:'line', label:'% Avance por Sucursal', data: pctParaGraficar, rawData: pctPorSucursal, yAxisID:'y1', borderColor:'#64748B', tension:0.3,
