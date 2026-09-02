@@ -79,6 +79,18 @@ const state = {
 const DASH_FILTER_KEYS = SHARED_FILTER_KEYS;
 
 // ============================================================
+// ---- Debounce genérico: para inputs de texto/número que disparan un render completo (Buscar
+// palabra, % de Avance desde/hasta, Expediente), evita reconstruir toda la vista —incluidos los
+// gráficos del Dashboard— en cada tecla tipeada. Solo se ejecuta 300ms después de la última
+// tecla, que es imperceptible para el usuario pero evita el trabajo repetido mientras escribe. ----
+function debounce(fn, esperaMs) {
+  let temporizador;
+  return function (...args) {
+    clearTimeout(temporizador);
+    temporizador = setTimeout(() => fn.apply(this, args), esperaMs);
+  };
+}
+
 // API
 // ============================================================
 // ---- Indicador de carga global: una barra fina arriba del contenido que aparece mientras hay
@@ -1087,6 +1099,9 @@ const FILTROS_AVANZADOS_UI = [
 ];
 function sincronizarFiltrosAvanzadosUI() {
   const f = state.filtrosCompartidos;
+  // Se calcula UNA sola vez para las 5 barras (antes se recalculaba adentro del forEach, 5 veces
+  // el mismo resultado) — sobre datasets grandes esto era la parte más pesada de cada render.
+  const cantidadRiesgo = filtrosCompartidosBase().filter(esRiesgoPorPlazo).length;
   FILTROS_AVANZADOS_UI.forEach(ui => {
     const setVal = (idSuffix, val) => {
       const el = document.getElementById(ui.prefijo + idSuffix);
@@ -1103,7 +1118,7 @@ function sincronizarFiltrosAvanzadosUI() {
     const btn = document.getElementById(ui.riesgoBtn);
     if (btn) btn.classList.toggle('active', !!state.riesgoPlazoActivoCompartido);
     const badge = document.getElementById(ui.riesgoBadge);
-    if (badge) badge.textContent = filtrosCompartidosBase().filter(esRiesgoPorPlazo).length;
+    if (badge) badge.textContent = cantidadRiesgo;
   });
 }
 
@@ -1123,18 +1138,18 @@ function idsTramitesPermitidosPorFiltroCompartido() {
   return new Set(rows.map(r => r._id));
 }
 
-document.querySelector('#filtersBar [data-filter="expediente"]').addEventListener('input', (e) => {
+document.querySelector('#filtersBar [data-filter="expediente"]').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.expediente = e.target.value.trim();
   renderRegistros();
-});
-document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]').addEventListener('input', (e) => {
+}, 300));
+document.querySelector('#dashFiltersBar [data-dashfilter="expediente"]').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.expediente = e.target.value.trim();
   renderDashboard();
-});
-document.querySelector('#seguFiltersBar [data-segufilter="expediente"]').addEventListener('input', (e) => {
+}, 300));
+document.querySelector('#seguFiltersBar [data-segufilter="expediente"]').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.expediente = e.target.value.trim();
   renderSeguimiento();
-});
+}, 300));
 
 // ---- Limpiar TODOS los filtros compartidos de una sola vez (categóricos + avanzados + riesgo).
 // Cualquiera de los 3 botones "Limpiar filtros" (Dashboard/Registros/Seguimiento) dispara esto
@@ -1159,30 +1174,30 @@ document.getElementById('seguClearFilters').addEventListener('click', () => limp
 document.getElementById('certClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderCertTable));
 document.getElementById('proyClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderProyTable));
 
-document.querySelector('#certFiltersBar [data-certfilter="expediente"]').addEventListener('input', (e) => {
+document.querySelector('#certFiltersBar [data-certfilter="expediente"]').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.expediente = e.target.value.trim();
   renderCertTable();
-});
+}, 300));
 document.getElementById('certFechaPCDesde').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCDesde = e.target.value; renderCertTable(); });
 document.getElementById('certFechaPCHasta').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCHasta = e.target.value; renderCertTable(); });
-document.getElementById('certPctAvanceDesde').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderCertTable(); });
-document.getElementById('certPctAvanceHasta').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderCertTable(); });
-document.getElementById('certTextoBuscar').addEventListener('input', (e) => { state.filtrosCompartidos.texto = e.target.value; renderCertTable(); });
+document.getElementById('certPctAvanceDesde').addEventListener('input', debounce((e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderCertTable(); }, 300));
+document.getElementById('certPctAvanceHasta').addEventListener('input', debounce((e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderCertTable(); }, 300));
+document.getElementById('certTextoBuscar').addEventListener('input', debounce((e) => { state.filtrosCompartidos.texto = e.target.value; renderCertTable(); }, 300));
 document.getElementById('certTextoModo').addEventListener('change', (e) => { state.filtrosCompartidos.textoModo = e.target.value; renderCertTable(); });
 document.getElementById('riesgoPlazoBtnCert').addEventListener('click', () => {
   state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
   renderCertTable();
 });
 
-document.querySelector('#proyFiltersBar [data-proyfilter="expediente"]').addEventListener('input', (e) => {
+document.querySelector('#proyFiltersBar [data-proyfilter="expediente"]').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.expediente = e.target.value.trim();
   renderProyTable();
-});
+}, 300));
 document.getElementById('proyFechaPCDesde').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCDesde = e.target.value; renderProyTable(); });
 document.getElementById('proyFechaPCHasta').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCHasta = e.target.value; renderProyTable(); });
-document.getElementById('proyPctAvanceDesde').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderProyTable(); });
-document.getElementById('proyPctAvanceHasta').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderProyTable(); });
-document.getElementById('proyTextoBuscar').addEventListener('input', (e) => { state.filtrosCompartidos.texto = e.target.value; renderProyTable(); });
+document.getElementById('proyPctAvanceDesde').addEventListener('input', debounce((e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderProyTable(); }, 300));
+document.getElementById('proyPctAvanceHasta').addEventListener('input', debounce((e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderProyTable(); }, 300));
+document.getElementById('proyTextoBuscar').addEventListener('input', debounce((e) => { state.filtrosCompartidos.texto = e.target.value; renderProyTable(); }, 300));
 document.getElementById('proyTextoModo').addEventListener('change', (e) => { state.filtrosCompartidos.textoModo = e.target.value; renderProyTable(); });
 document.getElementById('riesgoPlazoBtnProy').addEventListener('click', () => {
   state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
@@ -1206,18 +1221,18 @@ document.getElementById('regFechaPCHasta').addEventListener('change', (e) => {
   state.filtrosCompartidos.fechaPCHasta = e.target.value;
   renderRegistros();
 });
-document.getElementById('regPctAvanceDesde').addEventListener('input', (e) => {
+document.getElementById('regPctAvanceDesde').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.pctAvanceDesde = e.target.value;
   renderRegistros();
-});
-document.getElementById('regPctAvanceHasta').addEventListener('input', (e) => {
+}, 300));
+document.getElementById('regPctAvanceHasta').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.pctAvanceHasta = e.target.value;
   renderRegistros();
-});
-document.getElementById('regTextoBuscar').addEventListener('input', (e) => {
+}, 300));
+document.getElementById('regTextoBuscar').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.texto = e.target.value;
   renderRegistros();
-});
+}, 300));
 document.getElementById('regTextoModo').addEventListener('change', (e) => {
   state.filtrosCompartidos.textoModo = e.target.value;
   renderRegistros();
@@ -1263,18 +1278,18 @@ document.getElementById('dashFechaPCHasta').addEventListener('change', (e) => {
   state.filtrosCompartidos.fechaPCHasta = e.target.value;
   renderDashboard();
 });
-document.getElementById('dashPctAvanceDesde').addEventListener('input', (e) => {
+document.getElementById('dashPctAvanceDesde').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.pctAvanceDesde = e.target.value;
   renderDashboard();
-});
-document.getElementById('dashPctAvanceHasta').addEventListener('input', (e) => {
+}, 300));
+document.getElementById('dashPctAvanceHasta').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.pctAvanceHasta = e.target.value;
   renderDashboard();
-});
-document.getElementById('dashTextoBuscar').addEventListener('input', (e) => {
+}, 300));
+document.getElementById('dashTextoBuscar').addEventListener('input', debounce((e) => {
   state.filtrosCompartidos.texto = e.target.value;
   renderDashboard();
-});
+}, 300));
 document.getElementById('dashTextoModo').addEventListener('change', (e) => {
   state.filtrosCompartidos.textoModo = e.target.value;
   renderDashboard();
@@ -2853,9 +2868,9 @@ function renderSeguimiento() {
 
 document.getElementById('seguFechaPCDesde').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCDesde = e.target.value; renderSeguimiento(); });
 document.getElementById('seguFechaPCHasta').addEventListener('change', (e) => { state.filtrosCompartidos.fechaPCHasta = e.target.value; renderSeguimiento(); });
-document.getElementById('seguPctAvanceDesde').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderSeguimiento(); });
-document.getElementById('seguPctAvanceHasta').addEventListener('input', (e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderSeguimiento(); });
-document.getElementById('seguTextoBuscar').addEventListener('input', (e) => { state.filtrosCompartidos.texto = e.target.value; renderSeguimiento(); });
+document.getElementById('seguPctAvanceDesde').addEventListener('input', debounce((e) => { state.filtrosCompartidos.pctAvanceDesde = e.target.value; renderSeguimiento(); }, 300));
+document.getElementById('seguPctAvanceHasta').addEventListener('input', debounce((e) => { state.filtrosCompartidos.pctAvanceHasta = e.target.value; renderSeguimiento(); }, 300));
+document.getElementById('seguTextoBuscar').addEventListener('input', debounce((e) => { state.filtrosCompartidos.texto = e.target.value; renderSeguimiento(); }, 300));
 document.getElementById('seguTextoModo').addEventListener('change', (e) => { state.filtrosCompartidos.textoModo = e.target.value; renderSeguimiento(); });
 document.getElementById('riesgoPlazoBtnSegu').addEventListener('click', () => {
   state.riesgoPlazoActivoCompartido = !state.riesgoPlazoActivoCompartido;
