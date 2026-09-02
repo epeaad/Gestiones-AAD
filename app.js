@@ -3913,6 +3913,8 @@ const PROY_TABLE_COLS = [
   { key: 'iibbProyecto', label: 'IIBB Proyecto' },
   { key: 'montoProyecto', label: '$ Proyecto' },
   { key: 'pctIIBBProyecto', label: '% IIBB' },
+  { key: '_techoKmLAMT', label: '$ Km LAMT (Contrato)' },
+  { key: '_pctTechoKmLAMT', label: '% del techo' },
 ];
 
 // Orden por defecto (sin que el usuario haya clickeado ningún encabezado todavía): agrupa la
@@ -3933,8 +3935,16 @@ const CERT_ORDEN_DEFECTO = ['pospre', 'sucursal', 'nroPedidoCompras', 'contratis
 let proySort = { key: null, dir: 1 };  // ordenamiento de la tabla de Proyectos cargados
 
 function proySortValue(p, key) {
-  if (key === 'montoProyecto' || key === 'pctIIBBProyecto' || key === 'iibbProyecto') return num(p[key]);
+  if (['montoProyecto', 'pctIIBBProyecto', 'iibbProyecto', '_techoKmLAMT', '_pctTechoKmLAMT'].includes(key)) return num(p[key]);
   return String(p[key] != null ? p[key] : '').toLowerCase();
+}
+
+// ---- Semáforo por % del techo de $ Km de LAMT del contrato (al revés que semTinte(): acá más
+// alto es PEOR, porque significa que el proyecto se acerca o supera el techo del contrato) ----
+function semTintePorTecho(pct) {
+  if (pct > 100) return { bg: '#FEE2E2', color: '#991B1B' }; // superó el techo del contrato
+  if (pct >= 70) return { bg: '#FEF3C7', color: '#92400E' }; // cerca del techo
+  return { bg: '#DCFCE7', color: '#166534' }; // holgado
 }
 
 function renderProyTable() {
@@ -3949,10 +3959,35 @@ function renderProyTable() {
       String(p[k] || '').toLowerCase().includes(q)
     );
   });
+
+  // ---- $ Km de LAMT del Contrato: techo cargado una sola vez en el trámite (etapa Certificación,
+  // campo "kmLineaPC") que aplica a TODOS los proyectos de ese Pedido de Compras. Un proyecto
+  // nunca debería superar ese techo — si lo supera, hay que revisar/corregir ese proyecto. Acá se
+  // agrega esa referencia y el % que representa cada "$ del Proyecto" sobre ese techo. ----
+  rows = rows.map(p => {
+    const tramite = state.registros.find(r => r._id === p.idTramite);
+    const techo = tramite ? num(tramite.kmLineaPC) : 0;
+    const pctTecho = techo > 0 ? (num(p.montoProyecto) / techo) * 100 : null;
+    return Object.assign({}, p, { _techoKmLAMT: techo, _pctTechoKmLAMT: pctTecho });
+  });
+  const superanTecho = rows.filter(p => p._pctTechoKmLAMT != null && p._pctTechoKmLAMT > 100);
+
   if (proySort.key) {
     rows = sortRows(rows, proySort, proySortValue);
   } else {
     rows = rows.slice().sort((a, b) => defaultMultiKeyCompare(a, b, PROY_ORDEN_DEFECTO));
+  }
+
+  const avisoTecho = document.getElementById('proyAvisoTechoLAMT');
+  if (avisoTecho) {
+    if (superanTecho.length) {
+      avisoTecho.hidden = false;
+      avisoTecho.innerHTML = `⚠ <strong>${superanTecho.length} proyecto(s)</strong> superan el $ Km de LAMT definido para su contrato — revisá y corregí el "IIBB del Proyecto" o el "$ Km de LAMT" del trámite: ` +
+        superanTecho.slice(0, 6).map(p => escapeHtml(p.numeroProyecto || p.nroExpedienteProyecto || p._id)).join(', ') +
+        (superanTecho.length > 6 ? '…' : '');
+    } else {
+      avisoTecho.hidden = true;
+    }
   }
 
   const isAdmin = state.session && state.session.rol === 'admin';
@@ -3961,8 +3996,13 @@ function renderProyTable() {
   const thead = sortableTheadHtml(PROY_TABLE_COLS, proySort, '<th>Descripción</th><th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
   const tbody = '<tbody>' + rows.map(p => {
     const tds = PROY_TABLE_COLS.map(col => {
-      if (['montoProyecto'].includes(col.key)) return `<td class="mono">${formatMoney(p[col.key])}</td>`;
+      if (['montoProyecto', '_techoKmLAMT'].includes(col.key)) return `<td class="mono">${formatMoney(p[col.key])}</td>`;
       if (col.key === 'pctIIBBProyecto') return `<td class="mono">${num(p.pctIIBBProyecto).toFixed(1)}%</td>`;
+      if (col.key === '_pctTechoKmLAMT') {
+        if (p._pctTechoKmLAMT == null) return '<td class="mono" style="color:var(--text-soft)">s/d</td>';
+        const t = semTintePorTecho(p._pctTechoKmLAMT);
+        return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${p._pctTechoKmLAMT.toFixed(0)}%</td>`;
+      }
       if (col.key === 'contratista') {
         const texto = p.contratista != null ? p.contratista : '';
         return `<td class="td-truncate" title="${escapeHtml(texto)}">${escapeHtml(texto)}</td>`;
