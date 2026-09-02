@@ -1685,10 +1685,12 @@ function wireSortableHeaders(table, sortState, onChange) {
 
 // Genera las filas <td> de un registro de trámite según REGISTROS_COLS (reutilizado por Registros y Dashboard "Todos")
 // ---- "AAAA-MM-DD" -> "DD/MM/AAAA", para mostrar fechas de forma legible en tablas de detalle ----
+// ---- "AAAA-MM-DD" -> "DD/MM/AAAA". Si el valor no tiene ese formato (por ejemplo, texto suelto
+// cargado por error en la planilla en vez de una fecha real — es lo que generaba el "#########"
+// que se veía en pantalla), se muestra "-" en vez de imprimir ese texto sin sentido. ----
 function formatFechaCorta(v) {
   const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return v ? String(v) : '';
-  return m[3] + '/' + m[2] + '/' + m[1];
+  return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '-';
 }
 
 function registroTdsHtml(r, cols) {
