@@ -156,6 +156,7 @@
         <button type="button" id="dashFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
           Filtros avanzados <span class="chevron">▾</span>
         </button>
+        <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
         <button id="dashClearFilters" class="btn btn-ghost">Limpiar filtros</button>
       </div>
 
@@ -186,7 +187,6 @@
             <input type="text" id="dashTextoBuscar" placeholder="Palabra o frase..." />
           </div>
         </div>
-        <button id="riesgoPlazoBtn" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadge">0</span></button>
       </div>
 
       <div class="print-header">
@@ -198,6 +198,10 @@
       <div class="kpi-row" id="kpiRow"></div>
 
       <div class="section-label">Análisis visual</div>
+      <div class="panel panel-primary">
+        <h3 id="chartPresOficialAdjTitulo">Presupuesto Oficial vs. Adjudicado por Sucursal — con % sobre el Oficial</h3>
+        <canvas id="chartPresOficialAdjudicado" height="130"></canvas>
+      </div>
       <div class="panel panel-primary">
         <h3 id="chartAdjCertTitulo">Adjudicado vs. Certificado por Sucursal — con % de Avance</h3>
         <canvas id="chartAdjCertSucursal" height="130"></canvas>
@@ -298,6 +302,7 @@
         <button type="button" id="seguFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
           Filtros avanzados <span class="chevron">▾</span>
         </button>
+        <button id="riesgoPlazoBtnSegu" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeSegu">0</span></button>
         <button id="seguClearFilters" class="btn btn-ghost">Limpiar filtros</button>
       </div>
 
@@ -328,7 +333,6 @@
             <input type="text" id="seguTextoBuscar" placeholder="Palabra o frase..." />
           </div>
         </div>
-        <button id="riesgoPlazoBtnSegu" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeSegu">0</span></button>
       </div>
 
       <div class="panel">
@@ -465,6 +469,7 @@
         <button type="button" id="filtrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
           Filtros avanzados <span class="chevron">▾</span>
         </button>
+        <button id="riesgoPlazoBtnReg" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeReg">0</span></button>
         <button id="clearFilters" class="btn btn-ghost">Limpiar filtros</button>
       </div>
 
@@ -495,7 +500,6 @@
             <input type="text" id="regTextoBuscar" placeholder="Palabra o frase..." />
           </div>
         </div>
-        <button id="riesgoPlazoBtnReg" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeReg">0</span></button>
       </div>
 
       <p class="results-count" id="resultsCount"></p>
@@ -664,6 +668,7 @@
           <button type="button" id="certFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
             Filtros avanzados <span class="chevron">▾</span>
           </button>
+          <button id="riesgoPlazoBtnCert" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeCert">0</span></button>
           <button id="certClearFilters" class="btn btn-ghost">Limpiar filtros</button>
         </div>
         <div class="filters-bar filters-bar-avanzados" id="certFiltersBarAvanzados" hidden>
@@ -693,7 +698,6 @@
               <input type="text" id="certTextoBuscar" placeholder="Palabra o frase..." />
             </div>
           </div>
-          <button id="riesgoPlazoBtnCert" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeCert">0</span></button>
         </div>
         <p class="table-note">Los filtros de arriba acotan por trámite (igual que en Dashboard/Registros/Seguimiento). El campo "Buscar" de abajo busca puntualmente dentro de los datos de la certificación (N° de Certificado, Expediente de Certificación, etc.).</p>
 
@@ -820,6 +824,7 @@
           <button type="button" id="proyFiltrosAvanzadosToggle" class="btn btn-ghost filtros-avanzados-toggle">
             Filtros avanzados <span class="chevron">▾</span>
           </button>
+          <button id="riesgoPlazoBtnProy" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeProy">0</span></button>
           <button id="proyClearFilters" class="btn btn-ghost">Limpiar filtros</button>
         </div>
         <div class="filters-bar filters-bar-avanzados" id="proyFiltersBarAvanzados" hidden>
@@ -849,7 +854,6 @@
               <input type="text" id="proyTextoBuscar" placeholder="Palabra o frase..." />
             </div>
           </div>
-          <button id="riesgoPlazoBtnProy" class="btn risk-toggle-btn">⚠ Riesgo por Plazo <span class="risk-badge" id="riesgoPlazoBadgeProy">0</span></button>
         </div>
         <p class="table-note">Los filtros de arriba acotan por trámite (igual que en Dashboard/Registros/Seguimiento). El campo "Buscar" de abajo busca puntualmente dentro de los datos del proyecto (N° de Proyecto, Expediente de Proyecto, etc.).</p>
 
