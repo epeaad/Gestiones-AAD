@@ -547,8 +547,15 @@ async function boot() {
     && !(ultimaVista === 'usuarios' && state.session.rol !== 'admin')
     && !(ultimaVista === 'formulario' && !puedeEditar)
     && !(ultimaVista === 'compras' && state.session.rol === 'consulta');
-  showView(vistaPermitida ? ultimaVista : 'dashboard');
-  document.getElementById('bootLoadingOverlay').hidden = true; // recién acá los datos ya están cargados y la vista ya se renderizó
+  // try/finally: si showView() tira una excepción (un bug puntual en un gráfico, por ejemplo),
+  // el overlay de "Cargando..." se saca IGUAL — así una falla puntual se ve como un error concreto
+  // (mensaje rojo arriba, con "Reintentar") en vez de una pantalla trabada para siempre sin pista
+  // de qué pasó. El error sigue subiendo después (lo atrapa el catch de quien llamó a boot()).
+  try {
+    showView(vistaPermitida ? ultimaVista : 'dashboard');
+  } finally {
+    document.getElementById('bootLoadingOverlay').hidden = true;
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1889,7 +1896,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-let chartAdjCertSucursal, chartCertificacionPC;
+let chartAdjCertSucursal, chartCertificacionPC, chartPresOficialAdjudicado;
 
 document.getElementById('dashGroupBy').addEventListener('change', renderDashboard);
 
@@ -2068,6 +2075,45 @@ function renderDashboard() {
     return key + ' — ' + contratista + (pospre ? ' (' + pospre + ')' : '');
   };
   const chartLabels = sucursalEntries.map(([key, info]) => etiquetaGrupoChart(key, info));
+
+  // ---- Barras: Presupuesto Oficial vs. Adjudicado por grupo. Solo 2 series de barras, sin línea
+  // ni eje secundario — mismo patrón simple que ya funciona bien en el resto de la app. Envuelto en
+  // try/catch: si algo puntual de los datos rompe la construcción del gráfico, ese panel muestra un
+  // aviso en vez de tirar abajo el resto del Dashboard (KPIs, tablas, el otro gráfico). ----
+  try {
+    document.getElementById('chartPresOficialAdjTitulo').textContent = sucursalUnicaSeleccionada
+      ? 'Presupuesto Oficial vs. Adjudicado por Pedido de Compras — ' + sucursalUnicaSeleccionada
+      : 'Presupuesto Oficial vs. Adjudicado por Sucursal';
+
+    const ctxPO = document.getElementById('chartPresOficialAdjudicado').getContext('2d');
+    if (chartPresOficialAdjudicado) chartPresOficialAdjudicado.destroy();
+    chartPresOficialAdjudicado = new Chart(ctxPO, {
+      type: 'bar',
+      data: {
+        labels: chartLabels,
+        datasets: [
+          { label: 'Presupuesto Oficial', data: sucursalEntries.map(e => num(e[1].presOficial) / 1000000), backgroundColor: '#CBD5E1' },
+          { label: 'Adjudicado', data: sucursalEntries.map(e => num(e[1].adjudicado) / 1000000), backgroundColor: '#93C5FD' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 30, callback: function (value) { return truncateLabel(this.getLabelForValue(value), 26); } } },
+          y: { beginAtZero: true, title: { display: true, text: 'Millones de $' } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+    document.getElementById('chartPresOficialAdjError').hidden = true;
+  } catch (err) {
+    console.error('No se pudo generar el gráfico Presupuesto Oficial vs. Adjudicado:', err);
+    const errBox = document.getElementById('chartPresOficialAdjError');
+    if (errBox) {
+      errBox.textContent = '⚠ No se pudo generar este gráfico con los datos del filtro actual. El resto del Dashboard sigue funcionando normalmente.';
+      errBox.hidden = false;
+    }
+  }
 
   document.getElementById('chartAdjCertTitulo').textContent = sucursalUnicaSeleccionada
     ? 'Adjudicado vs. Certificado por Pedido de Compras — ' + sucursalUnicaSeleccionada + ' (% de Avance)'
