@@ -4202,27 +4202,10 @@ function populateComprasFilterOptions() {
     });
   });
 }
-function comprasFiltered() {
-  const texto = (comprasFiltros.expediente || '').trim().toLowerCase();
-  return comprasCache.filter(exp => {
-    if (comprasFiltros.pospre.length && !comprasFiltros.pospre.includes(String(exp.pospre || '').trim())) return false;
-    if (comprasFiltros.anio.length && !comprasFiltros.anio.includes(comprasAnioDeExpediente(exp.expediente))) return false;
-    if (texto && !String(exp.expediente || '').toLowerCase().includes(texto)) return false;
-    if (comprasFiltros.nroPC.length) {
-      const tienePC = (exp.pedidos || []).some(pc => comprasFiltros.nroPC.includes(String(pc.nroPC || '').trim()));
-      if (!tienePC) return false;
-    }
-    if (comprasFiltros.destino.length) {
-      const tieneDestino = (exp.pedidos || []).some(pc => (pc.posiciones || []).some(pos => comprasFiltros.destino.includes(String(pos.destino || '').trim())));
-      if (!tieneDestino) return false;
-    }
-    return true;
-  });
-}
-document.querySelector('#comprasFiltersBar [data-cfilter="expediente"]').addEventListener('input', (e) => {
+document.querySelector('#comprasFiltersBar [data-cfilter="expediente"]').addEventListener('input', debounce((e) => {
   comprasFiltros.expediente = e.target.value.trim();
   renderComprasTable();
-});
+}, 300));
 document.getElementById('comprasClearFilters').addEventListener('click', () => {
   COMPRAS_FILTER_KEYS.forEach(k => { comprasFiltros[k] = []; });
   comprasFiltros.expediente = '';
@@ -4233,7 +4216,12 @@ document.getElementById('comprasClearFilters').addEventListener('click', () => {
 });
 
 async function abrirVistaCompras() {
-  await cargarCompras();
+  // Los datos de Compras ya se precargaron al loguearse (boot() los necesita igual para Dashboard
+  // y Vencimientos) — acá solo renderizamos desde ese caché, sin volver a pedirlos al servidor
+  // cada vez que se entra a esta pestaña. Se refrescan solos después de cualquier alta/edición/
+  // eliminación/importación (ver refrescarRegistrosTrasCompras y los propios handlers).
+  populateComprasFilterOptions();
+  renderComprasTable();
   // Si el usuario ya tenía el formulario de Compras abierto (alta/edición a medio completar) y
   // solo pasó por otra pestaña, no se lo cerramos al volver — solo arranca cerrado la primera vez.
   if (!comprasFormNivel) cerrarComprasForm();
@@ -4303,86 +4291,142 @@ function comprasEventosParaCalendario() {
 }
 
 // ---- Render de la tabla / árbol ----
-function comprasBadgeTramo(label, pos, fechaKey, entregadoKey, desvioKey, vencidaKey) {
+function comprasBadgeTramoCompacto(label, pos, fechaKey, entregadoKey, desvioKey, vencidaKey) {
   const fecha = pos[fechaKey];
   if (!fecha) return '';
   const entregado = pos[entregadoKey];
   const desvio = pos[desvioKey];
   const vencida = pos[vencidaKey];
-  let cls = 'cal-badge lejano', texto = fecha;
+  let cls = 'cal-badge lejano', texto = label + ': ' + formatFechaCorta(fecha);
   if (entregado) {
     cls = desvio > 0 ? 'cal-badge proximo' : 'cal-badge lejano';
-    texto = fecha + (desvio !== null ? ' · entregado (' + (desvio > 0 ? '+' : '') + desvio + ' d)' : ' · entregado');
+    texto = label + ': entregado' + (desvio !== null ? ' (' + (desvio > 0 ? '+' : '') + desvio + 'd)' : '');
   } else if (vencida) {
     cls = 'cal-badge vencido';
-    texto = fecha + ' · vencido hace ' + Math.abs(desvio) + ' d';
+    texto = label + ': vencido (' + Math.abs(desvio) + 'd)';
   } else {
-    texto = fecha + ' · pendiente';
+    texto = label + ': pendiente';
   }
-  return `<div class="compras-tramo"><b>${escapeHtml(label)}:</b> <span class="${cls}" style="position:static;display:inline-block;">${escapeHtml(texto)}</span></div>`;
+  return `<span class="${cls}" style="position:static; display:inline-block; margin:1px 3px 1px 0;" title="${escapeHtml(formatFechaCorta(fecha))}">${escapeHtml(texto)}</span>`;
+}
+
+// ---- Convierte el árbol Expediente -> PC -> Posiciones en una fila por Posición (con los datos
+// del Expediente y del PC ya "aplanados" adentro de cada una), para poder mostrar todo en una
+// sola tabla — igual que Registros/Certificaciones/Proyectos — en vez de un árbol de <details>
+// que se re-colapsaba entero cada vez que se tocaba un filtro. ----
+function comprasFilasPlanas() {
+  const filas = [];
+  comprasCache.forEach(exp => {
+    const anio = comprasAnioDeExpediente(exp.expediente);
+    const pedidos = exp.pedidos || [];
+    if (!pedidos.length) {
+      filas.push({ exp, anio, pc: null, pos: null });
+      return;
+    }
+    pedidos.forEach(pc => {
+      const posiciones = pc.posiciones || [];
+      if (!posiciones.length) {
+        filas.push({ exp, anio, pc, pos: null });
+        return;
+      }
+      posiciones.forEach(pos => filas.push({ exp, anio, pc, pos }));
+    });
+  });
+  return filas;
+}
+
+function comprasFilteredFilas() {
+  const texto = (comprasFiltros.expediente || '').trim().toLowerCase();
+  return comprasFilasPlanas().filter(f => {
+    if (comprasFiltros.pospre.length && !comprasFiltros.pospre.includes(String(f.exp.pospre || '').trim())) return false;
+    if (comprasFiltros.anio.length && !comprasFiltros.anio.includes(f.anio)) return false;
+    if (texto && !String(f.exp.expediente || '').toLowerCase().includes(texto)) return false;
+    if (comprasFiltros.nroPC.length && !comprasFiltros.nroPC.includes(String((f.pc && f.pc.nroPC) || '').trim())) return false;
+    if (comprasFiltros.destino.length && !comprasFiltros.destino.includes(String((f.pos && f.pos.destino) || '').trim())) return false;
+    return true;
+  });
+}
+
+const COMPRAS_TABLE_COLS = [
+  { key: 'pospre', label: 'Pospre' },
+  { key: 'expediente', label: 'Expediente' },
+  { key: 'lp', label: 'LP' },
+  { key: 'presupuestoOficial', label: 'Pres. Oficial' },
+  { key: 'adjudicadoTotal', label: 'Adj. Total Exp.' },
+  { key: 'nroPC', label: 'N° PC' },
+  { key: 'adjudicatario', label: 'Adjudicatario' },
+  { key: 'adjudicadoCalculado', label: 'Adj. PC' },
+  { key: 'posicion', label: 'Posición' },
+  { key: 'matricula', label: 'Matrícula' },
+  { key: 'destino', label: 'Destino' },
+  { key: 'cantidad', label: 'Cantidad' },
+  { key: 'montoTotal', label: '$ Posición' }
+];
+const COMPRAS_MONEY_KEYS = new Set(['presupuestoOficial', 'adjudicadoTotal', 'adjudicadoCalculado', 'montoTotal']);
+let comprasSort = { key: null, dir: 1 };
+function comprasSortValue(f, key) {
+  if (key === 'pospre') return f.exp.pospre || '';
+  if (key === 'expediente') return f.exp.expediente || '';
+  if (key === 'lp') return f.exp.lp || '';
+  if (key === 'presupuestoOficial') return num(f.exp.presupuestoOficial);
+  if (key === 'adjudicadoTotal') return num(f.exp.adjudicadoTotal);
+  if (key === 'nroPC') return (f.pc && f.pc.nroPC) || '';
+  if (key === 'adjudicatario') return (f.pc && f.pc.adjudicatario) || '';
+  if (key === 'adjudicadoCalculado') return num(f.pc && f.pc.adjudicadoCalculado);
+  if (key === 'posicion') return (f.pos && f.pos.posicion) || '';
+  if (key === 'matricula') return (f.pos && f.pos.matricula) || '';
+  if (key === 'destino') return (f.pos && f.pos.destino) || '';
+  if (key === 'cantidad') return num(f.pos && f.pos.cantidad);
+  if (key === 'montoTotal') return num(f.pos && f.pos.montoTotal);
+  return '';
 }
 
 function renderComprasTable() {
-  const wrap = document.getElementById('comprasTree');
+  const table = document.getElementById('comprasTree');
   const puedeEditar = state.session && state.session.rol !== 'consulta';
-  const filtradas = comprasFiltered();
+  const isAdmin = state.session && state.session.rol === 'admin';
+  let filas = comprasFilteredFilas();
   const countEl = document.getElementById('comprasResultsCount');
-  if (countEl) countEl.textContent = filtradas.length + ' expediente(s) encontrado(s) de ' + comprasCache.length + ' totales.';
+  if (countEl) countEl.textContent = filas.length + ' posición(es) encontrada(s), de ' + comprasCache.length + ' expediente(s) totales.';
   if (!comprasCache.length) {
-    wrap.innerHTML = '<p class="empty-hint">Todavía no hay expedientes de Compras cargados.</p>';
+    table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay expedientes de Compras cargados.</td></tr></tbody>';
     return;
   }
-  if (!filtradas.length) {
-    wrap.innerHTML = '<p class="empty-hint">Ningún expediente coincide con los filtros aplicados.</p>';
+  if (!filas.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Ninguna posición coincide con los filtros aplicados.</td></tr></tbody>';
     return;
   }
-  wrap.innerHTML = filtradas.map(exp => {
-    const pedidosHtml = (exp.pedidos || []).map(pc => {
-      const posHtml = (pc.posiciones || []).map(pos => `
-        <div class="compras-pos-card">
-          <div class="compras-pos-head">
-            <b>Posición ${escapeHtml(pos.posicion || '')}</b>
-            <span class="mono">$ ${num(pos.montoTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-            ${puedeEditar ? `<span class="compras-pos-actions">
-              <button class="btn-link" onclick="abrirComprasForm('pos', ${comprasJsArg(pos._id)}, ${comprasJsArg(pc._id)})">Editar</button>
-              <button class="btn-link danger" onclick="eliminarComprasRegistro('pos', ${comprasJsArg(pos._id)})">Eliminar</button>
-            </span>` : ''}
-          </div>
-          <div class="compras-tramo"><b>Matrícula:</b> ${escapeHtml(pos.matricula || '(sin matrícula)')} ${pos.detalleMat ? '— ' + escapeHtml(pos.detalleMat) : ''}</div>
-          <div class="compras-tramo"><b>Destino:</b> ${escapeHtml(pos.destino || '—')} &nbsp; <b>Cantidad:</b> ${escapeHtml(String(pos.cantidad || '—'))}</div>
-          ${comprasBadgeTramo('P. Fija', pos, 'fechaContratoFija', 'entregadoFija', 'desvioFija', 'vencidaFija')}
-          ${comprasBadgeTramo('P. Planificada', pos, 'fechaContratoPlanificada', 'entregadoPlanificada', 'desvioPlanificada', 'vencidaPlanificada')}
-          ${comprasBadgeTramo('Ampliación', pos, 'fechaContratoAmpliacion', 'entregadoAmpliacion', 'desvioAmpliacion', 'vencidaAmpliacion')}
-          ${pos.observaciones ? `<div class="compras-tramo"><b>Obs.:</b> ${escapeHtml(pos.observaciones)}</div>` : ''}
-        </div>`).join('') || '<p class="empty-hint">Sin posiciones cargadas.</p>';
 
-      return `<details class="compras-pc">
-          <summary>
-            PC ${escapeHtml(pc.nroPC || '(sin número)')} — ${escapeHtml(pc.adjudicatario || 'sin adjudicatario')}
-            <span class="mono">$ ${num(pc.adjudicadoCalculado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-            ${puedeEditar ? `<span class="compras-pos-actions">
-              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', ${comprasJsArg(pc._id)}, ${comprasJsArg(exp._id)})">Editar PC</button>
-              <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pos', null, ${comprasJsArg(pc._id)})">+ Posición</button>
-              <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('pc', ${comprasJsArg(pc._id)})">Eliminar PC</button>
-            </span>` : ''}
-          </summary>
-          <div class="compras-pos-list">${posHtml}</div>
-        </details>`;
-    }).join('') || '<p class="empty-hint">Sin pedidos de compra cargados.</p>';
+  filas = sortRows(filas, comprasSort, comprasSortValue);
 
-    return `<details class="compras-exp" open>
-        <summary>
-          <b>${escapeHtml(exp.expediente || '(sin número)')}</b> — ${escapeHtml(exp.extracto || '')}
-          <span class="mono">Ofic.: $ ${num(exp.presupuestoOficial).toLocaleString('es-AR', { maximumFractionDigits: 2 })} · Adj.: $ ${num(exp.adjudicadoTotal).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-          ${puedeEditar ? `<span class="compras-pos-actions">
-            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('exp', ${comprasJsArg(exp._id)}, null)">Editar</button>
-            <button class="btn-link" onclick="event.stopPropagation(); abrirComprasForm('pc', null, ${comprasJsArg(exp._id)})">+ Pedido (PC)</button>
-            <button class="btn-link danger" onclick="event.stopPropagation(); eliminarComprasRegistro('exp', ${comprasJsArg(exp._id)})">Eliminar Expediente</button>
-          </span>` : ''}
-        </summary>
-        <div class="compras-pc-list">${pedidosHtml}</div>
-      </details>`;
-  }).join('');
+  const thead = sortableTheadHtml(COMPRAS_TABLE_COLS, comprasSort, '<th>Entregas</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
+  const tbody = '<tbody>' + filas.map(f => {
+    const tds = COMPRAS_TABLE_COLS.map(col => {
+      const val = comprasSortValue(f, col.key);
+      if (COMPRAS_MONEY_KEYS.has(col.key)) return `<td class="mono">${formatMoney(val)}</td>`;
+      if (col.key === 'cantidad') return `<td class="mono">${val || ''}</td>`;
+      return `<td>${escapeHtml(String(val || ''))}</td>`;
+    }).join('');
+    const entregas = f.pos ? [
+      comprasBadgeTramoCompacto('P.Fija', f.pos, 'fechaContratoFija', 'entregadoFija', 'desvioFija', 'vencidaFija'),
+      comprasBadgeTramoCompacto('P.Planif.', f.pos, 'fechaContratoPlanificada', 'entregadoPlanificada', 'desvioPlanificada', 'vencidaPlanificada'),
+      comprasBadgeTramoCompacto('Ampliac.', f.pos, 'fechaContratoAmpliacion', 'entregadoAmpliacion', 'desvioAmpliacion', 'vencidaAmpliacion')
+    ].filter(Boolean).join('') : '';
+    const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
+        ${puedeEditar ? `<button class="icon-btn" title="Editar Expediente" onclick="abrirComprasForm('exp', ${comprasJsArg(f.exp._id)}, null)">📁</button>` : ''}
+        ${puedeEditar ? `<button class="icon-btn" title="Editar PC" onclick="${f.pc ? `abrirComprasForm('pc', ${comprasJsArg(f.pc._id)}, ${comprasJsArg(f.exp._id)})` : `abrirComprasForm('pc', null, ${comprasJsArg(f.exp._id)})`}">📦</button>` : ''}
+        ${puedeEditar && f.pos ? `<button class="icon-btn" title="Editar Posición" onclick="abrirComprasForm('pos', ${comprasJsArg(f.pos._id)}, ${comprasJsArg(f.pc._id)})">✏️</button>` : ''}
+        ${puedeEditar && f.pc && !f.pos ? `<button class="icon-btn" title="Nueva Posición" onclick="abrirComprasForm('pos', null, ${comprasJsArg(f.pc._id)})">➕</button>` : ''}
+        ${isAdmin && f.pos ? `<button class="icon-btn danger" title="Eliminar Posición" onclick="eliminarComprasRegistro('pos', ${comprasJsArg(f.pos._id)})">🗑️</button>` : ''}
+        ${isAdmin && f.pc ? `<button class="icon-btn danger" title="Eliminar PC (y sus posiciones)" onclick="eliminarComprasRegistro('pc', ${comprasJsArg(f.pc._id)})">🗑️PC</button>` : ''}
+        ${isAdmin ? `<button class="icon-btn danger" title="Eliminar Expediente (y todo lo que contiene)" onclick="eliminarComprasRegistro('exp', ${comprasJsArg(f.exp._id)})">🗑️Exp</button>` : ''}
+      </td>` : '';
+    return `<tr>${tds}<td>${entregas || '<span style="color:var(--text-soft)">—</span>'}</td>${acciones}</tr>`;
+  }).join('') + '</tbody>';
+
+  table.innerHTML = thead + tbody;
+  setupScrollShadow(table.closest('.table-wrap'), 'comprasScrollTop', 'comprasScrollTopInner');
+  wireSortableHeaders(table, comprasSort, renderComprasTable);
 }
 
 // Genera un literal JS seguro para insertar dentro de un atributo onclick="..." (con comillas
