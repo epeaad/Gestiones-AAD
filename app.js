@@ -795,10 +795,16 @@ function recalcDerivedFields() {
   const presUnit = parseFloat(getFormValue('presOficialUnitario')) || 0;
   const adjUnit = parseFloat(getFormValue('adjudicadoUnitario')) || 0;
 
-  const presOficial = cantidad * presUnit;
-  const totalAdj = cantidad * adjUnit;
-  setFormValue('presupuestoOficialRubro', presOficial ? presOficial.toFixed(2) : '');
-  setFormValue('totalAdjudicado', totalAdj ? totalAdj.toFixed(2) : '');
+  // Solo se recalcula (y se pisa lo que hubiera) cuando SÍ hay con qué calcularlo. Si Cantidad o
+  // Unitario están vacíos en este momento —por ejemplo, un trámite clonado/importado que ya trae
+  // el $ Presupuesto Oficial cargado directamente, sin pasar por estos dos campos— NO se borra el
+  // valor que ya estaba, para no perder un dato válido solo porque su "fuente" está vacía ahora.
+  if (cantidad && presUnit) {
+    setFormValue('presupuestoOficialRubro', (cantidad * presUnit).toFixed(2));
+  }
+  if (cantidad && adjUnit) {
+    setFormValue('totalAdjudicado', (cantidad * adjUnit).toFixed(2));
+  }
 
   const fInicioReal = getFormValue('fechaInicioReal');
   const plazoEntrega = parseInt(getFormValue('plazoEntrega')) || 0;
@@ -915,6 +921,12 @@ document.getElementById('recordForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('formMsg');
   msg.hidden = true;
+  // Resguardo final: se recalculan los campos derivados (Presupuesto Oficial, Total Adjudicado,
+  // Fechas de Fin) justo antes de armar "datos", sin importar cómo llegó el formulario a este
+  // punto (tecleado a mano, clonado, ampliación, "sumar" +N). Así lo que se guarda es siempre
+  // exactamente lo que la pantalla está mostrando en ese momento — nunca hace falta reabrir el
+  // trámite y volver a guardar para que "valide" un cálculo que ya debería estar hecho.
+  recalcDerivedFields();
   const datos = {};
   document.querySelectorAll('#stagePanels [name]').forEach(input => {
     datos[input.name] = input.value;
