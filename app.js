@@ -4120,17 +4120,28 @@ function renderProyTable() {
 // ============================================================
 // MÓDULO DE COMPRAS (Equipos, Máquinas, Instrumentos, Materiales y Bienes)
 // ------------------------------------------------------------
-// Independiente del módulo de Contrataciones (Registros): no toca `state.registros`
-// ni ningún dato de ese módulo. Estructura en árbol: Expediente -> Pedidos (PC) -> Posiciones.
-// Matrícula, Detalle de Matrícula, Destino y Cantidad viven en la POSICIÓN (no en el PC): es lo
-// que distingue una posición de otra dentro del mismo PC, y por eso cada una tiene sus propias
-// fechas de entrega y su propio desvío.
+// Independiente del módulo de Contrataciones (Registros): no toca `state.registros` ni ningún
+// dato de ese módulo. Estructura en árbol, con la misma lógica de un trámite de Contrataciones
+// pero adaptada a Compras:
+//   Expediente (datos de lanzamiento + Presupuesto Oficial)
+//     -> uno o más Pedidos de Compra (PC)
+//          -> una o más Posiciones
+//               -> una o más Compras Planificadas
+//               -> cero o más Ampliaciones (tope: 30% del valor y de la cantidad de TODO EL PC)
+// La carga/edición usa el mismo "lifeline" de etapas que "Nueva Contratación": un Workspace que
+// se abre dentro de la misma pantalla de Compras (sin popups ni tablas gigantes), con una etapa
+// por nivel del árbol — cada una muestra un mini-formulario de alta/edición y la lista de lo ya
+// cargado en ese nivel, con acciones para editar/copiar/eliminar.
 // ============================================================
-let comprasCache = [];              // árbol completo: expedientes -> pedidos -> posiciones
-let comprasFormNivel = null;        // 'exp' | 'pc' | 'pos' — qué se está creando/editando
-let comprasFormEditId = null;       // id del registro en edición, o null si es alta nueva
-let comprasFormParentId = null;     // idExpediente (para pc) o idPC (para pos)
+let comprasCache = [];              // árbol completo: expedientes -> pedidos -> posiciones -> planificadas/ampliaciones
 let comprasImportFilas = [];        // preview de la importación desde Excel, antes de confirmar
+
+const COMPRAS_ETAPAS = [
+  { id: 'exp', label: 'Expediente' },
+  { id: 'pc', label: 'Pedidos de Compra' },
+  { id: 'pos', label: 'Posiciones' },
+  { id: 'planamp', label: 'Planificadas y Ampliaciones' }
+];
 
 const COMPRAS_EXP_FORM_FIELDS = [
   { key: 'pospre', label: 'Pospre', type: 'text' },
@@ -4151,25 +4162,90 @@ const COMPRAS_POS_FORM_FIELDS = [
   { key: 'destino', label: 'Destino', type: 'text' },
   { key: 'cantidad', label: 'Cantidad P. Fija', type: 'number' },
   { key: 'montoPFija', label: '$ P. Fija p/ítems (sin IVA)', type: 'number' },
-  { key: 'fechaContratoFija', label: 'Fecha Entrega x Contrato — P. Fija', type: 'date' },
-  { key: 'fechaRealFija', label: 'Fecha Entrega Real — P. Fija', type: 'date' },
-  { key: 'partePlanificada', label: 'Parte Planificada', type: 'select', options: ['No', 'Si'] },
-  { key: 'cantidadPlanificada', label: 'Cantidad P. Planificada', type: 'number' },
-  { key: 'montoPPlanificada', label: '$ P. Planificada (sin IVA)', type: 'number' },
-  { key: 'fechaContratoPlanificada', label: 'Fecha Entrega x Contrato — Planificada', type: 'date' },
-  { key: 'fechaRealPlanificada', label: 'Fecha Entrega Real — Planificada', type: 'date' },
-  { key: 'ampliacion', label: 'Ampliación', type: 'select', options: ['No', 'Si'] },
-  { key: 'pctAmpliacion', label: '% de Ampliación', type: 'number' },
-  { key: 'montoAmpliacion', label: '$ Ampliación (sin IVA)', type: 'number' },
-  { key: 'fechaContratoAmpliacion', label: 'Fecha Entrega x Contrato — Ampliación', type: 'date' },
-  { key: 'fechaRealAmpliacion', label: 'Fecha Entrega Real — Ampliación', type: 'date' },
+  { key: 'fechaContratoFija', label: 'Fecha Entrega x Contrato', type: 'date' },
+  { key: 'fechaRealFija', label: 'Fecha Entrega Real', type: 'date' },
+  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+];
+const COMPRAS_PLANIF_FORM_FIELDS = [
+  { key: 'cantidad', label: 'Cantidad', type: 'number', required: true },
+  { key: 'monto', label: '$ Monto (sin IVA)', type: 'number', required: true },
+  { key: 'fechaContrato', label: 'Fecha Entrega x Contrato', type: 'date' },
+  { key: 'fechaReal', label: 'Fecha Entrega Real', type: 'date' },
+  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+];
+const COMPRAS_AMPLIA_FORM_FIELDS = [
+  { key: 'pct', label: '% de Ampliación', type: 'number' },
+  { key: 'cantidad', label: 'Cantidad Ampliada', type: 'number' },
+  { key: 'monto', label: '$ Monto Ampliación (sin IVA)', type: 'number', required: true },
+  { key: 'fechaContrato', label: 'Fecha Entrega x Contrato', type: 'date' },
+  { key: 'fechaReal', label: 'Fecha Entrega Real', type: 'date' },
   { key: 'observaciones', label: 'Observaciones', type: 'text' }
 ];
 
+// ---- Estado del Workspace de carga/edición (Expediente -> PC -> Posiciones -> Planif/Ampliac.) ----
+let comprasWs = { expId: null, pcId: null, posId: null, stage: 'exp' };
+// Qué item está en edición dentro del mini-formulario de cada etapa (por nivel). null = alta nueva.
+let comprasMiniEdit = { pc: null, pos: null, planificada: null, ampliacion: null };
+
+// ---- Field renderer genérico para los mini-formularios (reutiliza el desplegable dinámico de
+// Pospre, igual criterio que en Contrataciones: valida contra los Pospre ya existentes, con
+// opción de agregar uno nuevo si hace falta). ----
+function comprasFieldHtml(f, val, isPospre) {
+  val = (val !== undefined && val !== null) ? val : '';
+  if (isPospre) {
+    const existentes = comprasPospreOpciones();
+    if (val && !existentes.includes(val)) existentes.unshift(val);
+    const opts = ['<option value="">— Elegí un Pospre existente —</option>'].concat(
+      existentes.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`)
+    ).concat(['<option value="' + DYNAMIC_SELECT_OTRO + '">+ Otro (nuevo)...</option>']);
+    return `<label>${escapeHtml(f.label)}
+      <select class="dyn-select" data-dyn-key="pospre" data-key="pospre">${opts.join('')}</select>
+      <div class="dyn-otro-row" hidden>
+        <input type="text" placeholder="Escribí el Pospre nuevo..." class="dyn-otro-input" />
+        <button type="button" class="dyn-otro-volver" title="Volver a elegir de la lista">↩ volver a la lista</button>
+      </div>
+    </label>`;
+  }
+  return `<label>${escapeHtml(f.label)}
+    <input type="${f.type}" data-key="${f.key}" value="${escapeHtml(String(val))}" ${f.type === 'number' ? 'step="any"' : ''} ${f.required ? 'required' : ''} />
+  </label>`;
+}
+function wireComprasPospreDynSelect(container) {
+  const pospreSel = container.querySelector('select[data-dyn-key="pospre"]');
+  if (!pospreSel) return;
+  const row = pospreSel.nextElementSibling;
+  const otroInput = row.querySelector('.dyn-otro-input');
+  const volverBtn = row.querySelector('.dyn-otro-volver');
+  pospreSel.addEventListener('change', () => {
+    if (pospreSel.value === DYNAMIC_SELECT_OTRO) {
+      pospreSel.hidden = true;
+      delete pospreSel.dataset.key;
+      row.hidden = false;
+      otroInput.dataset.key = 'pospre';
+      otroInput.value = '';
+      otroInput.focus();
+    }
+  });
+  volverBtn.addEventListener('click', () => {
+    row.hidden = true;
+    delete otroInput.dataset.key;
+    pospreSel.hidden = false;
+    pospreSel.dataset.key = 'pospre';
+    pospreSel.value = '';
+  });
+}
+function comprasPospreOpciones() {
+  // Combina los Pospre ya usados en Contrataciones (state.registros) y los ya cargados en
+  // Compras (comprasCache), para que la lista desplegable sea la más completa posible.
+  const set = new Set();
+  (state.registros || []).forEach(r => { if (r.pospre) set.add(String(r.pospre).trim()); });
+  (comprasCache || []).forEach(e => { if (e.pospre) set.add(String(e.pospre).trim()); });
+  return Array.from(set).sort();
+}
+
 // ---- Filtros de Compras: Pospre, Año, Trámite (Expediente), PC y Destino ----
-// Igual criterio que Registros: filtran a nivel Expediente (qué trámites se muestran), y una vez
-// que un trámite entra por el filtro se ve completo (todos sus PC y todas sus Posiciones) —
-// así siempre se puede ver el detalle entero de lo que se encontró, como en Certificaciones/Proyectos.
+// Filtran a nivel Expediente (qué expedientes se muestran): un expediente entra por el filtro de
+// PC/Destino si CUALQUIERA de sus PC/Posiciones coincide, y una vez que entra se ve completo.
 const COMPRAS_FILTER_KEYS = ['pospre', 'anio', 'nroPC', 'destino'];
 let comprasFiltros = { pospre: [], anio: [], expediente: '', nroPC: [], destino: [] };
 
@@ -4184,9 +4260,7 @@ function comprasUniqueValues(key) {
     if (key === 'anio') { const a = comprasAnioDeExpediente(exp.expediente); if (a) set.add(a); }
     (exp.pedidos || []).forEach(pc => {
       if (key === 'nroPC' && pc.nroPC) set.add(String(pc.nroPC).trim());
-      (pc.posiciones || []).forEach(pos => {
-        if (key === 'destino' && pos.destino) set.add(String(pos.destino).trim());
-      });
+      (pc.posiciones || []).forEach(pos => { if (key === 'destino' && pos.destino) set.add(String(pos.destino).trim()); });
     });
   });
   return Array.from(set).sort();
@@ -4218,22 +4292,18 @@ document.getElementById('comprasClearFilters').addEventListener('click', () => {
 
 async function abrirVistaCompras() {
   // Los datos de Compras ya se precargaron al loguearse (boot() los necesita igual para Dashboard
-  // y Vencimientos) — acá solo renderizamos desde ese caché, sin volver a pedirlos al servidor
-  // cada vez que se entra a esta pestaña. Se refrescan solos después de cualquier alta/edición/
-  // eliminación/importación (ver refrescarRegistrosTrasCompras y los propios handlers).
+  // y Vencimientos) — acá solo renderizamos desde ese caché, sin volver a pedirlos al servidor.
   populateComprasFilterOptions();
   renderComprasTable();
-  // Si el usuario ya tenía el formulario de Compras abierto (alta/edición a medio completar) y
-  // solo pasó por otra pestaña, no se lo cerramos al volver — solo arranca cerrado la primera vez.
-  if (!comprasFormNivel) cerrarComprasForm();
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   document.getElementById('comprasToolbar').hidden = !puedeEditar;
+  // Si el Workspace ya estaba abierto (carga a medio completar) y el usuario solo pasó por otra
+  // pestaña, no lo cerramos al volver — solo arranca cerrado la primera vez (ver abrirComprasWorkspace).
 }
 
 // Cada vez que Compras cambia algo que impacta su fila espejo en "Gestiones Plan" (alta/edición/
-// eliminación de Expediente, PC o Posición, o una importación), refrescamos también los datos de
-// Contrataciones en memoria y volvemos a pintar Registros/Dashboard si están a la vista — así el
-// usuario ve la fila nueva/actualizada sin tener que recargar la página.
+// eliminación de cualquier nivel, o una importación), refrescamos también los datos de
+// Contrataciones en memoria y volvemos a pintar Registros/Dashboard si están a la vista.
 async function refrescarRegistrosTrasCompras() {
   try {
     const data = await apiCall('listar');
@@ -4262,17 +4332,15 @@ async function cargarCompras() {
   }
 }
 
-// ---- Riesgo por plazo (mismo criterio que Contrataciones: DIAS_RIESGO, definido más arriba) ----
+// ---- Riesgo por plazo (mismo criterio que Contrataciones: DIAS_RIESGO) — recorre la Fija de cada
+// Posición y TODAS sus Planificadas y Ampliaciones (pueden ser varias de cada una). ----
 function comprasTramosPendientes() {
   const out = [];
   comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
-    [
-      { tramo: 'P. Fija', fecha: pos.fechaContratoFija, entregado: pos.entregadoFija },
-      { tramo: 'P. Planificada', fecha: pos.fechaContratoPlanificada, entregado: pos.entregadoPlanificada },
-      { tramo: 'Ampliación', fecha: pos.fechaContratoAmpliacion, entregado: pos.entregadoAmpliacion }
-    ].forEach(t => {
-      if (t.fecha && !t.entregado) out.push({ exp, pc, pos, tramo: t.tramo, fecha: t.fecha });
-    });
+    const tramos = [{ tramo: 'P. Fija', fecha: pos.fechaContratoFija, entregado: pos.entregadoFija }];
+    (pos.planificadas || []).forEach((pl, i) => tramos.push({ tramo: 'Planificada #' + (i + 1), fecha: pl.fechaContrato, entregado: pl.entregado }));
+    (pos.ampliaciones || []).forEach((a, i) => tramos.push({ tramo: 'Ampliación #' + (i + 1), fecha: a.fechaContrato, entregado: a.entregado }));
+    tramos.forEach(t => { if (t.fecha && !t.entregado) out.push({ exp, pc, pos, tramo: t.tramo, fecha: t.fecha }); });
   })));
   return out;
 }
@@ -4291,367 +4359,535 @@ function comprasEventosParaCalendario() {
   }));
 }
 
-// ---- Render de la tabla / árbol ----
-function comprasBadgeTramoCompacto(label, pos, fechaKey, entregadoKey, desvioKey, vencidaKey) {
-  const fecha = pos[fechaKey];
-  if (!fecha) return '';
-  const entregado = pos[entregadoKey];
-  const desvio = pos[desvioKey];
-  const vencida = pos[vencidaKey];
-  let cls = 'cal-badge lejano', texto = label + ': ' + formatFechaCorta(fecha);
-  if (entregado) {
-    cls = desvio > 0 ? 'cal-badge proximo' : 'cal-badge lejano';
-    texto = label + ': entregado' + (desvio !== null ? ' (' + (desvio > 0 ? '+' : '') + desvio + 'd)' : '');
-  } else if (vencida) {
-    cls = 'cal-badge vencido';
-    texto = label + ': vencido (' + Math.abs(desvio) + 'd)';
-  } else {
-    texto = label + ': pendiente';
-  }
-  return `<span class="${cls}" style="position:static; display:inline-block; margin:1px 3px 1px 0;" title="${escapeHtml(formatFechaCorta(fecha))}">${escapeHtml(texto)}</span>`;
-}
-
-// ---- Convierte el árbol Expediente -> PC -> Posiciones en una fila por Posición (con los datos
-// del Expediente y del PC ya "aplanados" adentro de cada una), para poder mostrar todo en una
-// sola tabla — igual que Registros/Certificaciones/Proyectos — en vez de un árbol de <details>
-// que se re-colapsaba entero cada vez que se tocaba un filtro. ----
-function comprasFilasPlanas() {
-  const filas = [];
-  comprasCache.forEach(exp => {
-    const anio = comprasAnioDeExpediente(exp.expediente);
-    const pedidos = exp.pedidos || [];
-    if (!pedidos.length) {
-      filas.push({ exp, anio, pc: null, pos: null });
-      return;
-    }
-    pedidos.forEach(pc => {
-      const posiciones = pc.posiciones || [];
-      if (!posiciones.length) {
-        filas.push({ exp, anio, pc, pos: null });
-        return;
-      }
-      posiciones.forEach(pos => filas.push({ exp, anio, pc, pos }));
-    });
-  });
-  return filas;
-}
-
-function comprasFilteredFilas() {
-  const texto = (comprasFiltros.expediente || '').trim().toLowerCase();
-  return comprasFilasPlanas().filter(f => {
-    if (comprasFiltros.pospre.length && !comprasFiltros.pospre.includes(String(f.exp.pospre || '').trim())) return false;
-    if (comprasFiltros.anio.length && !comprasFiltros.anio.includes(f.anio)) return false;
-    if (texto && !String(f.exp.expediente || '').toLowerCase().includes(texto)) return false;
-    if (comprasFiltros.nroPC.length && !comprasFiltros.nroPC.includes(String((f.pc && f.pc.nroPC) || '').trim())) return false;
-    if (comprasFiltros.destino.length && !comprasFiltros.destino.includes(String((f.pos && f.pos.destino) || '').trim())) return false;
-    return true;
-  });
-}
-
+// ---- Tabla principal: 1 fila por EXPEDIENTE (no por posición) — resumen limpio, como la lista de
+// trámites de Registros; el detalle (PC, Posiciones, Planificadas, Ampliaciones) se ve adentro del
+// Workspace, no acá. ----
+let comprasSort = { key: null, dir: 1 };
 const COMPRAS_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
   { key: 'lp', label: 'LP' },
+  { key: 'extracto', label: 'Extracto' },
   { key: 'presupuestoOficial', label: 'Pres. Oficial' },
-  { key: 'adjudicadoTotal', label: 'Adj. Total Exp.' },
-  { key: 'nroPC', label: 'N° PC' },
-  { key: 'adjudicatario', label: 'Adjudicatario' },
-  { key: 'adjudicadoCalculado', label: 'Adj. PC' },
-  { key: 'posicion', label: 'Posición' },
-  { key: 'matricula', label: 'Matrícula' },
-  { key: 'destino', label: 'Destino' },
-  { key: 'cantidad', label: 'Cant. P. Fija' },
-  { key: 'cantidadPlanificada', label: 'Cant. P. Planif.' },
-  { key: 'montoTotal', label: '$ Posición' }
+  { key: 'adjudicadoTotal', label: 'Adj. Total' },
+  { key: 'cantPC', label: 'Cant. PC' }
 ];
-const COMPRAS_MONEY_KEYS = new Set(['presupuestoOficial', 'adjudicadoTotal', 'adjudicadoCalculado', 'montoTotal']);
-const COMPRAS_QTY_KEYS = new Set(['cantidad', 'cantidadPlanificada']);
-let comprasSort = { key: null, dir: 1 };
-function comprasSortValue(f, key) {
-  if (key === 'pospre') return f.exp.pospre || '';
-  if (key === 'expediente') return f.exp.expediente || '';
-  if (key === 'lp') return f.exp.lp || '';
-  if (key === 'presupuestoOficial') return num(f.exp.presupuestoOficial);
-  if (key === 'adjudicadoTotal') return num(f.exp.adjudicadoTotal);
-  if (key === 'nroPC') return (f.pc && f.pc.nroPC) || '';
-  if (key === 'adjudicatario') return (f.pc && f.pc.adjudicatario) || '';
-  if (key === 'adjudicadoCalculado') return num(f.pc && f.pc.adjudicadoCalculado);
-  if (key === 'posicion') return (f.pos && f.pos.posicion) || '';
-  if (key === 'matricula') return (f.pos && f.pos.matricula) || '';
-  if (key === 'destino') return (f.pos && f.pos.destino) || '';
-  if (key === 'cantidad') return num(f.pos && f.pos.cantidad);
-  if (key === 'cantidadPlanificada') return num(f.pos && f.pos.cantidadPlanificada);
-  if (key === 'montoTotal') return num(f.pos && f.pos.montoTotal);
+const COMPRAS_MONEY_KEYS = new Set(['presupuestoOficial', 'adjudicadoTotal']);
+function comprasSortValue(exp, key) {
+  if (key === 'pospre') return exp.pospre || '';
+  if (key === 'expediente') return exp.expediente || '';
+  if (key === 'lp') return exp.lp || '';
+  if (key === 'extracto') return exp.extracto || '';
+  if (key === 'presupuestoOficial') return num(exp.presupuestoOficial);
+  if (key === 'adjudicadoTotal') return num(exp.adjudicadoTotal);
+  if (key === 'cantPC') return (exp.pedidos || []).length;
   return '';
 }
-
+function comprasFilteredExpedientes() {
+  const texto = (comprasFiltros.expediente || '').trim().toLowerCase();
+  return comprasCache.filter(exp => {
+    if (comprasFiltros.pospre.length && !comprasFiltros.pospre.includes(String(exp.pospre || '').trim())) return false;
+    const anio = comprasAnioDeExpediente(exp.expediente);
+    if (comprasFiltros.anio.length && !comprasFiltros.anio.includes(anio)) return false;
+    if (texto && !String(exp.expediente || '').toLowerCase().includes(texto)) return false;
+    if (comprasFiltros.nroPC.length) {
+      const tienePC = (exp.pedidos || []).some(pc => comprasFiltros.nroPC.includes(String(pc.nroPC || '').trim()));
+      if (!tienePC) return false;
+    }
+    if (comprasFiltros.destino.length) {
+      const tieneDestino = (exp.pedidos || []).some(pc => (pc.posiciones || []).some(pos => comprasFiltros.destino.includes(String(pos.destino || '').trim())));
+      if (!tieneDestino) return false;
+    }
+    return true;
+  });
+}
 function renderComprasTable() {
   const table = document.getElementById('comprasTree');
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   const isAdmin = state.session && state.session.rol === 'admin';
-  let filas = comprasFilteredFilas();
+  let filas = comprasFilteredExpedientes();
   const countEl = document.getElementById('comprasResultsCount');
-  if (countEl) countEl.textContent = filas.length + ' posición(es) encontrada(s), de ' + comprasCache.length + ' expediente(s) totales.';
+  if (countEl) countEl.textContent = filas.length + ' expediente(s) encontrado(s), de ' + comprasCache.length + ' total(es).';
   if (!comprasCache.length) {
     table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay expedientes de Compras cargados.</td></tr></tbody>';
     return;
   }
   if (!filas.length) {
-    table.innerHTML = '<tbody><tr><td class="empty-state">Ninguna posición coincide con los filtros aplicados.</td></tr></tbody>';
+    table.innerHTML = '<tbody><tr><td class="empty-state">Ningún expediente coincide con los filtros aplicados.</td></tr></tbody>';
     return;
   }
-
   filas = sortRows(filas, comprasSort, comprasSortValue);
-
-  const thead = sortableTheadHtml(COMPRAS_TABLE_COLS, comprasSort, '<th>Entregas</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
-  const tbody = '<tbody>' + filas.map(f => {
+  const thead = sortableTheadHtml(COMPRAS_TABLE_COLS, comprasSort, (puedeEditar || isAdmin) ? '<th>Acciones</th>' : '');
+  const tbody = '<tbody>' + filas.map(exp => {
     const tds = COMPRAS_TABLE_COLS.map(col => {
-      const val = comprasSortValue(f, col.key);
+      const val = comprasSortValue(exp, col.key);
       if (COMPRAS_MONEY_KEYS.has(col.key)) return `<td class="mono">${formatMoney(val)}</td>`;
-      if (COMPRAS_QTY_KEYS.has(col.key)) return `<td class="mono">${val || ''}</td>`;
+      if (col.key === 'cantPC') return `<td class="mono">${val}</td>`;
       return `<td>${escapeHtml(String(val || ''))}</td>`;
     }).join('');
-    const entregas = f.pos ? [
-      comprasBadgeTramoCompacto('P.Fija', f.pos, 'fechaContratoFija', 'entregadoFija', 'desvioFija', 'vencidaFija'),
-      comprasBadgeTramoCompacto('P.Planif.', f.pos, 'fechaContratoPlanificada', 'entregadoPlanificada', 'desvioPlanificada', 'vencidaPlanificada'),
-      comprasBadgeTramoCompacto('Ampliac.', f.pos, 'fechaContratoAmpliacion', 'entregadoAmpliacion', 'desvioAmpliacion', 'vencidaAmpliacion')
-    ].filter(Boolean).join('') : '';
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
-        ${puedeEditar ? `<button class="icon-btn" title="Editar Expediente" onclick="abrirComprasForm('exp', ${comprasJsArg(f.exp._id)}, null)">📁</button>` : ''}
-        ${puedeEditar ? `<button class="icon-btn" title="Copiar Expediente (crea una copia editable con todos sus PC y Posiciones)" onclick="copiarComprasExpediente(${comprasJsArg(f.exp._id)})">📋</button>` : ''}
-        ${puedeEditar ? `<button class="icon-btn" title="Editar PC" onclick="${f.pc ? `abrirComprasForm('pc', ${comprasJsArg(f.pc._id)}, ${comprasJsArg(f.exp._id)})` : `abrirComprasForm('pc', null, ${comprasJsArg(f.exp._id)})`}">📦</button>` : ''}
-        ${puedeEditar && f.pos ? `<button class="icon-btn" title="Editar Posición" onclick="abrirComprasForm('pos', ${comprasJsArg(f.pos._id)}, ${comprasJsArg(f.pc._id)})">✏️</button>` : ''}
-        ${puedeEditar && f.pc && !f.pos ? `<button class="icon-btn" title="Nueva Posición" onclick="abrirComprasForm('pos', null, ${comprasJsArg(f.pc._id)})">➕</button>` : ''}
-        ${isAdmin && f.pos ? `<button class="icon-btn danger" title="Eliminar Posición" onclick="eliminarComprasRegistro('pos', ${comprasJsArg(f.pos._id)})">🗑️</button>` : ''}
-        ${isAdmin && f.pc ? `<button class="icon-btn danger" title="Eliminar PC (y sus posiciones)" onclick="eliminarComprasRegistro('pc', ${comprasJsArg(f.pc._id)})">🗑️PC</button>` : ''}
-        ${isAdmin ? `<button class="icon-btn danger" title="Eliminar Expediente (y todo lo que contiene)" onclick="eliminarComprasRegistro('exp', ${comprasJsArg(f.exp._id)})">🗑️Exp</button>` : ''}
+        ${puedeEditar ? '<button class="icon-btn" data-action="copiar" title="Copiar Expediente (con todos sus PC y Posiciones)">📋</button>' : ''}
+        ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" title="Eliminar Expediente">🗑️</button>' : ''}
       </td>` : '';
-    return `<tr>${tds}<td>${entregas || '<span style="color:var(--text-soft)">—</span>'}</td>${acciones}</tr>`;
+    return `<tr data-id="${exp._id}">${tds}${acciones}</tr>`;
   }).join('') + '</tbody>';
-
   table.innerHTML = thead + tbody;
-  setupScrollShadow(table.closest('.table-wrap'), 'comprasScrollTop', 'comprasScrollTopInner');
   wireSortableHeaders(table, comprasSort, renderComprasTable);
-}
+  setupScrollShadow(table.closest('.table-wrap'), 'comprasScrollTop', 'comprasScrollTopInner');
 
-// Genera un literal JS seguro para insertar dentro de un atributo onclick="..." (con comillas
-// dobles). Usar JSON.stringify() ahí rompía el HTML porque agrega comillas dobles DENTRO de un
-// atributo que ya está delimitado por comillas dobles.
-function comprasJsArg(v) {
-  if (v === null || v === undefined) return 'null';
-  return "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
-}
-
-// ---- Formulario genérico (sirve para los 3 niveles) ----
-function comprasCampos(nivel) {
-  return nivel === 'exp' ? COMPRAS_EXP_FORM_FIELDS : (nivel === 'pc' ? COMPRAS_PC_FORM_FIELDS : COMPRAS_POS_FORM_FIELDS);
-}
-function comprasPospreOpciones() {
-  // Combina los Pospre ya usados en Contrataciones (state.registros) y los ya cargados en
-  // Compras (comprasCache), para que la lista desplegable sea la más completa posible.
-  const set = new Set();
-  (state.registros || []).forEach(r => { if (r.pospre) set.add(String(r.pospre).trim()); });
-  (comprasCache || []).forEach(e => { if (e.pospre) set.add(String(e.pospre).trim()); });
-  return Array.from(set).sort();
-}
-
-// ---- Etiquetas de contexto (para el subtítulo del formulario: "Para el Expediente X", etc.) ----
-function comprasExpedienteLabel(id) {
-  const exp = comprasCache.find(e => e._id === id);
-  return exp ? (exp.expediente || exp.pospre || '(sin número)') : '';
-}
-function comprasPCLabel(id) {
-  let found = null;
-  comprasCache.forEach(e => (e.pedidos || []).forEach(pc => { if (pc._id === id) found = pc; }));
-  return found ? (found.nroPC || '(sin número)') : '';
-}
-
-function abrirComprasForm(nivel, editId, parentId) {
-  comprasFormNivel = nivel;
-  comprasFormEditId = editId || null;
-  comprasFormParentId = parentId || null;
-
-  let registro = {};
-  if (editId) {
-    if (nivel === 'exp') registro = comprasCache.find(e => e._id === editId) || {};
-    if (nivel === 'pc') comprasCache.forEach(e => (e.pedidos || []).forEach(pc => { if (pc._id === editId) registro = pc; }));
-    if (nivel === 'pos') comprasCache.forEach(e => (e.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => { if (pos._id === editId) registro = pos; })));
-  }
-
-  const titulos = { exp: 'Expediente de Compras', pc: 'Pedido de Compra (PC)', pos: 'Posición' };
-  document.getElementById('comprasFormTitle').textContent = (editId ? 'Editar ' : 'Nuevo/a ') + titulos[nivel];
-
-  // Subtítulo de contexto: a qué Expediente/PC pertenece lo que se está por cargar — útil sobre
-  // todo en el flujo encadenado (Expediente -> PC -> Posiciones), donde el formulario se va
-  // reabriendo solo y conviene que quede claro dentro de qué grupo se está parado.
-  const subtitleEl = document.getElementById('comprasFormSubtitle');
-  if (nivel === 'pc' && comprasFormParentId) {
-    subtitleEl.textContent = 'Para el Expediente: ' + comprasExpedienteLabel(comprasFormParentId);
-    subtitleEl.hidden = false;
-  } else if (nivel === 'pos' && comprasFormParentId) {
-    subtitleEl.textContent = 'Para el Pedido de Compra (PC): ' + comprasPCLabel(comprasFormParentId);
-    subtitleEl.hidden = false;
-  } else {
-    subtitleEl.hidden = true;
-  }
-
-  const cont = document.getElementById('comprasFormFields');
-  cont.innerHTML = comprasCampos(nivel).map(f => {
-    const val = registro[f.key] !== undefined && registro[f.key] !== null ? registro[f.key] : '';
-    // Pospre: desplegable dinámico (no texto libre), igual criterio que en Contrataciones —
-    // valida contra los Pospre ya existentes, con opción de agregar uno nuevo si hace falta.
-    if (f.key === 'pospre') {
-      const existentes = comprasPospreOpciones();
-      if (val && !existentes.includes(val)) existentes.unshift(val);
-      const opts = ['<option value="">— Elegí un Pospre existente —</option>'].concat(
-        existentes.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`)
-      ).concat(['<option value="' + DYNAMIC_SELECT_OTRO + '">+ Otro (nuevo)...</option>']);
-      return `<label>${escapeHtml(f.label)}
-        <select class="dyn-select" data-dyn-key="pospre">${opts.join('')}</select>
-        <div class="dyn-otro-row" hidden>
-          <input type="text" placeholder="Escribí el Pospre nuevo..." class="dyn-otro-input" />
-          <button type="button" class="dyn-otro-volver" title="Volver a elegir de la lista">↩ volver a la lista</button>
-        </div>
-      </label>`;
-    }
-    if (f.type === 'select') {
-      return `<label>${escapeHtml(f.label)}
-        <select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
-      </label>`;
-    }
-    return `<label>${escapeHtml(f.label)}
-      <input type="${f.type}" data-key="${f.key}" value="${escapeHtml(String(val))}" ${f.type === 'number' ? 'step="any"' : ''} ${f.required ? 'required' : ''} />
-    </label>`;
-  }).join('');
-
-  // Cablea el comportamiento del desplegable de Pospre (elegir "+ Otro (nuevo)" muestra el input de texto).
-  const pospreSel = cont.querySelector('select[data-dyn-key="pospre"]');
-  if (pospreSel) {
-    const row = pospreSel.nextElementSibling;
-    const otroInput = row.querySelector('.dyn-otro-input');
-    const volverBtn = row.querySelector('.dyn-otro-volver');
-    pospreSel.dataset.key = 'pospre';
-    pospreSel.addEventListener('change', () => {
-      if (pospreSel.value === DYNAMIC_SELECT_OTRO) {
-        pospreSel.hidden = true;
-        delete pospreSel.dataset.key;
-        row.hidden = false;
-        otroInput.dataset.key = 'pospre';
-        otroInput.value = '';
-        otroInput.focus();
-      }
+  const puedeEditarFilas = puedeEditar;
+  table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('.row-actions')) return;
+      if (!puedeEditarFilas) return;
+      abrirComprasWorkspace(tr.dataset.id);
     });
-    volverBtn.addEventListener('click', () => {
-      row.hidden = true;
-      delete otroInput.dataset.key;
-      pospreSel.hidden = false;
-      pospreSel.dataset.key = 'pospre';
-      pospreSel.value = '';
+  });
+  table.querySelectorAll('.row-actions [data-action]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.closest('tr').dataset.id;
+      if (btn.dataset.action === 'copiar') copiarComprasExpediente(id);
+      if (btn.dataset.action === 'eliminar') eliminarComprasExpedienteDesdeTabla(id);
     });
-  }
-
-  document.getElementById('comprasFormMsg').hidden = true;
-  document.getElementById('comprasFormPanel').hidden = false;
-  document.getElementById('comprasFormPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
 }
-function cerrarComprasForm() {
-  comprasFormNivel = null; comprasFormEditId = null; comprasFormParentId = null;
-  const panel = document.getElementById('comprasFormPanel');
-  if (panel) panel.hidden = true;
+
+// ---- Workspace de alta/edición: Expediente -> Pedidos de Compra -> Posiciones -> Planificadas/Ampliaciones ----
+function abrirComprasWorkspace(expId) {
+  comprasWs = { expId: expId || null, pcId: null, posId: null, stage: 'exp' };
+  comprasMiniEdit = { pc: null, pos: null, planificada: null, ampliacion: null };
+  document.getElementById('comprasWorkspace').hidden = false;
+  document.getElementById('comprasWorkspace').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  renderComprasWorkspace();
 }
-document.getElementById('comprasFormCancelarBtn').addEventListener('click', cerrarComprasForm);
-
-document.getElementById('comprasForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const msg = document.getElementById('comprasFormMsg');
-  const datos = {};
-  document.querySelectorAll('#comprasFormFields [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
-
-  try {
-    const nivelGuardado = comprasFormNivel;
-    const parentIdGuardado = comprasFormParentId;
-    let nuevoId = null;       // solo queda seteado si esto fue un ALTA (no una edición)
-    let contextoPC = null;    // solo se completa al crear una Posición (ver más abajo)
-
-    if (comprasFormNivel === 'exp') {
-      if (comprasFormEditId) await apiCall('compras_exp_actualizar', { id: comprasFormEditId, datos });
-      else nuevoId = (await apiCall('compras_exp_crear', { datos })).id;
-    } else if (comprasFormNivel === 'pc') {
-      if (comprasFormEditId) await apiCall('compras_pc_actualizar', { id: comprasFormEditId, datos });
-      else nuevoId = (await apiCall('compras_pc_crear', { datos: Object.assign({ idExpediente: comprasFormParentId }, datos) })).id;
-    } else if (comprasFormNivel === 'pos') {
-      if (comprasFormEditId) await apiCall('compras_pos_actualizar', { id: comprasFormEditId, datos });
-      else {
-        // El servidor devuelve, junto con el id nuevo, un resumen ya-recalculado del PC (nroPC,
-        // monto total, y el Expediente al que pertenece) — así el flujo encadenado de abajo no
-        // depende de que comprasCache ya esté sincronizado, sino de un dato fresco del servidor.
-        const resp = await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) });
-        nuevoId = resp.id;
-        contextoPC = resp.contextoPC || null;
-      }
-    }
-    await cargarCompras();
-    await refrescarRegistrosTrasCompras();
-
-    // ---- Flujo encadenado de alta: Expediente -> uno o más PC -> una o más Posiciones ----
-    // Solo se dispara al CREAR (no al editar), para no interrumpir con diálogos cada vez que se
-    // corrige un dato existente.
-    if (nuevoId && nivelGuardado === 'exp') {
-      // De un Expediente recién cargado pueden surgir uno o más PC: se pasa directo a cargar el
-      // primero (el usuario puede cancelar ese formulario si por ahora no quiere cargar ninguno).
-      abrirComprasForm('pc', null, nuevoId);
-      return;
-    }
-    if (nuevoId && nivelGuardado === 'pc') {
-      // Un PC se arma con una o más Posiciones, y son las Posiciones las que determinan su monto
-      // total adjudicado — por eso, apenas se crea el PC, se solicita cargar su primera Posición.
-      abrirComprasForm('pos', null, nuevoId);
-      return;
-    }
-    if (nuevoId && nivelGuardado === 'pos') {
-      const totalTxt = contextoPC ? formatMoney(contextoPC.adjudicadoCalculado) : '';
-      if (confirm(`Posición guardada. Monto total del PC "${contextoPC ? contextoPC.nroPC : ''}" hasta ahora: ${totalTxt}.\n\n¿Cargar otra posición para este mismo PC?`)) {
-        abrirComprasForm('pos', null, parentIdGuardado);
-        return;
-      }
-      if (contextoPC && contextoPC.idExpediente && confirm('¿Cargar otro Pedido de Compra (PC) para este mismo Expediente ("' + (contextoPC.expediente || '') + '")?')) {
-        abrirComprasForm('pc', null, contextoPC.idExpediente);
-        return;
-      }
-    }
-    cerrarComprasForm();
-  } catch (err) {
-    msg.textContent = err.message;
-    msg.className = 'form-msg err';
-    msg.hidden = false;
-  }
+document.getElementById('comprasWsCerrarBtn').addEventListener('click', () => {
+  document.getElementById('comprasWorkspace').hidden = true;
 });
 
-// ---- Copiar Expediente: duplica todo el árbol (Expediente + sus PC + las Posiciones de cada
-// uno) como registros nuevos e independientes, y abre la copia directamente en edición, para no
-// tener que volver a cargar todo de nuevo cuando se necesita un expediente muy parecido a otro. ----
-async function copiarComprasExpediente(id) {
-  if (!confirm('¿Copiar este Expediente completo (con todos sus Pedidos de Compra y Posiciones) para editarlo como uno nuevo?\n\nEl Expediente original no se modifica.')) return;
+function renderComprasWorkspace() {
+  const exp = comprasWs.expId ? comprasCache.find(e => e._id === comprasWs.expId) : null;
+  document.getElementById('comprasWsTitle').textContent = exp
+    ? ('Editando Expediente: ' + (exp.expediente || exp.pospre || ''))
+    : 'Nuevo Expediente de Compras';
+
+  const lifeline = document.getElementById('comprasWsLifeline');
+  lifeline.innerHTML = '';
+  COMPRAS_ETAPAS.forEach((etapa, idx) => {
+    const disabled = (etapa.id === 'pc' && !comprasWs.expId)
+      || (etapa.id === 'pos' && !comprasWs.pcId)
+      || (etapa.id === 'planamp' && !comprasWs.posId);
+    const node = document.createElement('div');
+    node.className = 'stage-node' + (disabled ? ' disabled' : '') + (comprasWs.stage === etapa.id ? ' active' : '');
+    node.style.setProperty('--stage-color', stageColorVar(idx));
+    node.dataset.stage = etapa.id;
+    node.innerHTML = `<div class="stage-line"></div><div class="stage-dot"></div><div class="stage-label">${etapa.label}</div>`;
+    node.addEventListener('click', () => { if (disabled) return; comprasWs.stage = etapa.id; renderComprasWorkspace(); });
+    lifeline.appendChild(node);
+  });
+
+  const wrap = document.getElementById('comprasWsPanels');
+  wrap.innerHTML = '';
+  if (comprasWs.stage === 'exp') wrap.appendChild(buildComprasStageExp());
+  else if (comprasWs.stage === 'pc') wrap.appendChild(buildComprasStagePC());
+  else if (comprasWs.stage === 'pos') wrap.appendChild(buildComprasStagePos());
+  else if (comprasWs.stage === 'planamp') wrap.appendChild(buildComprasStagePlanAmpl());
+}
+
+// ---- Etapa 1: Expediente (Lanzamiento + Presupuesto Oficial) ----
+function buildComprasStageExp() {
+  const exp = comprasWs.expId ? comprasCache.find(e => e._id === comprasWs.expId) : null;
+  const div = document.createElement('div');
+  div.className = 'stage-panel';
+  div.innerHTML = `
+    <div class="stage-panel-title"><span class="dot" style="background:${stageColorVar(0)}"></span> Expediente — Lanzamiento y Presupuesto Oficial</div>
+    <form id="comprasExpForm">
+      <div class="field-grid" id="comprasExpFields"></div>
+      <div class="form-actions">
+        <p id="comprasExpMsg" class="form-msg" hidden></p>
+        <button type="submit" class="btn btn-primary">Guardar Expediente</button>
+      </div>
+    </form>
+  `;
+  const fieldsWrap = div.querySelector('#comprasExpFields');
+  fieldsWrap.innerHTML = COMPRAS_EXP_FORM_FIELDS.map(f => comprasFieldHtml(f, exp ? exp[f.key] : '', f.key === 'pospre')).join('');
+  wireComprasPospreDynSelect(fieldsWrap);
+
+  div.querySelector('#comprasExpForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = div.querySelector('#comprasExpMsg');
+    const datos = {};
+    fieldsWrap.querySelectorAll('[data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+    try {
+      if (comprasWs.expId) await apiCall('compras_exp_actualizar', { id: comprasWs.expId, datos });
+      else comprasWs.expId = (await apiCall('compras_exp_crear', { datos })).id;
+      await cargarComprasDatos();
+      await refrescarRegistrosTrasCompras();
+      renderComprasTable();
+      // Un Expediente puede derivar en uno o más PC: seguimos directo a esa etapa.
+      comprasWs.stage = 'pc';
+      renderComprasWorkspace();
+    } catch (err) {
+      msg.textContent = err.message; msg.className = 'form-msg err'; msg.hidden = false;
+    }
+  });
+  return div;
+}
+
+// ---- Etapa 2: Pedidos de Compra del Expediente activo ----
+function buildComprasStagePC() {
+  const exp = comprasCache.find(e => e._id === comprasWs.expId);
+  const div = document.createElement('div');
+  div.className = 'stage-panel';
+  const pcs = (exp && exp.pedidos) || [];
+  const editando = comprasMiniEdit.pc ? pcs.find(p => p._id === comprasMiniEdit.pc) : null;
+
+  div.innerHTML = `
+    <div class="stage-panel-title"><span class="dot" style="background:${stageColorVar(1)}"></span> Pedidos de Compra — Expediente ${escapeHtml((exp && exp.expediente) || '')}</div>
+    <form id="comprasPcForm">
+      <div class="field-grid" id="comprasPcFields"></div>
+      <div class="form-actions">
+        <p id="comprasPcMsg" class="form-msg" hidden></p>
+        ${comprasMiniEdit.pc ? '<button type="button" class="btn btn-ghost" id="comprasPcCancelarBtn">Cancelar edición</button>' : ''}
+        <button type="submit" class="btn btn-primary">${comprasMiniEdit.pc ? 'Guardar cambios' : '+ Agregar Pedido de Compra'}</button>
+      </div>
+    </form>
+    <div class="table-wrap" style="margin-top:18px;"><table id="comprasPcTable" class="data-table"></table></div>
+  `;
+
+  const fieldsWrap = div.querySelector('#comprasPcFields');
+  fieldsWrap.innerHTML = COMPRAS_PC_FORM_FIELDS.map(f => comprasFieldHtml(f, editando ? editando[f.key] : '', false)).join('');
+
+  div.querySelector('#comprasPcForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = div.querySelector('#comprasPcMsg');
+    const datos = {};
+    fieldsWrap.querySelectorAll('[data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+    try {
+      if (comprasMiniEdit.pc) await apiCall('compras_pc_actualizar', { id: comprasMiniEdit.pc, datos });
+      else await apiCall('compras_pc_crear', { datos: Object.assign({ idExpediente: comprasWs.expId }, datos) });
+      comprasMiniEdit.pc = null;
+      await cargarComprasDatos();
+      await refrescarRegistrosTrasCompras();
+      renderComprasTable();
+      renderComprasWorkspace();
+    } catch (err) {
+      msg.textContent = err.message; msg.className = 'form-msg err'; msg.hidden = false;
+    }
+  });
+  const cancelBtn = div.querySelector('#comprasPcCancelarBtn');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { comprasMiniEdit.pc = null; renderComprasWorkspace(); });
+
+  const table = div.querySelector('#comprasPcTable');
+  const isAdmin = state.session && state.session.rol === 'admin';
+  if (!pcs.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay Pedidos de Compra cargados para este Expediente.</td></tr></tbody>';
+  } else {
+    table.innerHTML = '<thead><tr><th>N° PC</th><th>Adjudicatario</th><th>$ Adjudicado (calc.)</th><th>Posiciones</th><th>Acciones</th></tr></thead><tbody>' +
+      pcs.map(pc => `<tr data-id="${pc._id}">
+        <td>${escapeHtml(pc.nroPC || '')}</td>
+        <td>${escapeHtml(pc.adjudicatario || '')}</td>
+        <td class="mono">${formatMoney(pc.adjudicadoCalculado)}</td>
+        <td class="mono">${(pc.posiciones || []).length}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-secondary" data-action="ver-posiciones">Posiciones →</button>
+          <button type="button" class="icon-btn" data-action="editar" title="Editar PC">✏️</button>
+          ${isAdmin ? '<button type="button" class="icon-btn danger" data-action="eliminar" title="Eliminar PC">🗑️</button>' : ''}
+        </td>
+      </tr>`).join('') + '</tbody>';
+  }
+  table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-action="ver-posiciones"]').addEventListener('click', () => {
+      comprasWs.pcId = id; comprasWs.stage = 'pos'; renderComprasWorkspace();
+    });
+    tr.querySelector('[data-action="editar"]').addEventListener('click', () => { comprasMiniEdit.pc = id; renderComprasWorkspace(); });
+    const delBtn = tr.querySelector('[data-action="eliminar"]');
+    if (delBtn) delBtn.addEventListener('click', () => eliminarComprasNivel('pc', id));
+  });
+
+  return div;
+}
+
+// ---- Etapa 3: Posiciones del PC activo ----
+function buildComprasStagePos() {
+  const exp = comprasCache.find(e => e._id === comprasWs.expId);
+  const pc = exp && (exp.pedidos || []).find(p => p._id === comprasWs.pcId);
+  const div = document.createElement('div');
+  div.className = 'stage-panel';
+  if (!pc) {
+    div.innerHTML = `<div class="stage-panel-title"><span class="dot" style="background:${stageColorVar(2)}"></span> Posiciones</div><p class="empty-state">Elegí primero un Pedido de Compra en la etapa anterior.</p>`;
+    return div;
+  }
+  const posiciones = pc.posiciones || [];
+  const editando = comprasMiniEdit.pos ? posiciones.find(p => p._id === comprasMiniEdit.pos) : null;
+
+  div.innerHTML = `
+    <div class="stage-panel-title"><span class="dot" style="background:${stageColorVar(2)}"></span> Posiciones — PC ${escapeHtml(pc.nroPC || '')}</div>
+    <form id="comprasPosForm">
+      <div class="field-grid" id="comprasPosFields"></div>
+      <div class="form-actions">
+        <p id="comprasPosMsg" class="form-msg" hidden></p>
+        ${comprasMiniEdit.pos ? '<button type="button" class="btn btn-ghost" id="comprasPosCancelarBtn">Cancelar edición</button>' : ''}
+        <button type="submit" class="btn btn-primary">${comprasMiniEdit.pos ? 'Guardar cambios' : '+ Agregar Posición'}</button>
+      </div>
+    </form>
+    <div class="table-wrap" style="margin-top:18px;"><table id="comprasPosTable" class="data-table"></table></div>
+  `;
+
+  const fieldsWrap = div.querySelector('#comprasPosFields');
+  fieldsWrap.innerHTML = COMPRAS_POS_FORM_FIELDS.map(f => comprasFieldHtml(f, editando ? editando[f.key] : '', false)).join('');
+
+  div.querySelector('#comprasPosForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = div.querySelector('#comprasPosMsg');
+    const datos = {};
+    fieldsWrap.querySelectorAll('[data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+    try {
+      if (comprasMiniEdit.pos) await apiCall('compras_pos_actualizar', { id: comprasMiniEdit.pos, datos });
+      else await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: pc._id }, datos) });
+      comprasMiniEdit.pos = null;
+      await cargarComprasDatos();
+      await refrescarRegistrosTrasCompras();
+      renderComprasTable();
+      renderComprasWorkspace();
+    } catch (err) {
+      msg.textContent = err.message; msg.className = 'form-msg err'; msg.hidden = false;
+    }
+  });
+  const cancelBtn = div.querySelector('#comprasPosCancelarBtn');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { comprasMiniEdit.pos = null; renderComprasWorkspace(); });
+
+  const table = div.querySelector('#comprasPosTable');
+  const isAdmin = state.session && state.session.rol === 'admin';
+  if (!posiciones.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay Posiciones cargadas para este PC.</td></tr></tbody>';
+  } else {
+    table.innerHTML = '<thead><tr><th>Posición</th><th>Matrícula</th><th>Destino</th><th>Cant. Fija</th><th>$ Fija</th><th>$ Planificadas</th><th>$ Ampliaciones</th><th>$ Total</th><th>Acciones</th></tr></thead><tbody>' +
+      posiciones.map(pos => `<tr data-id="${pos._id}">
+        <td>${escapeHtml(String(pos.posicion || ''))}</td>
+        <td>${escapeHtml(pos.matricula || '')}</td>
+        <td>${escapeHtml(pos.destino || '')}</td>
+        <td class="mono">${pos.cantidad || ''}</td>
+        <td class="mono">${formatMoney(pos.montoPFija)}</td>
+        <td class="mono">${formatMoney(pos.montoPlanificadas)}</td>
+        <td class="mono">${formatMoney(pos.montoAmpliaciones)}</td>
+        <td class="mono">${formatMoney(pos.montoTotal)}</td>
+        <td class="row-actions">
+          <button type="button" class="btn btn-secondary" data-action="ver-planamp">Planif./Ampliac. →</button>
+          <button type="button" class="icon-btn" data-action="editar" title="Editar Posición">✏️</button>
+          <button type="button" class="icon-btn" data-action="copiar" title="Copiar Posición (con sus Planificadas/Ampliaciones)">📋</button>
+          ${isAdmin ? '<button type="button" class="icon-btn danger" data-action="eliminar" title="Eliminar Posición">🗑️</button>' : ''}
+        </td>
+      </tr>`).join('') + '</tbody>';
+  }
+  table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-action="ver-planamp"]').addEventListener('click', () => {
+      comprasWs.posId = id; comprasWs.stage = 'planamp'; renderComprasWorkspace();
+    });
+    tr.querySelector('[data-action="editar"]').addEventListener('click', () => { comprasMiniEdit.pos = id; renderComprasWorkspace(); });
+    tr.querySelector('[data-action="copiar"]').addEventListener('click', () => copiarComprasPos(id));
+    const delBtn = tr.querySelector('[data-action="eliminar"]');
+    if (delBtn) delBtn.addEventListener('click', () => eliminarComprasNivel('pos', id));
+  });
+
+  return div;
+}
+
+// ---- Etapa 4: Compras Planificadas y Ampliaciones de la Posición activa ----
+// El tope del 30% de Ampliación se muestra sobre el PC COMPLETO (todas sus Posiciones) — el
+// servidor valida lo mismo en `_validarAmpliacionParaPC`, así que acá solo se refleja para dar
+// feedback inmediato; el bloqueo real (por si dos personas cargan al mismo tiempo) es del backend.
+function buildComprasStagePlanAmpl() {
+  const exp = comprasCache.find(e => e._id === comprasWs.expId);
+  const pc = exp && (exp.pedidos || []).find(p => p._id === comprasWs.pcId);
+  const pos = pc && (pc.posiciones || []).find(p => p._id === comprasWs.posId);
+  const div = document.createElement('div');
+  div.className = 'stage-panel';
+  if (!pos) {
+    div.innerHTML = `<div class="stage-panel-title"><span class="dot" style="background:${stageColorVar(3)}"></span> Planificadas y Ampliaciones</div><p class="empty-state">Elegí primero una Posición en la etapa anterior.</p>`;
+    return div;
+  }
+
+  let baseMonto = 0, baseCantidad = 0, amplMontoUsado = 0, amplCantidadUsada = 0;
+  (pc.posiciones || []).forEach(p => {
+    baseMonto += p.montoBase || 0;
+    baseCantidad += p.cantidadBase || 0;
+    amplMontoUsado += p.montoAmpliaciones || 0;
+    amplCantidadUsada += p.cantidadAmpliaciones || 0;
+  });
+  const topeMonto = baseMonto * 0.30;
+  const topeCantidad = baseCantidad * 0.30;
+  const pctUsado = topeMonto > 0 ? Math.min(100, (amplMontoUsado / topeMonto) * 100) : 0;
+
+  div.innerHTML = `
+    <div class="stage-panel-title"><span class="dot" style="background:${stageColorVar(3)}"></span> Planificadas y Ampliaciones — Posición ${escapeHtml(String(pos.posicion || ''))} (PC ${escapeHtml(pc.nroPC || '')})</div>
+
+    <h4 style="margin:0 0 10px;">Compras Planificadas</h4>
+    <form id="comprasPlanifForm">
+      <div class="field-grid" id="comprasPlanifFields"></div>
+      <div class="form-actions">
+        <p id="comprasPlanifMsg" class="form-msg" hidden></p>
+        ${comprasMiniEdit.planificada ? '<button type="button" class="btn btn-ghost" id="comprasPlanifCancelarBtn">Cancelar edición</button>' : ''}
+        <button type="submit" class="btn btn-primary">${comprasMiniEdit.planificada ? 'Guardar cambios' : '+ Agregar Compra Planificada'}</button>
+      </div>
+    </form>
+    <div class="table-wrap" style="margin:10px 0 26px;"><table id="comprasPlanifTable" class="data-table"></table></div>
+
+    <div class="field-grid-divider"></div>
+
+    <h4 style="margin:18px 0 6px;">Ampliaciones</h4>
+    <p class="table-note" style="margin:0 0 8px;">
+      Tope del Pedido de Compra completo: <strong>${formatMoney(amplMontoUsado)}</strong> ampliados de un máximo de
+      <strong>${formatMoney(topeMonto)}</strong> (30% de ${formatMoney(baseMonto)} de base Fija+Planificada del PC)
+      ${baseCantidad ? ` · ${amplCantidadUsada} de ${topeCantidad.toFixed(2)} unidades (30% de ${baseCantidad})` : ''}.
+    </p>
+    <div class="progress-bar"><div class="progress-bar-fill" style="width:${pctUsado}%; background:${pctUsado >= 100 ? 'var(--danger)' : 'var(--stage-3)'};"></div></div>
+    <form id="comprasAmpliaForm" style="margin-top:14px;">
+      <div class="field-grid" id="comprasAmpliaFields"></div>
+      <div class="form-actions">
+        <p id="comprasAmpliaMsg" class="form-msg" hidden></p>
+        ${comprasMiniEdit.ampliacion ? '<button type="button" class="btn btn-ghost" id="comprasAmpliaCancelarBtn">Cancelar edición</button>' : ''}
+        <button type="submit" class="btn btn-primary">${comprasMiniEdit.ampliacion ? 'Guardar cambios' : '+ Agregar Ampliación'}</button>
+      </div>
+    </form>
+    <div class="table-wrap" style="margin-top:10px;"><table id="comprasAmpliaTable" class="data-table"></table></div>
+  `;
+
+  // ---- Compras Planificadas ----
+  const planifFieldsWrap = div.querySelector('#comprasPlanifFields');
+  const editandoPlanif = comprasMiniEdit.planificada ? (pos.planificadas || []).find(p => p._id === comprasMiniEdit.planificada) : null;
+  planifFieldsWrap.innerHTML = COMPRAS_PLANIF_FORM_FIELDS.map(f => comprasFieldHtml(f, editandoPlanif ? editandoPlanif[f.key] : '', false)).join('');
+  div.querySelector('#comprasPlanifForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = div.querySelector('#comprasPlanifMsg');
+    const datos = {};
+    planifFieldsWrap.querySelectorAll('[data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+    try {
+      if (comprasMiniEdit.planificada) await apiCall('compras_planificada_actualizar', { id: comprasMiniEdit.planificada, datos });
+      else await apiCall('compras_planificada_crear', { datos: Object.assign({ idPosicion: pos._id }, datos) });
+      comprasMiniEdit.planificada = null;
+      await cargarComprasDatos();
+      await refrescarRegistrosTrasCompras();
+      renderComprasTable();
+      renderComprasWorkspace();
+    } catch (err) {
+      msg.textContent = err.message; msg.className = 'form-msg err'; msg.hidden = false;
+    }
+  });
+  const planifCancelBtn = div.querySelector('#comprasPlanifCancelarBtn');
+  if (planifCancelBtn) planifCancelBtn.addEventListener('click', () => { comprasMiniEdit.planificada = null; renderComprasWorkspace(); });
+
+  const planifTable = div.querySelector('#comprasPlanifTable');
+  const isAdmin = state.session && state.session.rol === 'admin';
+  const planificadas = pos.planificadas || [];
+  if (!planificadas.length) {
+    planifTable.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay Compras Planificadas cargadas para esta Posición.</td></tr></tbody>';
+  } else {
+    planifTable.innerHTML = '<thead><tr><th>Cantidad</th><th>$ Monto</th><th>Fecha x Contrato</th><th>Fecha Real</th><th>Acciones</th></tr></thead><tbody>' +
+      planificadas.map(pl => `<tr data-id="${pl._id}">
+        <td class="mono">${pl.cantidad || ''}</td>
+        <td class="mono">${formatMoney(pl.monto)}</td>
+        <td>${escapeHtml(formatFechaCorta(pl.fechaContrato) || '')}</td>
+        <td>${escapeHtml(formatFechaCorta(pl.fechaReal) || '')}</td>
+        <td class="row-actions">
+          <button type="button" class="icon-btn" data-action="editar" title="Editar">✏️</button>
+          ${isAdmin ? '<button type="button" class="icon-btn danger" data-action="eliminar" title="Eliminar">🗑️</button>' : ''}
+        </td>
+      </tr>`).join('') + '</tbody>';
+  }
+  planifTable.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-action="editar"]').addEventListener('click', () => { comprasMiniEdit.planificada = id; renderComprasWorkspace(); });
+    const delBtn = tr.querySelector('[data-action="eliminar"]');
+    if (delBtn) delBtn.addEventListener('click', () => eliminarComprasNivel('planificada', id));
+  });
+
+  // ---- Ampliaciones ----
+  const ampliaFieldsWrap = div.querySelector('#comprasAmpliaFields');
+  const editandoAmplia = comprasMiniEdit.ampliacion ? (pos.ampliaciones || []).find(a => a._id === comprasMiniEdit.ampliacion) : null;
+  ampliaFieldsWrap.innerHTML = COMPRAS_AMPLIA_FORM_FIELDS.map(f => comprasFieldHtml(f, editandoAmplia ? editandoAmplia[f.key] : '', false)).join('');
+  div.querySelector('#comprasAmpliaForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = div.querySelector('#comprasAmpliaMsg');
+    const datos = {};
+    ampliaFieldsWrap.querySelectorAll('[data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+    try {
+      if (comprasMiniEdit.ampliacion) await apiCall('compras_ampliacion_actualizar', { id: comprasMiniEdit.ampliacion, datos });
+      else await apiCall('compras_ampliacion_crear', { datos: Object.assign({ idPosicion: pos._id }, datos) });
+      comprasMiniEdit.ampliacion = null;
+      await cargarComprasDatos();
+      await refrescarRegistrosTrasCompras();
+      renderComprasTable();
+      renderComprasWorkspace();
+    } catch (err) {
+      msg.textContent = err.message; msg.className = 'form-msg err'; msg.hidden = false;
+    }
+  });
+  const ampliaCancelBtn = div.querySelector('#comprasAmpliaCancelarBtn');
+  if (ampliaCancelBtn) ampliaCancelBtn.addEventListener('click', () => { comprasMiniEdit.ampliacion = null; renderComprasWorkspace(); });
+
+  const ampliaTable = div.querySelector('#comprasAmpliaTable');
+  const ampliaciones = pos.ampliaciones || [];
+  if (!ampliaciones.length) {
+    ampliaTable.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay Ampliaciones cargadas para esta Posición.</td></tr></tbody>';
+  } else {
+    ampliaTable.innerHTML = '<thead><tr><th>%</th><th>Cantidad</th><th>$ Monto</th><th>Fecha x Contrato</th><th>Fecha Real</th><th>Acciones</th></tr></thead><tbody>' +
+      ampliaciones.map(a => `<tr data-id="${a._id}">
+        <td class="mono">${a.pct || ''}</td>
+        <td class="mono">${a.cantidad || ''}</td>
+        <td class="mono">${formatMoney(a.monto)}</td>
+        <td>${escapeHtml(formatFechaCorta(a.fechaContrato) || '')}</td>
+        <td>${escapeHtml(formatFechaCorta(a.fechaReal) || '')}</td>
+        <td class="row-actions">
+          <button type="button" class="icon-btn" data-action="editar" title="Editar">✏️</button>
+          ${isAdmin ? '<button type="button" class="icon-btn danger" data-action="eliminar" title="Eliminar">🗑️</button>' : ''}
+        </td>
+      </tr>`).join('') + '</tbody>';
+  }
+  ampliaTable.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-action="editar"]').addEventListener('click', () => { comprasMiniEdit.ampliacion = id; renderComprasWorkspace(); });
+    const delBtn = tr.querySelector('[data-action="eliminar"]');
+    if (delBtn) delBtn.addEventListener('click', () => eliminarComprasNivel('ampliacion', id));
+  });
+
+  return div;
+}
+
+// ---- Eliminar (PC / Posición / Planificada / Ampliación) desde cualquier etapa del Workspace ----
+async function eliminarComprasNivel(nivel, id) {
+  const avisos = {
+    pc: '¿Eliminar este Pedido de Compra? Se van a borrar también todas sus Posiciones, Compras Planificadas y Ampliaciones.',
+    pos: '¿Eliminar esta Posición? Se van a borrar también sus Compras Planificadas y Ampliaciones.',
+    planificada: '¿Eliminar esta Compra Planificada?',
+    ampliacion: '¿Eliminar esta Ampliación?'
+  };
+  const acciones = { pc: 'compras_pc_eliminar', pos: 'compras_pos_eliminar', planificada: 'compras_planificada_eliminar', ampliacion: 'compras_ampliacion_eliminar' };
+  if (!confirm(avisos[nivel])) return;
   try {
-    const data = await apiCall('compras_exp_copiar', { id });
-    await cargarCompras();
+    await apiCall(acciones[nivel], { id });
+    if (nivel === 'pc' && comprasWs.pcId === id) { comprasWs.pcId = null; comprasWs.posId = null; comprasWs.stage = 'pc'; }
+    if (nivel === 'pos' && comprasWs.posId === id) { comprasWs.posId = null; comprasWs.stage = 'pos'; }
+    await cargarComprasDatos();
     await refrescarRegistrosTrasCompras();
-    abrirComprasForm('exp', data.id, null);
+    renderComprasTable();
+    renderComprasWorkspace();
   } catch (err) {
-    showAppError('No se pudo copiar el expediente: ' + err.message);
+    showAppError('No se pudo eliminar: ' + err.message);
   }
 }
 
-async function eliminarComprasRegistro(nivel, id) {
-  const avisos = {
-    exp: '¿Eliminar este Expediente? Se van a borrar también todos sus Pedidos (PC) y Posiciones, y su fila espejo en Registros.',
-    pc: '¿Eliminar este Pedido de Compra? Se van a borrar también todas sus Posiciones.',
-    pos: '¿Eliminar esta Posición?'
-  };
-  if (!confirm(avisos[nivel])) return;
-  const acciones = { exp: 'compras_exp_eliminar', pc: 'compras_pc_eliminar', pos: 'compras_pos_eliminar' };
+// ---- Eliminar Expediente (desde la tabla principal, fuera del Workspace) ----
+async function eliminarComprasExpedienteDesdeTabla(id) {
+  if (!confirm('¿Eliminar este Expediente? Se van a borrar también todos sus Pedidos de Compra, Posiciones, Compras Planificadas y Ampliaciones, y su fila espejo en Registros.')) return;
   try {
-    await apiCall(acciones[nivel], { id });
+    await apiCall('compras_exp_eliminar', { id });
+    if (comprasWs.expId === id) {
+      document.getElementById('comprasWorkspace').hidden = true;
+      comprasWs = { expId: null, pcId: null, posId: null, stage: 'exp' };
+    }
     await cargarCompras();
     await refrescarRegistrosTrasCompras();
   } catch (err) {
@@ -4659,29 +4895,59 @@ async function eliminarComprasRegistro(nivel, id) {
   }
 }
 
-// ---- Exportar a Excel (mismo formato de la planilla original, para backup / informes) ----
+// ---- Copiar Expediente: duplica todo el árbol (Expediente + sus PC + Posiciones + Planificadas y
+// Ampliaciones de cada una) como registros nuevos e independientes, y abre la copia directamente
+// en el Workspace, para no tener que volver a cargar todo de nuevo. ----
+async function copiarComprasExpediente(id) {
+  if (!confirm('¿Copiar este Expediente completo (con todos sus Pedidos de Compra, Posiciones, Planificadas y Ampliaciones) para editarlo como uno nuevo?\n\nEl Expediente original no se modifica.')) return;
+  try {
+    const data = await apiCall('compras_exp_copiar', { id });
+    await cargarCompras();
+    await refrescarRegistrosTrasCompras();
+    abrirComprasWorkspace(data.id);
+  } catch (err) {
+    showAppError('No se pudo copiar el expediente: ' + err.message);
+  }
+}
+// ---- Copiar Posición: duplica una posición (con sus Planificadas y Ampliaciones) dentro del
+// MISMO PC, como registro nuevo e independiente. ----
+async function copiarComprasPos(id) {
+  if (!confirm('¿Copiar esta Posición (con sus Compras Planificadas y Ampliaciones) dentro del mismo Pedido de Compra?')) return;
+  try {
+    await apiCall('compras_pos_copiar', { id });
+    await cargarComprasDatos();
+    await refrescarRegistrosTrasCompras();
+    renderComprasTable();
+    renderComprasWorkspace();
+  } catch (err) {
+    showAppError('No se pudo copiar la posición: ' + err.message);
+  }
+}
+
+// ---- Exportar a Excel (1 fila por tramo: Fija / Planificada / Ampliación, para no perder nada
+// cuando una Posición tiene varias Planificadas o varias Ampliaciones) ----
 document.getElementById('comprasExportBtn').addEventListener('click', () => {
   if (!comprasCache.length) { alert('No hay compras para exportar.'); return; }
   const filas = [];
   comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
-    filas.push({
+    const base = {
       'PosPre': exp.pospre, 'Expte': exp.expediente, 'LP': exp.lp, 'Extracto': exp.extracto,
       '$ Presupuesto Oficial (sin IVA)': exp.presupuestoOficial,
       'PC': pc.nroPC, 'Adjudicatario': pc.adjudicatario, '$ Adjudicado PC (calculado)': pc.adjudicadoCalculado,
-      'Posición': pos.posicion, 'Matrícula N°': pos.matricula, 'Detalle de Matrícula': pos.detalleMat,
-      'Destino': pos.destino, 'Cantidad P. Fija': pos.cantidad, 'Cantidad P. Planificada': pos.cantidadPlanificada,
-      'Fecha de Entrega por Contrato P.Fija': pos.fechaContratoFija, 'Fecha de Entrega Real P.Fija': pos.fechaRealFija,
-      'Desvío de Fecha Entrega P. Fija (días)': pos.desvioFija,
-      '$ P. Fija p/ítems S/IVA': pos.montoPFija,
-      'Parte Planificada': pos.partePlanificada, '$ P. Planificada (s/IVA)': pos.montoPPlanificada,
-      'Fecha de Entrega por Contrato P.Planificada': pos.fechaContratoPlanificada, 'Fecha de Entrega Real P.Planificada': pos.fechaRealPlanificada,
-      'Desvío de Fecha Entrega P. Planificada (días)': pos.desvioPlanificada,
-      'Ampliación (si / no)': pos.ampliacion, '% de Ampliación': pos.pctAmpliacion, '$ Ampliación (sin IVA)': pos.montoAmpliacion,
-      'Fecha de Entrega por Contrato Ampliación': pos.fechaContratoAmpliacion, 'Fecha de Entrega Real Ampliación': pos.fechaRealAmpliacion,
-      'Desvío de Fecha Entrega Ampliación (días)': pos.desvioAmpliacion,
-      '$ Total Posición (calculado)': pos.montoTotal,
-      'Observaciones': pos.observaciones
-    });
+      'Posición': pos.posicion, 'Matrícula N°': pos.matricula, 'Detalle de Matrícula': pos.detalleMat, 'Destino': pos.destino
+    };
+    filas.push(Object.assign({}, base, {
+      'Tipo': 'Fija', 'Cantidad': pos.cantidad, '$ Monto': pos.montoPFija,
+      'Fecha x Contrato': pos.fechaContratoFija, 'Fecha Real': pos.fechaRealFija, 'Observaciones': pos.observaciones
+    }));
+    (pos.planificadas || []).forEach(pl => filas.push(Object.assign({}, base, {
+      'Tipo': 'Planificada', 'Cantidad': pl.cantidad, '$ Monto': pl.monto,
+      'Fecha x Contrato': pl.fechaContrato, 'Fecha Real': pl.fechaReal, 'Observaciones': pl.observaciones
+    })));
+    (pos.ampliaciones || []).forEach(a => filas.push(Object.assign({}, base, {
+      'Tipo': 'Ampliación', '% Ampliación': a.pct, 'Cantidad': a.cantidad, '$ Monto': a.monto,
+      'Fecha x Contrato': a.fechaContrato, 'Fecha Real': a.fechaReal, 'Observaciones': a.observaciones
+    })));
   })));
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
@@ -4693,7 +4959,10 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
 // Reconstruye el árbol Expediente -> PC -> Posición rellenando hacia abajo las celdas que en
 // el Excel original vienen en blanco (porque pertenecen al mismo grupo que la fila de arriba).
 // IMPORTANTE: Matrícula, Detalle, Destino y Cantidad se leen de CADA fila de Posición (no se
-// heredan del PC), porque son propias de cada posición.
+// heredan del PC). Los campos legacy de Planificada/Ampliación (partePlanificada, montoPPlanificada,
+// ampliacion, montoAmpliacion, etc.) se mandan tal cual al servidor, que los usa SOLO al crear una
+// Posición nueva para generar su primera Planificada/Ampliación (ver `_importarPlanifYAmpliacionDesdeExcel`
+// en el backend) — no se vuelven a aplicar si la Posición ya existía, para no duplicar al reimportar.
 function parseComprasExcelRows(rows) {
   const expedientes = [];
   let curExp = null, curPC = null;
@@ -4724,16 +4993,19 @@ function parseComprasExcelRows(rows) {
     if (posicion) {
       curPC.posiciones.push({
         posicion: posicion,
-        matricula: val(6), detalleMat: val(7), destino: val(9), cantidad: '', cantidadPlanificada: '',
+        matricula: val(6), detalleMat: val(7), destino: val(9), cantidad: '',
         fechaContratoFija: _excelFechaImport(val(12)),
         montoPFija: _parseNumeroImport(val(15)),
         partePlanificada: val(16) ? 'Si' : 'No',
         montoPPlanificada: _parseNumeroImport(val(17)),
+        cantidadPlanificada: '',
         fechaContratoPlanificada: _excelFechaImport(val(18)),
+        fechaRealPlanificada: '',
         ampliacion: val(21) ? 'Si' : 'No',
         pctAmpliacion: _parseNumeroImport(val(22)),
         montoAmpliacion: _parseNumeroImport(val(23)),
         fechaContratoAmpliacion: _excelFechaImport(val(24)),
+        fechaRealAmpliacion: '',
         observaciones: val(27)
       });
     }
@@ -4773,7 +5045,7 @@ function renderComprasImportPreview() {
   document.getElementById('comprasImportResumen').textContent =
     `${comprasImportFilas.length} expediente(s), ${cantPC} pedido(s) de compra y ${cantPos} posición(es) detectados en el archivo. ` +
     `Si un Expediente / PC / Posición ya existe (mismo número), se actualiza; si no existe, se crea. No se duplica nada. ` +
-    `Las columnas "Cantidad P. Fija" y "Cantidad P. Planificada" no existen en este formato de Excel: se importan en blanco, completalas manualmente si las necesitás.`;
+    `La columna "Cantidad" no existe en este formato de Excel: se importa en blanco, completala manualmente si la necesitás.`;
 
   const table = document.getElementById('comprasImportPreviewTable');
   table.innerHTML = '<thead><tr><th>Expediente</th><th>Extracto</th><th>PC</th><th>Adjudicatario</th><th>Posiciones</th><th>Matrículas</th></tr></thead><tbody>' +
@@ -4817,4 +5089,3 @@ document.getElementById('comprasImportConfirmarBtn').addEventListener('click', a
   await cargarCompras();
   await refrescarRegistrosTrasCompras();
 });
-
