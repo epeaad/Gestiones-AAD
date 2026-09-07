@@ -4414,7 +4414,6 @@ function renderComprasTable() {
     ].filter(Boolean).join('') : '';
     const acciones = (puedeEditar || isAdmin) ? `<td class="row-actions">
         ${puedeEditar ? `<button class="icon-btn" title="Editar Expediente" onclick="abrirComprasForm('exp', ${comprasJsArg(f.exp._id)}, null)">📁</button>` : ''}
-        ${puedeEditar ? `<button class="icon-btn" title="Copiar Expediente (crea una copia editable con todos sus PC y Posiciones)" onclick="copiarComprasExpediente(${comprasJsArg(f.exp._id)})">📋</button>` : ''}
         ${puedeEditar ? `<button class="icon-btn" title="Editar PC" onclick="${f.pc ? `abrirComprasForm('pc', ${comprasJsArg(f.pc._id)}, ${comprasJsArg(f.exp._id)})` : `abrirComprasForm('pc', null, ${comprasJsArg(f.exp._id)})`}">📦</button>` : ''}
         ${puedeEditar && f.pos ? `<button class="icon-btn" title="Editar Posición" onclick="abrirComprasForm('pos', ${comprasJsArg(f.pos._id)}, ${comprasJsArg(f.pc._id)})">✏️</button>` : ''}
         ${puedeEditar && f.pc && !f.pos ? `<button class="icon-btn" title="Nueva Posición" onclick="abrirComprasForm('pos', null, ${comprasJsArg(f.pc._id)})">➕</button>` : ''}
@@ -4451,17 +4450,6 @@ function comprasPospreOpciones() {
   return Array.from(set).sort();
 }
 
-// ---- Etiquetas de contexto (para el subtítulo del formulario: "Para el Expediente X", etc.) ----
-function comprasExpedienteLabel(id) {
-  const exp = comprasCache.find(e => e._id === id);
-  return exp ? (exp.expediente || exp.pospre || '(sin número)') : '';
-}
-function comprasPCLabel(id) {
-  let found = null;
-  comprasCache.forEach(e => (e.pedidos || []).forEach(pc => { if (pc._id === id) found = pc; }));
-  return found ? (found.nroPC || '(sin número)') : '';
-}
-
 function abrirComprasForm(nivel, editId, parentId) {
   comprasFormNivel = nivel;
   comprasFormEditId = editId || null;
@@ -4476,20 +4464,6 @@ function abrirComprasForm(nivel, editId, parentId) {
 
   const titulos = { exp: 'Expediente de Compras', pc: 'Pedido de Compra (PC)', pos: 'Posición' };
   document.getElementById('comprasFormTitle').textContent = (editId ? 'Editar ' : 'Nuevo/a ') + titulos[nivel];
-
-  // Subtítulo de contexto: a qué Expediente/PC pertenece lo que se está por cargar — útil sobre
-  // todo en el flujo encadenado (Expediente -> PC -> Posiciones), donde el formulario se va
-  // reabriendo solo y conviene que quede claro dentro de qué grupo se está parado.
-  const subtitleEl = document.getElementById('comprasFormSubtitle');
-  if (nivel === 'pc' && comprasFormParentId) {
-    subtitleEl.textContent = 'Para el Expediente: ' + comprasExpedienteLabel(comprasFormParentId);
-    subtitleEl.hidden = false;
-  } else if (nivel === 'pos' && comprasFormParentId) {
-    subtitleEl.textContent = 'Para el Pedido de Compra (PC): ' + comprasPCLabel(comprasFormParentId);
-    subtitleEl.hidden = false;
-  } else {
-    subtitleEl.hidden = true;
-  }
 
   const cont = document.getElementById('comprasFormFields');
   cont.innerHTML = comprasCampos(nivel).map(f => {
@@ -4564,51 +4538,18 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
   document.querySelectorAll('#comprasFormFields [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
 
   try {
-    const nivelGuardado = comprasFormNivel;
-    const parentIdGuardado = comprasFormParentId;
-    let nuevoId = null; // solo queda seteado si esto fue un ALTA (no una edición)
-
     if (comprasFormNivel === 'exp') {
       if (comprasFormEditId) await apiCall('compras_exp_actualizar', { id: comprasFormEditId, datos });
-      else nuevoId = (await apiCall('compras_exp_crear', { datos })).id;
+      else await apiCall('compras_exp_crear', { datos });
     } else if (comprasFormNivel === 'pc') {
       if (comprasFormEditId) await apiCall('compras_pc_actualizar', { id: comprasFormEditId, datos });
-      else nuevoId = (await apiCall('compras_pc_crear', { datos: Object.assign({ idExpediente: comprasFormParentId }, datos) })).id;
+      else await apiCall('compras_pc_crear', { datos: Object.assign({ idExpediente: comprasFormParentId }, datos) });
     } else if (comprasFormNivel === 'pos') {
       if (comprasFormEditId) await apiCall('compras_pos_actualizar', { id: comprasFormEditId, datos });
-      else nuevoId = (await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) })).id;
+      else await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) });
     }
     await cargarCompras();
     await refrescarRegistrosTrasCompras();
-
-    // ---- Flujo encadenado de alta: Expediente -> uno o más PC -> una o más Posiciones ----
-    // Solo se dispara al CREAR (no al editar), para no interrumpir con diálogos cada vez que se
-    // corrige un dato existente.
-    if (nuevoId && nivelGuardado === 'exp') {
-      // De un Expediente recién cargado pueden surgir uno o más PC: se pasa directo a cargar el
-      // primero (el usuario puede cancelar ese formulario si por ahora no quiere cargar ninguno).
-      abrirComprasForm('pc', null, nuevoId);
-      return;
-    }
-    if (nuevoId && nivelGuardado === 'pc') {
-      // Un PC se arma con una o más Posiciones, y son las Posiciones las que determinan su monto
-      // total adjudicado — por eso, apenas se crea el PC, se solicita cargar su primera Posición.
-      abrirComprasForm('pos', null, nuevoId);
-      return;
-    }
-    if (nuevoId && nivelGuardado === 'pos') {
-      let pcRecord = null, expRecord = null;
-      comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => { if (pc._id === parentIdGuardado) { pcRecord = pc; expRecord = exp; } }));
-      const totalTxt = pcRecord ? formatMoney(pcRecord.adjudicadoCalculado) : '';
-      if (confirm(`Posición guardada. Monto total del PC "${pcRecord ? pcRecord.nroPC : ''}" hasta ahora: ${totalTxt}.\n\n¿Cargar otra posición para este mismo PC?`)) {
-        abrirComprasForm('pos', null, parentIdGuardado);
-        return;
-      }
-      if (expRecord && confirm('¿Cargar otro Pedido de Compra (PC) para este mismo Expediente ("' + (expRecord.expediente || '') + '")?')) {
-        abrirComprasForm('pc', null, expRecord._id);
-        return;
-      }
-    }
     cerrarComprasForm();
   } catch (err) {
     msg.textContent = err.message;
@@ -4616,21 +4557,6 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
     msg.hidden = false;
   }
 });
-
-// ---- Copiar Expediente: duplica todo el árbol (Expediente + sus PC + las Posiciones de cada
-// uno) como registros nuevos e independientes, y abre la copia directamente en edición, para no
-// tener que volver a cargar todo de nuevo cuando se necesita un expediente muy parecido a otro. ----
-async function copiarComprasExpediente(id) {
-  if (!confirm('¿Copiar este Expediente completo (con todos sus Pedidos de Compra y Posiciones) para editarlo como uno nuevo?\n\nEl Expediente original no se modifica.')) return;
-  try {
-    const data = await apiCall('compras_exp_copiar', { id });
-    await cargarCompras();
-    await refrescarRegistrosTrasCompras();
-    abrirComprasForm('exp', data.id, null);
-  } catch (err) {
-    showAppError('No se pudo copiar el expediente: ' + err.message);
-  }
-}
 
 async function eliminarComprasRegistro(nivel, id) {
   const avisos = {
