@@ -4149,11 +4149,12 @@ const COMPRAS_POS_FORM_FIELDS = [
   { key: 'matricula', label: 'Matrícula N°', type: 'text' },
   { key: 'detalleMat', label: 'Detalle de Matrícula', type: 'text' },
   { key: 'destino', label: 'Destino', type: 'text' },
-  { key: 'cantidad', label: 'Cantidad', type: 'number' },
+  { key: 'cantidad', label: 'Cantidad P. Fija', type: 'number' },
   { key: 'montoPFija', label: '$ P. Fija p/ítems (sin IVA)', type: 'number' },
   { key: 'fechaContratoFija', label: 'Fecha Entrega x Contrato — P. Fija', type: 'date' },
   { key: 'fechaRealFija', label: 'Fecha Entrega Real — P. Fija', type: 'date' },
   { key: 'partePlanificada', label: 'Parte Planificada', type: 'select', options: ['No', 'Si'] },
+  { key: 'cantidadPlanificada', label: 'Cantidad P. Planificada', type: 'number' },
   { key: 'montoPPlanificada', label: '$ P. Planificada (sin IVA)', type: 'number' },
   { key: 'fechaContratoPlanificada', label: 'Fecha Entrega x Contrato — Planificada', type: 'date' },
   { key: 'fechaRealPlanificada', label: 'Fecha Entrega Real — Planificada', type: 'date' },
@@ -4359,10 +4360,12 @@ const COMPRAS_TABLE_COLS = [
   { key: 'posicion', label: 'Posición' },
   { key: 'matricula', label: 'Matrícula' },
   { key: 'destino', label: 'Destino' },
-  { key: 'cantidad', label: 'Cantidad' },
+  { key: 'cantidad', label: 'Cant. P. Fija' },
+  { key: 'cantidadPlanificada', label: 'Cant. P. Planif.' },
   { key: 'montoTotal', label: '$ Posición' }
 ];
 const COMPRAS_MONEY_KEYS = new Set(['presupuestoOficial', 'adjudicadoTotal', 'adjudicadoCalculado', 'montoTotal']);
+const COMPRAS_QTY_KEYS = new Set(['cantidad', 'cantidadPlanificada']);
 let comprasSort = { key: null, dir: 1 };
 function comprasSortValue(f, key) {
   if (key === 'pospre') return f.exp.pospre || '';
@@ -4377,6 +4380,7 @@ function comprasSortValue(f, key) {
   if (key === 'matricula') return (f.pos && f.pos.matricula) || '';
   if (key === 'destino') return (f.pos && f.pos.destino) || '';
   if (key === 'cantidad') return num(f.pos && f.pos.cantidad);
+  if (key === 'cantidadPlanificada') return num(f.pos && f.pos.cantidadPlanificada);
   if (key === 'montoTotal') return num(f.pos && f.pos.montoTotal);
   return '';
 }
@@ -4404,7 +4408,7 @@ function renderComprasTable() {
     const tds = COMPRAS_TABLE_COLS.map(col => {
       const val = comprasSortValue(f, col.key);
       if (COMPRAS_MONEY_KEYS.has(col.key)) return `<td class="mono">${formatMoney(val)}</td>`;
-      if (col.key === 'cantidad') return `<td class="mono">${val || ''}</td>`;
+      if (COMPRAS_QTY_KEYS.has(col.key)) return `<td class="mono">${val || ''}</td>`;
       return `<td>${escapeHtml(String(val || ''))}</td>`;
     }).join('');
     const entregas = f.pos ? [
@@ -4516,7 +4520,7 @@ function abrirComprasForm(nivel, editId, parentId) {
       </label>`;
     }
     return `<label>${escapeHtml(f.label)}
-      <input type="${f.type}" data-key="${f.key}" value="${escapeHtml(String(val))}" ${f.required ? 'required' : ''} />
+      <input type="${f.type}" data-key="${f.key}" value="${escapeHtml(String(val))}" ${f.type === 'number' ? 'step="any"' : ''} ${f.required ? 'required' : ''} />
     </label>`;
   }).join('');
 
@@ -4566,7 +4570,8 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
   try {
     const nivelGuardado = comprasFormNivel;
     const parentIdGuardado = comprasFormParentId;
-    let nuevoId = null; // solo queda seteado si esto fue un ALTA (no una edición)
+    let nuevoId = null;       // solo queda seteado si esto fue un ALTA (no una edición)
+    let contextoPC = null;    // solo se completa al crear una Posición (ver más abajo)
 
     if (comprasFormNivel === 'exp') {
       if (comprasFormEditId) await apiCall('compras_exp_actualizar', { id: comprasFormEditId, datos });
@@ -4576,7 +4581,14 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
       else nuevoId = (await apiCall('compras_pc_crear', { datos: Object.assign({ idExpediente: comprasFormParentId }, datos) })).id;
     } else if (comprasFormNivel === 'pos') {
       if (comprasFormEditId) await apiCall('compras_pos_actualizar', { id: comprasFormEditId, datos });
-      else nuevoId = (await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) })).id;
+      else {
+        // El servidor devuelve, junto con el id nuevo, un resumen ya-recalculado del PC (nroPC,
+        // monto total, y el Expediente al que pertenece) — así el flujo encadenado de abajo no
+        // depende de que comprasCache ya esté sincronizado, sino de un dato fresco del servidor.
+        const resp = await apiCall('compras_pos_crear', { datos: Object.assign({ idPC: comprasFormParentId }, datos) });
+        nuevoId = resp.id;
+        contextoPC = resp.contextoPC || null;
+      }
     }
     await cargarCompras();
     await refrescarRegistrosTrasCompras();
@@ -4597,15 +4609,13 @@ document.getElementById('comprasForm').addEventListener('submit', async (e) => {
       return;
     }
     if (nuevoId && nivelGuardado === 'pos') {
-      let pcRecord = null, expRecord = null;
-      comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => { if (pc._id === parentIdGuardado) { pcRecord = pc; expRecord = exp; } }));
-      const totalTxt = pcRecord ? formatMoney(pcRecord.adjudicadoCalculado) : '';
-      if (confirm(`Posición guardada. Monto total del PC "${pcRecord ? pcRecord.nroPC : ''}" hasta ahora: ${totalTxt}.\n\n¿Cargar otra posición para este mismo PC?`)) {
+      const totalTxt = contextoPC ? formatMoney(contextoPC.adjudicadoCalculado) : '';
+      if (confirm(`Posición guardada. Monto total del PC "${contextoPC ? contextoPC.nroPC : ''}" hasta ahora: ${totalTxt}.\n\n¿Cargar otra posición para este mismo PC?`)) {
         abrirComprasForm('pos', null, parentIdGuardado);
         return;
       }
-      if (expRecord && confirm('¿Cargar otro Pedido de Compra (PC) para este mismo Expediente ("' + (expRecord.expediente || '') + '")?')) {
-        abrirComprasForm('pc', null, expRecord._id);
+      if (contextoPC && contextoPC.idExpediente && confirm('¿Cargar otro Pedido de Compra (PC) para este mismo Expediente ("' + (contextoPC.expediente || '') + '")?')) {
+        abrirComprasForm('pc', null, contextoPC.idExpediente);
         return;
       }
     }
@@ -4659,7 +4669,7 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
       '$ Presupuesto Oficial (sin IVA)': exp.presupuestoOficial,
       'PC': pc.nroPC, 'Adjudicatario': pc.adjudicatario, '$ Adjudicado PC (calculado)': pc.adjudicadoCalculado,
       'Posición': pos.posicion, 'Matrícula N°': pos.matricula, 'Detalle de Matrícula': pos.detalleMat,
-      'Destino': pos.destino, 'Cantidad': pos.cantidad,
+      'Destino': pos.destino, 'Cantidad P. Fija': pos.cantidad, 'Cantidad P. Planificada': pos.cantidadPlanificada,
       'Fecha de Entrega por Contrato P.Fija': pos.fechaContratoFija, 'Fecha de Entrega Real P.Fija': pos.fechaRealFija,
       'Desvío de Fecha Entrega P. Fija (días)': pos.desvioFija,
       '$ P. Fija p/ítems S/IVA': pos.montoPFija,
@@ -4714,7 +4724,7 @@ function parseComprasExcelRows(rows) {
     if (posicion) {
       curPC.posiciones.push({
         posicion: posicion,
-        matricula: val(6), detalleMat: val(7), destino: val(9), cantidad: '',
+        matricula: val(6), detalleMat: val(7), destino: val(9), cantidad: '', cantidadPlanificada: '',
         fechaContratoFija: _excelFechaImport(val(12)),
         montoPFija: _parseNumeroImport(val(15)),
         partePlanificada: val(16) ? 'Si' : 'No',
@@ -4763,7 +4773,7 @@ function renderComprasImportPreview() {
   document.getElementById('comprasImportResumen').textContent =
     `${comprasImportFilas.length} expediente(s), ${cantPC} pedido(s) de compra y ${cantPos} posición(es) detectados en el archivo. ` +
     `Si un Expediente / PC / Posición ya existe (mismo número), se actualiza; si no existe, se crea. No se duplica nada. ` +
-    `La columna "Cantidad" no existe en este formato de Excel: se importa en blanco, completala manualmente si la necesitás.`;
+    `Las columnas "Cantidad P. Fija" y "Cantidad P. Planificada" no existen en este formato de Excel: se importan en blanco, completalas manualmente si las necesitás.`;
 
   const table = document.getElementById('comprasImportPreviewTable');
   table.innerHTML = '<thead><tr><th>Expediente</th><th>Extracto</th><th>PC</th><th>Adjudicatario</th><th>Posiciones</th><th>Matrículas</th></tr></thead><tbody>' +
