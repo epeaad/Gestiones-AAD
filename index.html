@@ -879,7 +879,7 @@
           <h3 style="margin:0;">Cargar / Importar</h3>
         </div>
         <div class="form-actions" style="justify-content:flex-start; gap:10px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary" onclick="abrirComprasWorkspace(null)">+ Nuevo Expediente</button>
+          <button type="button" class="btn btn-primary" onclick="abrirComprasForm('exp', null, null)">+ Nuevo Expediente</button>
           <label class="btn btn-ghost" style="cursor:pointer;">Importar desde Excel
             <input type="file" id="comprasImportFile" accept=".xlsx,.xls" style="display:none;" />
           </label>
@@ -899,14 +899,17 @@
         </div>
       </div>
 
-      <div class="panel" id="comprasWorkspace" hidden>
-        <div class="view-header" style="margin-bottom:6px;">
-          <h3 id="comprasWsTitle" style="margin:0;">Nuevo Expediente de Compras</h3>
-          <button type="button" id="comprasWsCerrarBtn" class="btn btn-ghost">Cerrar</button>
-        </div>
-        <p class="table-note" style="margin:0 0 14px;">Expediente → uno o varios Pedidos de Compra → una o más Posiciones → Compras Planificadas y Ampliaciones (hasta el 30% del PC).</p>
-        <div class="lifeline" id="comprasWsLifeline"></div>
-        <div id="comprasWsPanels"></div>
+      <div class="panel" id="comprasFormPanel" hidden>
+        <h3 id="comprasFormTitle">Nuevo Expediente</h3>
+        <p id="comprasFormSubtitle" class="table-note" style="margin:2px 0 12px;" hidden></p>
+        <form id="comprasForm">
+          <div class="field-grid" id="comprasFormFields"></div>
+          <div class="form-actions">
+            <p id="comprasFormMsg" class="form-msg" hidden></p>
+            <button type="button" id="comprasFormCancelarBtn" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar</button>
+          </div>
+        </form>
       </div>
 
       <div class="panel">
