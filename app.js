@@ -4330,12 +4330,20 @@ function renderComprasTramitesTable() {
         ${isAdmin ? `<button class="icon-btn danger" title="Eliminar" onclick="eliminarComprasTramite(${comprasJsArg(t._id)})">🗑️</button>` : ''}
       </td>`;
     const claseFila = COMPRAS_TRAMITES_ESTADO_CLASS[t.estado] || '';
-    return `<tr class="${claseFila}">${tds}${acciones}</tr>`;
+    return `<tr data-id="${t._id}" class="${claseFila}">${tds}${acciones}</tr>`;
   }).join('') + '</tbody>';
 
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'), 'comprasTramitesScrollTop', 'comprasTramitesScrollTopInner');
   wireSortableHeaders(table, comprasTramitesSort, renderComprasTramitesTable);
+
+  table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('.row-actions')) return; // los íconos de acción no vuelven a abrir el form
+      if (!puedeEditar) return; // solo consulta: no se abre el formulario (aunque hoy no llegan a ver esta pestaña)
+      abrirComprasTramiteForm(tr.dataset.id);
+    });
+  });
 }
 
 // ---- Formulario de Trámite: 2 etapas (Inicio / Adjudicación), mismo look que el "lifeline" de
