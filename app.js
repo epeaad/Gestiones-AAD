@@ -4353,6 +4353,7 @@ function comprasFilteredFilas() {
 const COMPRAS_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
+  { key: 'anio', label: 'Año' },
   { key: 'extracto', label: 'Extracto' },
   { key: 'lp', label: 'LP' },
   { key: 'presupuestoOficial', label: 'Pres. Oficial' },
@@ -4368,11 +4369,12 @@ const COMPRAS_TABLE_COLS = [
   { key: 'montoTotal', label: '$ Posición' }
 ];
 const COMPRAS_MONEY_KEYS = new Set(['presupuestoOficial', 'adjudicadoTotal', 'adjudicadoCalculado', 'montoTotal']);
-const COMPRAS_NUMBER_KEYS = new Set(['cantidadFija', 'cantidadPlanificada']);
+const COMPRAS_NUMBER_KEYS = new Set(['anio', 'cantidadFija', 'cantidadPlanificada']);
 let comprasSort = { key: null, dir: 1 };
 function comprasSortValue(f, key) {
   if (key === 'pospre') return f.exp.pospre || '';
   if (key === 'expediente') return f.exp.expediente || '';
+  if (key === 'anio') return f.anio || '';
   if (key === 'extracto') return f.exp.extracto || '';
   if (key === 'lp') return f.exp.lp || '';
   if (key === 'presupuestoOficial') return num(f.exp.presupuestoOficial);
@@ -4625,7 +4627,7 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
   const filas = [];
   comprasCache.forEach(exp => (exp.pedidos || []).forEach(pc => (pc.posiciones || []).forEach(pos => {
     filas.push({
-      'PosPre': exp.pospre, 'Expte': exp.expediente, 'LP': exp.lp, 'Extracto': exp.extracto,
+      'PosPre': exp.pospre, 'Expte': exp.expediente, 'Año': comprasAnioDeExpediente(exp.expediente), 'LP': exp.lp, 'Extracto': exp.extracto,
       '$ Presupuesto Oficial (sin IVA)': exp.presupuestoOficial,
       'PC': pc.nroPC, 'Adjudicatario': pc.adjudicatario, '$ Adjudicado PC (calculado)': pc.adjudicadoCalculado,
       'Posición': pos.posicion, 'Matrícula N°': pos.matricula, 'Detalle de Matrícula': pos.detalleMat,
