@@ -173,7 +173,13 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .sidebar .btn-ghost:hover{ background:rgba(255,255,255,0.1); }
 
 /* ---- Área principal (scrollea sola, sidebar queda fija) ---- */
-.main-area{ flex:1; height:100%; overflow-y:auto; display:flex; flex-direction:column; min-width:0; position:relative; }
+/* overflow-x:hidden explícito: sin esto, el navegador interpreta "overflow-y:auto" como si
+   "overflow-x" también fuera "auto" (comportamiento estándar del CSS cuando un solo eje no es
+   "visible"), y esta franja termina scrolleando horizontalmente ELLA SOLA cuando alguna tabla
+   ancha desborda — corriendo todo el contenido hacia la derecha y dejando un hueco gris a la
+   izquierda (entre el sidebar fijo y el contenido corrido). El único que tiene que scrollear
+   horizontalmente es el .table-wrap de cada tabla, nunca esta franja entera.*/
+.main-area{ flex:1; height:100%; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; min-width:0; position:relative; }
 
 /* ---- Barra de carga global: aparece mientras hay alguna llamada al servidor en curso ---- */
 /* ---- Overlay de carga inicial: cubre el área de contenido desde que se hace login hasta que
