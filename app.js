@@ -644,10 +644,18 @@ function buildForm(record) {
     panel.appendChild(title);
 
     if (etapa.id === 'proyectos' && isOM) {
+      const kmCard = document.createElement('div');
+      kmCard.className = 'subsection-card';
+
+      const kmTitle = document.createElement('div');
+      kmTitle.className = 'stage-panel-title';
+      kmTitle.innerHTML = `<span class="dot" style="background:var(--stage-3)"></span> Datos únicos del contrato (Obra Menor)`;
+      kmCard.appendChild(kmTitle);
+
       const notaKm = document.createElement('div');
       notaKm.className = 'cert-nota';
       notaKm.innerHTML = `<p>El <strong>$ Km de LAMT del Contrato</strong> y su <strong>Mes/Año de cálculo</strong> se definen una sola vez, apenas se tiene el Pedido de Compras, y aplican automáticamente a todos los proyectos que se carguen después en este PC (Obra Menor) — no hace falta volver a cargarlos en cada proyecto.</p>`;
-      panel.appendChild(notaKm);
+      kmCard.appendChild(notaKm);
 
       // Van en su propia grilla, separada de "Cantidad de Proyectos" y los totales calculados de
       // abajo: son datos independientes que se definen una sola vez, no parte del rollup de proyectos.
@@ -656,11 +664,9 @@ function buildForm(record) {
       [fieldByKey('kmLineaPC'), fieldByKey('mmAAkmLAMT')].filter(Boolean).forEach(f => {
         gridKm.appendChild(buildFieldInput(f, record));
       });
-      panel.appendChild(gridKm);
+      kmCard.appendChild(gridKm);
 
-      const divider = document.createElement('div');
-      divider.className = 'field-grid-divider';
-      panel.appendChild(divider);
+      panel.appendChild(kmCard);
     }
 
     const grid = document.createElement('div');
