@@ -4357,6 +4357,7 @@ const COMPRAS_TRAMITE_ETAPAS = [
 const COMPRAS_TRAMITE_INICIO_FIELDS = [
   { key: 'pospre', label: 'Pospre', type: 'dynselect' },
   { key: 'expediente', label: 'Expediente', type: 'text', required: true },
+  { key: 'anio', label: 'Año (de imputación del pago / Plan)', type: 'number' },
   { key: 'extracto', label: 'Extracto', type: 'text' },
   { key: 'sucursal', label: 'Sucursal / Destino', type: 'text' },
   { key: 'matricula', label: 'Matrícula N° (vacío = carga global)', type: 'text' },
@@ -4806,7 +4807,7 @@ document.getElementById('comprasTramitesImportFile').addEventListener('change', 
     const ws = wb.Sheets[wb.SheetNames[0]];
     const filas = XLSX.utils.sheet_to_json(ws, { defval: '' });
     const mapaColumnas = {
-      'Pospre': 'pospre', 'Expediente': 'expediente', 'Extracto': 'extracto',
+      'Pospre': 'pospre', 'Expediente': 'expediente', 'Año': 'anio', 'Extracto': 'extracto',
       'Sucursal / Destino': 'sucursal', 'Matrícula N°': 'matricula', 'Detalle de Matrícula': 'detalleMat',
       'Cantidad': 'cantidad', '$ Unitario Oficial': 'montoUnitOficial', '$ Subtotal Oficial': 'montoSubtotalOficial',
       'Fecha de Apertura': 'fechaApertura', 'Cantidad Planificada (tope)': 'cantidadPlanificada',
