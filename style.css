@@ -706,6 +706,17 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
    debajo, para que se lea como un dato aparte, no mezclado con los totales calculados. ---- */
 .field-grid-km-lamt{ grid-template-columns:repeat(auto-fill,minmax(220px,320px)); margin-bottom:18px; }
 .field-grid-divider{ height:1px; background:var(--border); margin:0 0 18px; }
+
+/* Sección "Entregas" del trámite de Compras: se destaca del resto del formulario con un tinte
+   ámbar (mismo color que ya usa el puntito junto al título, --stage-3 — no es un color nuevo,
+   es extender uno que ya tenía ese significado) y un borde de acento a la izquierda. Solo se
+   redondean las esquinas del lado derecho: el izquierdo tiene el borde grueso de acento, y
+   redondear ese lado a la vez se ve raro. */
+.entregas-card{
+  margin-top:22px; background:#FDF1E2; border:1px solid #F3D9AE; border-left:4px solid var(--stage-3);
+  border-radius:0 var(--radius) var(--radius) 0; padding:16px 18px;
+}
+.entregas-card .stage-panel-title{ margin-top:0; }
 .field-grid input, .field-grid select, .field-grid textarea{
   padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-weight:400; color:var(--text);
 }
