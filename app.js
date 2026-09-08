@@ -4542,6 +4542,7 @@ document.getElementById('comprasTramiteFormCancelarBtn').addEventListener('click
 document.getElementById('comprasTramiteForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('comprasTramiteFormMsg');
+  const esNuevo = !comprasTramiteFormEditId;
   const datos = {};
   document.querySelectorAll('#comprasTramiteStagePanels [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
   try {
@@ -4555,8 +4556,13 @@ document.getElementById('comprasTramiteForm').addEventListener('submit', async (
     await refrescarRegistrosTrasCompras();
     // Después de guardar por primera vez, dejamos el formulario abierto en modo edición (para
     // poder cargarle Entregas ya mismo) en vez de cerrarlo — igual criterio que Certificaciones,
-    // que pide guardar el trámite primero antes de poder cargarle certificaciones.
+    // que pide guardar el trámite primero antes de poder cargarle certificaciones. abrirComprasTramiteForm
+    // reconstruye el form y oculta este mensaje, así que el aviso de éxito se muestra DESPUÉS de esa
+    // llamada — si no, quedaba invisible y la pantalla parecía no haber hecho nada.
     abrirComprasTramiteForm(comprasTramiteFormEditId);
+    msg.textContent = esNuevo ? 'Trámite creado correctamente.' : 'Trámite actualizado correctamente.';
+    msg.className = 'form-msg ok';
+    msg.hidden = false;
   } catch (err) {
     msg.textContent = err.message;
     msg.className = 'form-msg err';
@@ -4700,6 +4706,7 @@ document.getElementById('comprasEntregaFormCancelarBtn').addEventListener('click
 document.getElementById('comprasEntregaForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('comprasEntregaFormMsg');
+  const esNuevo = !comprasEntregaFormEditId;
   const datos = {};
   document.querySelectorAll('#comprasEntregaFormFields [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
   try {
@@ -4715,7 +4722,9 @@ document.getElementById('comprasEntregaForm').addEventListener('submit', async (
     renderComprasEntregasTable(tramite);
     renderComprasAmpliacionResumen(tramite);
     buildComprasEntregaForm();
-    msg.hidden = true;
+    msg.textContent = esNuevo ? 'Entrega guardada correctamente.' : 'Entrega actualizada correctamente.';
+    msg.className = 'form-msg ok';
+    msg.hidden = false;
   } catch (err) {
     msg.textContent = err.message;
     msg.className = 'form-msg err';
