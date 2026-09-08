@@ -4149,12 +4149,15 @@ const COMPRAS_POS_FORM_FIELDS = [
   { key: 'matricula', label: 'Matrícula N°', type: 'text' },
   { key: 'detalleMat', label: 'Detalle de Matrícula', type: 'text' },
   { key: 'destino', label: 'Destino', type: 'text' },
-  { key: 'cantidad', label: 'Cantidad', type: 'number' },
-  { key: 'montoPFija', label: '$ P. Fija p/ítems (sin IVA)', type: 'number' },
+  { key: 'cantidadFija', label: 'Cantidad Fija', type: 'number' },
+  { key: 'montoUnitFija', label: '$ Unitario P. Fija (sin IVA)', type: 'number' },
+  { key: 'montoPFija', label: '$ P. Fija p/ítems (sin IVA, auto)', type: 'number' },
   { key: 'fechaContratoFija', label: 'Fecha Entrega x Contrato — P. Fija', type: 'date' },
   { key: 'fechaRealFija', label: 'Fecha Entrega Real — P. Fija', type: 'date' },
   { key: 'partePlanificada', label: 'Parte Planificada', type: 'select', options: ['No', 'Si'] },
-  { key: 'montoPPlanificada', label: '$ P. Planificada (sin IVA)', type: 'number' },
+  { key: 'cantidadPlanificada', label: 'Cantidad Planificada', type: 'number' },
+  { key: 'montoUnitPlanificada', label: '$ Unitario P. Planificada (sin IVA)', type: 'number' },
+  { key: 'montoPPlanificada', label: '$ P. Planificada (sin IVA, auto)', type: 'number' },
   { key: 'fechaContratoPlanificada', label: 'Fecha Entrega x Contrato — Planificada', type: 'date' },
   { key: 'fechaRealPlanificada', label: 'Fecha Entrega Real — Planificada', type: 'date' },
   { key: 'ampliacion', label: 'Ampliación', type: 'select', options: ['No', 'Si'] },
@@ -4350,6 +4353,7 @@ function comprasFilteredFilas() {
 const COMPRAS_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
+  { key: 'extracto', label: 'Extracto' },
   { key: 'lp', label: 'LP' },
   { key: 'presupuestoOficial', label: 'Pres. Oficial' },
   { key: 'adjudicadoTotal', label: 'Adj. Total Exp.' },
@@ -4359,14 +4363,17 @@ const COMPRAS_TABLE_COLS = [
   { key: 'posicion', label: 'Posición' },
   { key: 'matricula', label: 'Matrícula' },
   { key: 'destino', label: 'Destino' },
-  { key: 'cantidad', label: 'Cantidad' },
+  { key: 'cantidadFija', label: 'Cant. Fija' },
+  { key: 'cantidadPlanificada', label: 'Cant. Planificada' },
   { key: 'montoTotal', label: '$ Posición' }
 ];
 const COMPRAS_MONEY_KEYS = new Set(['presupuestoOficial', 'adjudicadoTotal', 'adjudicadoCalculado', 'montoTotal']);
+const COMPRAS_NUMBER_KEYS = new Set(['cantidadFija', 'cantidadPlanificada']);
 let comprasSort = { key: null, dir: 1 };
 function comprasSortValue(f, key) {
   if (key === 'pospre') return f.exp.pospre || '';
   if (key === 'expediente') return f.exp.expediente || '';
+  if (key === 'extracto') return f.exp.extracto || '';
   if (key === 'lp') return f.exp.lp || '';
   if (key === 'presupuestoOficial') return num(f.exp.presupuestoOficial);
   if (key === 'adjudicadoTotal') return num(f.exp.adjudicadoTotal);
@@ -4376,7 +4383,8 @@ function comprasSortValue(f, key) {
   if (key === 'posicion') return (f.pos && f.pos.posicion) || '';
   if (key === 'matricula') return (f.pos && f.pos.matricula) || '';
   if (key === 'destino') return (f.pos && f.pos.destino) || '';
-  if (key === 'cantidad') return num(f.pos && f.pos.cantidad);
+  if (key === 'cantidadFija') return num(f.pos && f.pos.cantidadFija);
+  if (key === 'cantidadPlanificada') return num(f.pos && f.pos.cantidadPlanificada);
   if (key === 'montoTotal') return num(f.pos && f.pos.montoTotal);
   return '';
 }
@@ -4404,7 +4412,8 @@ function renderComprasTable() {
     const tds = COMPRAS_TABLE_COLS.map(col => {
       const val = comprasSortValue(f, col.key);
       if (COMPRAS_MONEY_KEYS.has(col.key)) return `<td class="mono">${formatMoney(val)}</td>`;
-      if (col.key === 'cantidad') return `<td class="mono">${val || ''}</td>`;
+      if (COMPRAS_NUMBER_KEYS.has(col.key)) return `<td class="mono">${val || ''}</td>`;
+      if (col.key === 'extracto') return `<td class="td-truncate" title="${escapeHtml(String(val || ''))}">${escapeHtml(String(val || ''))}</td>`;
       return `<td>${escapeHtml(String(val || ''))}</td>`;
     }).join('');
     const entregas = f.pos ? [
@@ -4520,10 +4529,45 @@ function abrirComprasForm(nivel, editId, parentId) {
     });
   }
 
+  comprasRecalcDerivedFields(); // completa $ P. Fija / $ P. Planificada con los valores ya cargados (modo edición)
+
   document.getElementById('comprasFormMsg').hidden = true;
   document.getElementById('comprasFormPanel').hidden = false;
   document.getElementById('comprasFormPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+// ---- $ P. Fija y $ P. Planificada se calculan solos: Cantidad × $ Unitario de cada tramo ----
+// Mismo criterio que recalcDerivedFields() en Contrataciones: solo pisa el monto cuando SÍ hay
+// con qué calcularlo (cantidad y $ unitario cargados). Si alguno de los dos está vacío, no se
+// borra el monto que ya hubiera — por ejemplo, una posición vieja o importada desde Excel que ya
+// trae el $ cargado directo, sin desglose de Cantidad/Unitario. El usuario igual puede ajustar el
+// monto a mano después: no es de solo lectura, solo se autocompleta.
+const COMPRAS_RECALC_TRIGGER_KEYS = new Set(['cantidadFija', 'montoUnitFija', 'cantidadPlanificada', 'montoUnitPlanificada']);
+function getComprasFormValue(key) {
+  const el = document.querySelector('#comprasFormFields [data-key="' + key + '"]');
+  return el ? el.value : '';
+}
+function setComprasFormValue(key, value) {
+  const el = document.querySelector('#comprasFormFields [data-key="' + key + '"]');
+  if (el) el.value = value;
+}
+function comprasRecalcDerivedFields() {
+  const cantFija = parseFloat(getComprasFormValue('cantidadFija')) || 0;
+  const unitFija = parseFloat(getComprasFormValue('montoUnitFija')) || 0;
+  if (cantFija && unitFija) {
+    setComprasFormValue('montoPFija', (cantFija * unitFija).toFixed(2));
+  }
+  const cantPlanif = parseFloat(getComprasFormValue('cantidadPlanificada')) || 0;
+  const unitPlanif = parseFloat(getComprasFormValue('montoUnitPlanificada')) || 0;
+  if (cantPlanif && unitPlanif) {
+    setComprasFormValue('montoPPlanificada', (cantPlanif * unitPlanif).toFixed(2));
+  }
+}
+document.getElementById('comprasFormFields').addEventListener('input', (e) => {
+  const key = e.target.dataset.key;
+  if (key && COMPRAS_RECALC_TRIGGER_KEYS.has(key)) comprasRecalcDerivedFields();
+});
+
 function cerrarComprasForm() {
   comprasFormNivel = null; comprasFormEditId = null; comprasFormParentId = null;
   const panel = document.getElementById('comprasFormPanel');
@@ -4585,11 +4629,12 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
       '$ Presupuesto Oficial (sin IVA)': exp.presupuestoOficial,
       'PC': pc.nroPC, 'Adjudicatario': pc.adjudicatario, '$ Adjudicado PC (calculado)': pc.adjudicadoCalculado,
       'Posición': pos.posicion, 'Matrícula N°': pos.matricula, 'Detalle de Matrícula': pos.detalleMat,
-      'Destino': pos.destino, 'Cantidad': pos.cantidad,
+      'Destino': pos.destino, 'Cantidad Fija': pos.cantidadFija,
       'Fecha de Entrega por Contrato P.Fija': pos.fechaContratoFija, 'Fecha de Entrega Real P.Fija': pos.fechaRealFija,
       'Desvío de Fecha Entrega P. Fija (días)': pos.desvioFija,
-      '$ P. Fija p/ítems S/IVA': pos.montoPFija,
-      'Parte Planificada': pos.partePlanificada, '$ P. Planificada (s/IVA)': pos.montoPPlanificada,
+      '$ Unitario P. Fija (s/IVA)': pos.montoUnitFija, '$ P. Fija p/ítems S/IVA': pos.montoPFija,
+      'Parte Planificada': pos.partePlanificada, 'Cantidad Planificada': pos.cantidadPlanificada,
+      '$ Unitario P. Planificada (s/IVA)': pos.montoUnitPlanificada, '$ P. Planificada (s/IVA)': pos.montoPPlanificada,
       'Fecha de Entrega por Contrato P.Planificada': pos.fechaContratoPlanificada, 'Fecha de Entrega Real P.Planificada': pos.fechaRealPlanificada,
       'Desvío de Fecha Entrega P. Planificada (días)': pos.desvioPlanificada,
       'Ampliación (si / no)': pos.ampliacion, '% de Ampliación': pos.pctAmpliacion, '$ Ampliación (sin IVA)': pos.montoAmpliacion,
@@ -4608,7 +4653,7 @@ document.getElementById('comprasExportBtn').addEventListener('click', () => {
 // ---- Importar desde Excel (formato "Gestiones de Compra de Mat-EE y Bienes.xlsx") ----
 // Reconstruye el árbol Expediente -> PC -> Posición rellenando hacia abajo las celdas que en
 // el Excel original vienen en blanco (porque pertenecen al mismo grupo que la fila de arriba).
-// IMPORTANTE: Matrícula, Detalle, Destino y Cantidad se leen de CADA fila de Posición (no se
+// IMPORTANTE: Matrícula, Detalle, Destino y Cantidad Fija se leen de CADA fila de Posición (no se
 // heredan del PC), porque son propias de cada posición.
 function parseComprasExcelRows(rows) {
   const expedientes = [];
@@ -4640,7 +4685,7 @@ function parseComprasExcelRows(rows) {
     if (posicion) {
       curPC.posiciones.push({
         posicion: posicion,
-        matricula: val(6), detalleMat: val(7), destino: val(9), cantidad: '',
+        matricula: val(6), detalleMat: val(7), destino: val(9), cantidadFija: '',
         fechaContratoFija: _excelFechaImport(val(12)),
         montoPFija: _parseNumeroImport(val(15)),
         partePlanificada: val(16) ? 'Si' : 'No',
@@ -4689,7 +4734,7 @@ function renderComprasImportPreview() {
   document.getElementById('comprasImportResumen').textContent =
     `${comprasImportFilas.length} expediente(s), ${cantPC} pedido(s) de compra y ${cantPos} posición(es) detectados en el archivo. ` +
     `Si un Expediente / PC / Posición ya existe (mismo número), se actualiza; si no existe, se crea. No se duplica nada. ` +
-    `La columna "Cantidad" no existe en este formato de Excel: se importa en blanco, completala manualmente si la necesitás.`;
+    `La columna "Cantidad Fija" no existe en este formato de Excel: se importa en blanco, completala manualmente si la necesitás (la "Cantidad Planificada" y los $ Unitarios tampoco vienen en este formato).`;
 
   const table = document.getElementById('comprasImportPreviewTable');
   table.innerHTML = '<thead><tr><th>Expediente</th><th>Extracto</th><th>PC</th><th>Adjudicatario</th><th>Posiciones</th><th>Matrículas</th></tr></thead><tbody>' +
