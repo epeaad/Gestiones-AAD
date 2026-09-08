@@ -1778,7 +1778,7 @@ function renderRegistros() {
       if (e.target.closest('.row-actions')) return; // los botones de acción no abren el formulario
       if (!puedeEditar) return; // solo consulta: no se abre el formulario de edición
       const rec = state.registros.find(r => r._id === tr.dataset.id);
-      if (rec) openRecordForEdit(rec);
+      if (rec) abrirRegistroOCompras(rec);
     });
   });
 
@@ -2354,7 +2354,7 @@ function renderDashDetalleCompleto(rows) {
     table.querySelectorAll('tbody tr').forEach(tr => {
       tr.addEventListener('click', () => {
         const rec = state.registros.find(r => r._id === tr.dataset.id);
-        if (rec) openRecordForEdit(rec);
+        if (rec) abrirRegistroOCompras(rec);
       });
     });
   }
@@ -4799,6 +4799,28 @@ let comprasTramiteActiveStage = 'inicio';
 let comprasEntregaFormEditId = null; // id de la entrega en edición, o null si es alta nueva
 let comprasTramitesFiltros = { pospre: [], anio: [], expediente: '', nroPC: [], sucursal: [], estado: [] };
 let comprasTramitesSort = { key: null, dir: 1 };
+
+// ---- Click en una fila de Registros o del detalle "Todos" del Dashboard: si esa fila es en
+//      realidad una fila espejo generada desde Compras (modelo nuevo o viejo — ver _comprasTramiteId
+//      / _comprasExpedienteId en _listarRegistros, Code.gs), lleva directo a su ficha en el módulo
+//      Compras en vez de abrir el editor de Contrataciones, porque esos datos se administran desde
+//      ahí. Si es un trámite normal, sigue exactamente igual que siempre. ----
+function abrirRegistroOCompras(rec) {
+  if (rec._comprasTramiteId) { abrirComprasTramiteDesdeRegistro(rec._comprasTramiteId); return; }
+  if (rec._comprasExpedienteId) { abrirComprasExpedienteDesdeRegistro(rec._comprasExpedienteId); return; }
+  openRecordForEdit(rec);
+}
+async function abrirComprasTramiteDesdeRegistro(idTramite) {
+  comprasVistaModo = 'tramites';
+  showView('compras');
+  await cargarComprasTramites(); // nos aseguramos de tener los datos frescos antes de abrir el trámite puntual
+  abrirComprasTramiteForm(idTramite);
+}
+function abrirComprasExpedienteDesdeRegistro(idExpediente) {
+  comprasVistaModo = 'arbol';
+  showView('compras');
+  abrirComprasForm('exp', idExpediente, null);
+}
 
 function cambiarVistaCompras(modo) {
   comprasVistaModo = modo;
