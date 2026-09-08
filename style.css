@@ -547,9 +547,14 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .scroll-top-bar{ overflow-x:auto; overflow-y:hidden; height:14px; margin-bottom:6px; }
 .scroll-top-inner{ height:1px; }
 
-.data-table{ width:100%; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
+/* Las tablas de detalle se ajustan al ancho real del contenido (no se estiran a lo ancho del
+   contenedor): con pocas columnas o texto corto, "width:100%" repartía el espacio sobrante entre
+   columnas y dejaba huecos enormes. Si el contenido SÍ necesita más ancho que el contenedor
+   (muchas columnas, textos largos), el navegador igual la agranda y aparece el scroll horizontal
+   normalmente — esto solo evita el estiramiento artificial cuando no hace falta. */
+.data-table{ width:auto; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
 .data-table th{
-  text-align:left; padding:8px 10px; background:#F8FAFB; color:var(--text-soft);
+  text-align:left; padding:7px 9px; background:#F8FAFB; color:var(--text-soft);
   font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:0.01em;
   border-bottom:1px solid var(--border); position:sticky; top:0;
 }
@@ -559,7 +564,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .sort-arrow{ font-size:9px; margin-left:3px; opacity:0.8; }
 /* Texto en fuente más compacta (no monoespaciada) para que cada columna ocupe justo lo que su
    contenido necesita; los datos numéricos usan .mono aparte para mantenerse alineados prolijos. */
-.data-table td{ padding:7px 10px; border-bottom:1px solid var(--border); font-family:var(--font-ui); }
+.data-table td{ padding:6px 9px; border-bottom:1px solid var(--border); font-family:var(--font-ui); }
 .data-table td.mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 /* Columnas de texto potencialmente largo (ej. nombre del contratista): se truncan con "..." y
    muestran el texto completo al pasar el mouse (title), en vez de forzar el ancho de toda la tabla. */
