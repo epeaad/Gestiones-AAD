@@ -4230,6 +4230,9 @@ async function abrirVistaCompras() {
   if (!comprasFormNivel) cerrarComprasForm();
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   document.getElementById('comprasToolbar').hidden = !puedeEditar;
+  // Sincroniza los botones/paneles de la Vista Trámites (nueva) con el modo actual, y si ya estaba
+  // en esa vista, refresca sus datos — igual criterio que la Vista Árbol de arriba.
+  cambiarVistaCompras(comprasVistaModo);
 }
 
 // Cada vez que Compras cambia algo que impacta su fila espejo en "Gestiones Plan" (alta/edición/
@@ -4779,5 +4782,605 @@ document.getElementById('comprasImportConfirmarBtn').addEventListener('click', a
   document.getElementById('comprasImportPreviewWrap').hidden = true;
   await cargarCompras();
   await refrescarRegistrosTrasCompras();
+});
+
+// ============================================================
+// MÓDULO DE COMPRAS v2 — TRÁMITES (modelo plano) + ENTREGAS
+// ------------------------------------------------------------
+// Convive con el módulo de árbol de arriba (Expediente -> PC -> Posición): comparten la misma
+// pestaña "Compras", con un selector arriba de todo para pasar de una vista a la otra. Leen y
+// escriben en hojas separadas — ver el comentario grande en Code.gs antes de SHEET_COMPRAS_TRAMITES.
+// ============================================================
+let comprasVistaModo = 'arbol'; // 'arbol' | 'tramites'
+let comprasTramitesCache = [];
+let comprasTramitesMeta = { estados: [], tiposEntrega: [], pctMaximoAmpliacion: 0.30 };
+let comprasTramiteFormEditId = null; // id del trámite en edición, o null si es alta nueva
+let comprasTramiteActiveStage = 'inicio';
+let comprasEntregaFormEditId = null; // id de la entrega en edición, o null si es alta nueva
+let comprasTramitesFiltros = { pospre: [], anio: [], expediente: '', nroPC: [], sucursal: [], estado: [] };
+let comprasTramitesSort = { key: null, dir: 1 };
+
+function cambiarVistaCompras(modo) {
+  comprasVistaModo = modo;
+  document.getElementById('comprasArbolWrap').hidden = modo !== 'arbol';
+  document.getElementById('comprasTramitesWrap').hidden = modo !== 'tramites';
+  document.getElementById('comprasVistaArbolBtn').classList.toggle('btn-primary', modo === 'arbol');
+  document.getElementById('comprasVistaArbolBtn').classList.toggle('btn-secondary', modo !== 'arbol');
+  document.getElementById('comprasVistaTramitesBtn').classList.toggle('btn-primary', modo === 'tramites');
+  document.getElementById('comprasVistaTramitesBtn').classList.toggle('btn-secondary', modo !== 'tramites');
+  if (modo === 'tramites') cargarComprasTramites();
+}
+
+async function cargarComprasTramites() {
+  try {
+    const data = await apiCall('compras_tramites_listar');
+    comprasTramitesCache = data.tramites || [];
+    comprasTramitesMeta = {
+      estados: data.estados || [],
+      tiposEntrega: data.tiposEntrega || [],
+      pctMaximoAmpliacion: data.pctMaximoAmpliacion || 0.30
+    };
+    populateComprasTramitesFilterOptions();
+    renderComprasTramitesTable();
+    const puedeEditar = state.session && state.session.rol !== 'consulta';
+    const esAdmin = state.session && state.session.rol === 'admin';
+    document.getElementById('comprasTramitesToolbar').hidden = !puedeEditar;
+    document.getElementById('comprasMigrarBtn').hidden = !esAdmin;
+  } catch (err) {
+    showAppError('No se pudieron cargar los trámites de Compras: ' + err.message);
+  }
+}
+
+// ---- Filtros ----
+const COMPRAS_TRAMITES_FILTER_KEYS = ['pospre', 'anio', 'nroPC', 'sucursal', 'estado'];
+function comprasTramitesUniqueValues(key) {
+  const set = new Set();
+  comprasTramitesCache.forEach(t => {
+    const v = key === 'anio' ? t.anio : t[key];
+    if (v) set.add(String(v).trim());
+  });
+  return Array.from(set).sort();
+}
+function populateComprasTramitesFilterOptions() {
+  COMPRAS_TRAMITES_FILTER_KEYS.forEach(key => {
+    const el = document.querySelector('#comprasTramitesFiltersBar [data-tfilter="' + key + '"]');
+    if (!el) return;
+    const opts = comprasTramitesUniqueValues(key);
+    comprasTramitesFiltros[key] = (comprasTramitesFiltros[key] || []).filter(v => opts.includes(v));
+    renderMultiselect(el, opts, comprasTramitesFiltros[key], (vals) => {
+      comprasTramitesFiltros[key] = vals;
+      renderComprasTramitesTable();
+    });
+  });
+}
+document.querySelector('#comprasTramitesFiltersBar [data-tfilter="expediente"]').addEventListener('input', debounce((e) => {
+  comprasTramitesFiltros.expediente = e.target.value.trim();
+  renderComprasTramitesTable();
+}, 300));
+document.getElementById('comprasTramitesClearFilters').addEventListener('click', () => {
+  COMPRAS_TRAMITES_FILTER_KEYS.forEach(k => { comprasTramitesFiltros[k] = []; });
+  comprasTramitesFiltros.expediente = '';
+  const expEl = document.querySelector('#comprasTramitesFiltersBar [data-tfilter="expediente"]');
+  if (expEl) expEl.value = '';
+  populateComprasTramitesFilterOptions();
+  renderComprasTramitesTable();
+});
+function comprasTramitesFiltrados() {
+  const texto = (comprasTramitesFiltros.expediente || '').trim().toLowerCase();
+  return comprasTramitesCache.filter(t => {
+    if (comprasTramitesFiltros.pospre.length && !comprasTramitesFiltros.pospre.includes(String(t.pospre || '').trim())) return false;
+    if (comprasTramitesFiltros.anio.length && !comprasTramitesFiltros.anio.includes(String(t.anio || ''))) return false;
+    if (texto && !String(t.expediente || '').toLowerCase().includes(texto)) return false;
+    if (comprasTramitesFiltros.nroPC.length && !comprasTramitesFiltros.nroPC.includes(String(t.nroPC || '').trim())) return false;
+    if (comprasTramitesFiltros.sucursal.length && !comprasTramitesFiltros.sucursal.includes(String(t.sucursal || '').trim())) return false;
+    if (comprasTramitesFiltros.estado.length && !comprasTramitesFiltros.estado.includes(String(t.estado || '').trim())) return false;
+    return true;
+  });
+}
+
+// ---- Tabla ----
+const COMPRAS_TRAMITES_TABLE_COLS = [
+  { key: 'pospre', label: 'Pospre' },
+  { key: 'expediente', label: 'Expediente' },
+  { key: 'anio', label: 'Año' },
+  { key: 'extracto', label: 'Extracto' },
+  { key: 'sucursal', label: 'Sucursal' },
+  { key: 'matricula', label: 'Matrícula' },
+  { key: 'cantidad', label: 'Cantidad' },
+  { key: 'montoSubtotalOficial', label: '$ Subtotal Oficial' },
+  { key: 'contratista', label: 'Contratista' },
+  { key: 'nroPC', label: 'N° PC' },
+  { key: 'montoSubtotalAdjudicado', label: '$ Subtotal Adjudicado' },
+  { key: 'estado', label: 'Estado' },
+  { key: 'cantidadPlanificadaDisponible', label: 'Planif. Disponible' }
+];
+const COMPRAS_TRAMITES_MONEY_KEYS = new Set(['montoSubtotalOficial', 'montoSubtotalAdjudicado']);
+const COMPRAS_TRAMITES_NUMBER_KEYS = new Set(['anio', 'cantidad', 'cantidadPlanificadaDisponible']);
+const COMPRAS_TRAMITES_ESTADO_CLASS = { 'Finalizado': 'row-finalizado', 'Desierto': 'row-desierto' };
+
+function comprasTramitesSortValue(t, key) { return t[key]; }
+
+function renderComprasTramitesTable() {
+  const table = document.getElementById('comprasTramitesTable');
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  const isAdmin = state.session && state.session.rol === 'admin';
+  let filas = comprasTramitesFiltrados();
+  const countEl = document.getElementById('comprasTramitesResultsCount');
+  if (countEl) countEl.textContent = filas.length + ' trámite(s) encontrado(s), de ' + comprasTramitesCache.length + ' totales.';
+  if (!comprasTramitesCache.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay trámites cargados en este modelo nuevo. Usá "+ Nuevo Trámite" o "Migrar datos del Árbol".</td></tr></tbody>';
+    return;
+  }
+  if (!filas.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Ningún trámite coincide con los filtros aplicados.</td></tr></tbody>';
+    return;
+  }
+
+  filas = sortRows(filas, comprasTramitesSort, comprasTramitesSortValue);
+
+  const thead = sortableTheadHtml(COMPRAS_TRAMITES_TABLE_COLS, comprasTramitesSort, '<th>Acciones</th>');
+  const tbody = '<tbody>' + filas.map(t => {
+    const tds = COMPRAS_TRAMITES_TABLE_COLS.map(col => {
+      const val = t[col.key];
+      if (COMPRAS_TRAMITES_MONEY_KEYS.has(col.key)) return `<td class="mono">${formatMoney(val)}</td>`;
+      if (COMPRAS_TRAMITES_NUMBER_KEYS.has(col.key)) return `<td class="mono">${val || val === 0 ? val : ''}</td>`;
+      if (col.key === 'extracto') return `<td class="td-truncate" title="${escapeHtml(String(val || ''))}">${escapeHtml(String(val || ''))}</td>`;
+      return `<td>${escapeHtml(String(val || ''))}</td>`;
+    }).join('');
+    const acciones = `<td class="row-actions">
+        ${puedeEditar ? `<button class="icon-btn" title="Editar" onclick="abrirComprasTramiteForm(${comprasJsArg(t._id)})">✏️</button>` : ''}
+        ${puedeEditar ? `<button class="icon-btn" title="Copiar" onclick="clonarComprasTramite(${comprasJsArg(t._id)})">📋</button>` : ''}
+        ${isAdmin ? `<button class="icon-btn danger" title="Eliminar" onclick="eliminarComprasTramite(${comprasJsArg(t._id)})">🗑️</button>` : ''}
+      </td>`;
+    const claseFila = COMPRAS_TRAMITES_ESTADO_CLASS[t.estado] || '';
+    return `<tr class="${claseFila}">${tds}${acciones}</tr>`;
+  }).join('') + '</tbody>';
+
+  table.innerHTML = thead + tbody;
+  setupScrollShadow(table.closest('.table-wrap'), 'comprasTramitesScrollTop', 'comprasTramitesScrollTopInner');
+  wireSortableHeaders(table, comprasTramitesSort, renderComprasTramitesTable);
+}
+
+// ---- Formulario de Trámite: 2 etapas (Inicio / Adjudicación), mismo look que el "lifeline" de
+//      Registros pero con su propia implementación — los campos y el ciclo de vida son distintos
+//      (Obra Menor/Proyectos no aplican acá), así que no se reutiliza el mismo código, para no
+//      arriesgar nada de Registros. ----
+const COMPRAS_TRAMITE_ETAPAS = [
+  { id: 'inicio', label: 'Inicio' },
+  { id: 'adjudicacion', label: 'Adjudicación' }
+];
+const COMPRAS_TRAMITE_INICIO_FIELDS = [
+  { key: 'pospre', label: 'Pospre', type: 'text' },
+  { key: 'expediente', label: 'Expediente', type: 'text', required: true },
+  { key: 'extracto', label: 'Extracto', type: 'text' },
+  { key: 'sucursal', label: 'Sucursal / Destino', type: 'text' },
+  { key: 'matricula', label: 'Matrícula N° (vacío = carga global)', type: 'text' },
+  { key: 'detalleMat', label: 'Detalle de Matrícula', type: 'text' },
+  { key: 'cantidad', label: 'Cantidad', type: 'number' },
+  { key: 'montoUnitOficial', label: '$ Unitario Oficial (sin IVA)', type: 'number' },
+  { key: 'montoSubtotalOficial', label: '$ Subtotal Oficial (sin IVA)', type: 'number', derived: true },
+  { key: 'fechaApertura', label: 'Fecha de Apertura', type: 'date' },
+  { key: 'cantidadPlanificada', label: 'Cantidad Planificada (tope)', type: 'number' }
+];
+const COMPRAS_TRAMITE_ADJUDICACION_FIELDS = [
+  { key: 'montoUnitAdjudicado', label: '$ Unitario Adjudicado (sin IVA)', type: 'number' },
+  { key: 'montoSubtotalAdjudicado', label: '$ Subtotal Adjudicado (sin IVA)', type: 'number', derived: true },
+  { key: 'contratista', label: 'Contratista / Oferente', type: 'text' },
+  { key: 'nroPC', label: 'N° de Pedido de Compras', type: 'text' },
+  { key: 'fechaPC', label: 'Fecha de PC', type: 'date' },
+  { key: 'estado', label: 'Estado', type: 'select', options: ['', 'Adjudicado', 'Desierto', 'Relanzado', 'Finalizado'] },
+  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+];
+function comprasTramiteCamposEtapa(etapaId) {
+  return etapaId === 'inicio' ? COMPRAS_TRAMITE_INICIO_FIELDS : COMPRAS_TRAMITE_ADJUDICACION_FIELDS;
+}
+function comprasTramiteBuildFieldInput(f, record) {
+  const value = record[f.key] != null ? record[f.key] : '';
+  const readonlyAttr = f.derived ? 'readonly tabindex="-1"' : '';
+  let inputHtml;
+  if (f.type === 'select') {
+    inputHtml = `<select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}</select>`;
+  } else if (f.type === 'date') {
+    inputHtml = `<input type="date" data-key="${f.key}" value="${escapeHtml(value)}" />`;
+  } else if (f.type === 'number') {
+    inputHtml = `<input type="text" inputmode="decimal" class="num-decimal" data-key="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
+  } else {
+    inputHtml = `<input type="text" data-key="${f.key}" value="${escapeHtml(value)}" ${f.required ? 'required' : ''} />`;
+  }
+  const label = document.createElement('label');
+  label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}${f.derived ? ' <span class="calc-badge">calculado</span>' : ''}</span>${inputHtml}`;
+  return label;
+}
+function comprasTramiteStageColorVar(idx) { return 'var(--stage-' + (idx + 1) + ')'; }
+
+function buildComprasTramiteForm(record) {
+  const lifeline = document.getElementById('comprasTramiteLifeline');
+  const panelsWrap = document.getElementById('comprasTramiteStagePanels');
+  lifeline.innerHTML = '';
+  panelsWrap.innerHTML = '';
+
+  COMPRAS_TRAMITE_ETAPAS.forEach((etapa, idx) => {
+    const node = document.createElement('div');
+    node.className = 'stage-node';
+    node.style.setProperty('--stage-color', comprasTramiteStageColorVar(idx));
+    node.dataset.stage = etapa.id;
+    node.innerHTML = `<div class="stage-line"></div><div class="stage-dot"></div><div class="stage-label">${etapa.label}</div>`;
+    node.addEventListener('click', () => setComprasTramiteActiveStage(etapa.id));
+    lifeline.appendChild(node);
+
+    const panel = document.createElement('div');
+    panel.className = 'stage-panel';
+    panel.id = 'compras-tramite-panel-' + etapa.id;
+    panel.hidden = idx !== 0;
+
+    const title = document.createElement('div');
+    title.className = 'stage-panel-title';
+    title.innerHTML = `<span class="dot" style="background:${comprasTramiteStageColorVar(idx)}"></span> ${etapa.label}`;
+    panel.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+    comprasTramiteCamposEtapa(etapa.id).forEach(f => grid.appendChild(comprasTramiteBuildFieldInput(f, record)));
+    panel.appendChild(grid);
+
+    panelsWrap.appendChild(panel);
+  });
+
+  comprasTramiteActiveStage = COMPRAS_TRAMITE_ETAPAS[0].id;
+  setComprasTramiteActiveStage(comprasTramiteActiveStage);
+}
+function setComprasTramiteActiveStage(stageId) {
+  comprasTramiteActiveStage = stageId;
+  document.getElementById('comprasTramiteLifeline').querySelectorAll('.stage-node').forEach(n => {
+    n.classList.toggle('active', n.dataset.stage === stageId);
+  });
+  document.getElementById('comprasTramiteStagePanels').querySelectorAll('.stage-panel').forEach(p => {
+    p.hidden = p.id !== 'compras-tramite-panel-' + stageId;
+  });
+}
+
+// ---- $ Subtotal Oficial / $ Subtotal Adjudicado se calculan solos (Cantidad × $ Unitario) ----
+// Mismo criterio "solo pisa si hay con qué calcular" que el resto de la app.
+function getComprasTramiteFormValue(key) {
+  const el = document.querySelector('#comprasTramiteStagePanels [data-key="' + key + '"]');
+  return el ? el.value : '';
+}
+function setComprasTramiteFormValue(key, value) {
+  const el = document.querySelector('#comprasTramiteStagePanels [data-key="' + key + '"]');
+  if (el) el.value = value;
+}
+function comprasTramiteRecalcDerivedFields() {
+  const cantidad = parseFloat(getComprasTramiteFormValue('cantidad')) || 0;
+  const unitOficial = parseFloat(getComprasTramiteFormValue('montoUnitOficial')) || 0;
+  if (cantidad && unitOficial) setComprasTramiteFormValue('montoSubtotalOficial', (cantidad * unitOficial).toFixed(2));
+  const unitAdj = parseFloat(getComprasTramiteFormValue('montoUnitAdjudicado')) || 0;
+  if (cantidad && unitAdj) setComprasTramiteFormValue('montoSubtotalAdjudicado', (cantidad * unitAdj).toFixed(2));
+}
+const COMPRAS_TRAMITE_RECALC_KEYS = new Set(['cantidad', 'montoUnitOficial', 'montoUnitAdjudicado']);
+document.getElementById('comprasTramiteStagePanels').addEventListener('input', (e) => {
+  const key = e.target.dataset.key;
+  if (key && COMPRAS_TRAMITE_RECALC_KEYS.has(key)) comprasTramiteRecalcDerivedFields();
+});
+
+function abrirComprasTramiteForm(id) {
+  comprasTramiteFormEditId = id || null;
+  const record = id ? (comprasTramitesCache.find(t => t._id === id) || {}) : {};
+  document.getElementById('comprasTramiteFormTitle').textContent = id ? 'Editar Trámite' : 'Nuevo Trámite';
+  buildComprasTramiteForm(record);
+  comprasTramiteRecalcDerivedFields();
+  document.getElementById('comprasTramiteFormMsg').hidden = true;
+  document.getElementById('comprasTramiteFormPanel').hidden = false;
+
+  const entregasSection = document.getElementById('comprasEntregasSection');
+  if (id) {
+    entregasSection.hidden = false;
+    renderComprasEntregasTable(record);
+    buildComprasEntregaForm();
+    renderComprasAmpliacionResumen(record);
+  } else {
+    entregasSection.hidden = true;
+  }
+  document.getElementById('comprasTramiteFormPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function cerrarComprasTramiteForm() {
+  comprasTramiteFormEditId = null;
+  comprasEntregaFormEditId = null;
+  document.getElementById('comprasTramiteFormPanel').hidden = true;
+}
+document.getElementById('comprasTramiteFormCancelarBtn').addEventListener('click', cerrarComprasTramiteForm);
+
+document.getElementById('comprasTramiteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('comprasTramiteFormMsg');
+  const datos = {};
+  document.querySelectorAll('#comprasTramiteStagePanels [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+  try {
+    if (comprasTramiteFormEditId) {
+      await apiCall('compras_tramite_actualizar', { id: comprasTramiteFormEditId, datos });
+    } else {
+      const { id } = await apiCall('compras_tramite_crear', { datos });
+      comprasTramiteFormEditId = id;
+    }
+    await cargarComprasTramites();
+    await refrescarRegistrosTrasCompras();
+    // Después de guardar por primera vez, dejamos el formulario abierto en modo edición (para
+    // poder cargarle Entregas ya mismo) en vez de cerrarlo — igual criterio que Certificaciones,
+    // que pide guardar el trámite primero antes de poder cargarle certificaciones.
+    abrirComprasTramiteForm(comprasTramiteFormEditId);
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.className = 'form-msg err';
+    msg.hidden = false;
+  }
+});
+
+async function clonarComprasTramite(id) {
+  try {
+    const { id: nuevoId } = await apiCall('compras_tramite_clonar', { id });
+    await cargarComprasTramites();
+    await refrescarRegistrosTrasCompras();
+    abrirComprasTramiteForm(nuevoId);
+  } catch (err) {
+    alert('Error al copiar: ' + err.message);
+  }
+}
+async function eliminarComprasTramite(id) {
+  if (!confirm('¿Eliminar este trámite? Se van a borrar también sus Entregas, y su fila espejo en Registros.')) return;
+  try {
+    await apiCall('compras_tramite_eliminar', { id });
+    await cargarComprasTramites();
+    await refrescarRegistrosTrasCompras();
+    if (comprasTramiteFormEditId === id) cerrarComprasTramiteForm();
+  } catch (err) {
+    alert('Error al eliminar: ' + err.message);
+  }
+}
+
+// ---- Entregas (sub-lista del trámite abierto) ----
+const COMPRAS_ENTREGA_FORM_FIELDS = [
+  { key: 'tipo', label: 'Tipo', type: 'select', options: ['Oficial', 'Planificada', 'Ampliación'], required: true },
+  { key: 'cantidad', label: 'Cantidad de esta entrega', type: 'number' },
+  { key: 'monto', label: '$ de esta entrega (sin IVA)', type: 'number' },
+  { key: 'plazo', label: 'Plazo (días desde Fecha de PC)', type: 'number' },
+  { key: 'fechaContractual', label: 'Fecha Contractual', type: 'date' },
+  { key: 'fechaReal', label: 'Fecha Real de Entrega', type: 'date' },
+  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+];
+function comprasEntregaBuildFieldInput(f, record) {
+  const value = (record && record[f.key] != null) ? record[f.key] : '';
+  let inputHtml;
+  if (f.type === 'select') {
+    inputHtml = `<select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+  } else if (f.type === 'date') {
+    inputHtml = `<input type="date" data-key="${f.key}" value="${escapeHtml(value)}" />`;
+  } else if (f.type === 'number') {
+    inputHtml = `<input type="text" inputmode="decimal" class="num-decimal" data-key="${f.key}" value="${escapeHtml(value)}" />`;
+  } else {
+    inputHtml = `<input type="text" data-key="${f.key}" value="${escapeHtml(value)}" ${f.required ? 'required' : ''} />`;
+  }
+  const label = document.createElement('label');
+  label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}</span>${inputHtml}`;
+  return label;
+}
+function buildComprasEntregaForm(record) {
+  const cont = document.getElementById('comprasEntregaFormFields');
+  cont.innerHTML = '';
+  COMPRAS_ENTREGA_FORM_FIELDS.forEach(f => cont.appendChild(comprasEntregaBuildFieldInput(f, record || {})));
+  document.getElementById('comprasEntregaFormCancelarBtn').hidden = !record;
+  document.querySelector('#comprasEntregaForm button[type="submit"]').textContent = record ? 'Guardar cambios' : '+ Agregar Entrega';
+  comprasEntregaRecalcMonto();
+}
+function getComprasEntregaFormValue(key) {
+  const el = document.querySelector('#comprasEntregaFormFields [data-key="' + key + '"]');
+  return el ? el.value : '';
+}
+function setComprasEntregaFormValue(key, value) {
+  const el = document.querySelector('#comprasEntregaFormFields [data-key="' + key + '"]');
+  if (el) el.value = value;
+}
+// $ de esta entrega se autocompleta (Cantidad × $ Unitario Adjudicado, o el Oficial si todavía no
+// hay Adjudicado cargado) y la Fecha Contractual (Fecha de PC + Plazo) — el usuario puede ajustar
+// ambas a mano después, no quedan bloqueadas.
+function comprasEntregaRecalcMonto() {
+  if (!comprasTramiteFormEditId) return;
+  const tramite = comprasTramitesCache.find(t => t._id === comprasTramiteFormEditId);
+  if (!tramite) return;
+  const cantidad = parseFloat(getComprasEntregaFormValue('cantidad')) || 0;
+  const unitario = parseFloat(tramite.montoUnitAdjudicado) || parseFloat(tramite.montoUnitOficial) || 0;
+  if (cantidad && unitario) setComprasEntregaFormValue('monto', (cantidad * unitario).toFixed(2));
+  const plazo = parseInt(getComprasEntregaFormValue('plazo'));
+  if (tramite.fechaPC && plazo) setComprasEntregaFormValue('fechaContractual', addDays(tramite.fechaPC, plazo));
+}
+document.getElementById('comprasEntregaFormFields').addEventListener('input', (e) => {
+  const key = e.target.dataset.key;
+  if (key === 'cantidad' || key === 'plazo') comprasEntregaRecalcMonto();
+});
+
+const COMPRAS_ENTREGAS_TABLE_COLS = [
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'cantidad', label: 'Cantidad' },
+  { key: 'monto', label: '$ Monto' },
+  { key: 'fechaContractual', label: 'F. Contractual' },
+  { key: 'fechaReal', label: 'F. Real' },
+  { key: 'observaciones', label: 'Observaciones' }
+];
+function renderComprasEntregasTable(tramite) {
+  const table = document.getElementById('comprasEntregasTable');
+  const entregas = tramite.entregas || [];
+  const puedeEditar = state.session && state.session.rol !== 'consulta';
+  if (!entregas.length) {
+    table.innerHTML = '<thead><tr>' + COMPRAS_ENTREGAS_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Estado</th><th>Acciones</th></tr></thead>' +
+      '<tbody><tr><td class="empty-state" colspan="8">Todavía no hay entregas cargadas para este trámite.</td></tr></tbody>';
+    return;
+  }
+  const thead = '<thead><tr>' + COMPRAS_ENTREGAS_TABLE_COLS.map(c => `<th>${c.label}</th>`).join('') + '<th>Estado</th><th>Acciones</th></tr></thead>';
+  const tbody = '<tbody>' + entregas.map(en => {
+    const tds = COMPRAS_ENTREGAS_TABLE_COLS.map(col => {
+      const val = en[col.key];
+      if (col.key === 'monto') return `<td class="mono">${formatMoney(val)}</td>`;
+      if (col.key === 'cantidad') return `<td class="mono">${val || ''}</td>`;
+      if (col.key === 'fechaContractual' || col.key === 'fechaReal') return `<td>${val ? formatFechaCorta(val) : ''}</td>`;
+      return `<td>${escapeHtml(String(val || ''))}</td>`;
+    }).join('');
+    let estadoTxt = '—';
+    if (en.entregado) estadoTxt = '<span class="cal-badge entregado">Entregada</span>';
+    else if (en.vencida) estadoTxt = `<span class="cal-badge vencido">Vencida (${en.desvio}d)</span>`;
+    else if (en.fechaContractual) estadoTxt = '<span class="cal-badge lejano">Pendiente</span>';
+    const acciones = puedeEditar ? `<td class="row-actions">
+        <button class="icon-btn" title="Editar" onclick="editarComprasEntrega(${comprasJsArg(en._id)})">✏️</button>
+        <button class="icon-btn danger" title="Eliminar" onclick="eliminarComprasEntrega(${comprasJsArg(en._id)})">🗑️</button>
+      </td>` : '<td></td>';
+    return `<tr>${tds}<td>${estadoTxt}</td>${acciones}</tr>`;
+  }).join('') + '</tbody>';
+  table.innerHTML = thead + tbody;
+}
+function editarComprasEntrega(id) {
+  const tramite = comprasTramitesCache.find(t => t._id === comprasTramiteFormEditId);
+  if (!tramite) return;
+  const entrega = (tramite.entregas || []).find(e => e._id === id);
+  if (!entrega) return;
+  comprasEntregaFormEditId = id;
+  buildComprasEntregaForm(entrega);
+  document.getElementById('comprasEntregaForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+document.getElementById('comprasEntregaFormCancelarBtn').addEventListener('click', () => {
+  comprasEntregaFormEditId = null;
+  buildComprasEntregaForm();
+});
+document.getElementById('comprasEntregaForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('comprasEntregaFormMsg');
+  const datos = {};
+  document.querySelectorAll('#comprasEntregaFormFields [data-key]').forEach(el => { datos[el.dataset.key] = el.value; });
+  try {
+    if (comprasEntregaFormEditId) {
+      await apiCall('compras_entrega_actualizar', { id: comprasEntregaFormEditId, datos });
+    } else {
+      datos.idTramite = comprasTramiteFormEditId;
+      await apiCall('compras_entrega_crear', { datos });
+    }
+    comprasEntregaFormEditId = null;
+    await cargarComprasTramites();
+    const tramite = comprasTramitesCache.find(t => t._id === comprasTramiteFormEditId) || {};
+    renderComprasEntregasTable(tramite);
+    renderComprasAmpliacionResumen(tramite);
+    buildComprasEntregaForm();
+    msg.hidden = true;
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.className = 'form-msg err';
+    msg.hidden = false;
+  }
+});
+async function eliminarComprasEntrega(id) {
+  if (!confirm('¿Eliminar esta entrega?')) return;
+  try {
+    await apiCall('compras_entrega_eliminar', { id });
+    await cargarComprasTramites();
+    const tramite = comprasTramitesCache.find(t => t._id === comprasTramiteFormEditId) || {};
+    renderComprasEntregasTable(tramite);
+    renderComprasAmpliacionResumen(tramite);
+  } catch (err) {
+    alert('Error al eliminar: ' + err.message);
+  }
+}
+
+// ---- Resumen de saldos: Cantidad Planificada (por trámite) + Ampliación (agrupado por PC) ----
+function renderComprasAmpliacionResumen(tramite) {
+  const cont = document.getElementById('comprasAmpliacionResumen');
+  const partes = [];
+  const cantPlan = parseFloat(tramite.cantidadPlanificada) || 0;
+  if (cantPlan) {
+    partes.push(`<p><strong>Cantidad Planificada</strong> — Declarada: ${cantPlan} · Gestionada: ${tramite.cantidadPlanificadaGestionada || 0} · Disponible: ${tramite.cantidadPlanificadaDisponible}</p>`);
+  }
+  if (tramite.nroPC) {
+    partes.push(`<p><strong>Ampliación de este PC (${escapeHtml(tramite.nroPC)})</strong> — Base: ${formatMoney(tramite.ampliacionBasePC)} · Tope (${(comprasTramitesMeta.pctMaximoAmpliacion * 100).toFixed(0)}%): ${formatMoney(tramite.ampliacionTopePC)} · Gestionado: ${formatMoney(tramite.ampliacionGestionadoPC)} · Disponible: ${formatMoney(tramite.ampliacionDisponiblePC)}</p>`);
+  }
+  if (!partes.length) { cont.hidden = true; return; }
+  cont.innerHTML = partes.join('');
+  cont.hidden = false;
+}
+
+// ---- Exportar / Importar CSV ----
+// Usa la misma librería XLSX (SheetJS) ya cargada para el Excel del modelo viejo: escribe/lee CSV
+// por extensión de archivo, sin agregar ninguna dependencia nueva.
+document.getElementById('comprasTramitesExportBtn').addEventListener('click', () => {
+  if (!comprasTramitesCache.length) { alert('No hay trámites para exportar.'); return; }
+  const filas = comprasTramitesCache.map(t => ({
+    'Pospre': t.pospre, 'Expediente': t.expediente, 'Año': t.anio, 'Extracto': t.extracto,
+    'Sucursal / Destino': t.sucursal, 'Matrícula N°': t.matricula, 'Detalle de Matrícula': t.detalleMat,
+    'Cantidad': t.cantidad, '$ Unitario Oficial': t.montoUnitOficial, '$ Subtotal Oficial': t.montoSubtotalOficial,
+    'Fecha de Apertura': t.fechaApertura, 'Cantidad Planificada (tope)': t.cantidadPlanificada,
+    'Cantidad Planificada Gestionada': t.cantidadPlanificadaGestionada, 'Cantidad Planificada Disponible': t.cantidadPlanificadaDisponible,
+    '$ Unitario Adjudicado': t.montoUnitAdjudicado, '$ Subtotal Adjudicado': t.montoSubtotalAdjudicado,
+    'Contratista / Oferente': t.contratista, 'N° de Pedido de Compras': t.nroPC, 'Fecha de PC': t.fechaPC,
+    'Estado': t.estado, 'Observaciones': t.observaciones
+  }));
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Trámites');
+  XLSX.writeFile(wb, 'compras_tramites_export.csv');
+});
+
+// La importación por CSV SIEMPRE crea trámites nuevos (no actualiza existentes por N° de fila ni
+// por ningún otro cruce) — a diferencia del importador de Excel del modelo viejo. Es la opción más
+// simple y más segura para arrancar; si hace falta actualizar en masa, se puede sumar más adelante.
+document.getElementById('comprasTramitesImportFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById('comprasTramitesImportMsg');
+  msg.hidden = false;
+  msg.className = 'table-note';
+  msg.textContent = 'Leyendo archivo...';
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const filas = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    const mapaColumnas = {
+      'Pospre': 'pospre', 'Expediente': 'expediente', 'Extracto': 'extracto',
+      'Sucursal / Destino': 'sucursal', 'Matrícula N°': 'matricula', 'Detalle de Matrícula': 'detalleMat',
+      'Cantidad': 'cantidad', '$ Unitario Oficial': 'montoUnitOficial', '$ Subtotal Oficial': 'montoSubtotalOficial',
+      'Fecha de Apertura': 'fechaApertura', 'Cantidad Planificada (tope)': 'cantidadPlanificada',
+      '$ Unitario Adjudicado': 'montoUnitAdjudicado', '$ Subtotal Adjudicado': 'montoSubtotalAdjudicado',
+      'Contratista / Oferente': 'contratista', 'N° de Pedido de Compras': 'nroPC', 'Fecha de PC': 'fechaPC',
+      'Estado': 'estado', 'Observaciones': 'observaciones'
+    };
+    let creados = 0;
+    for (const fila of filas) {
+      const datos = {};
+      Object.keys(mapaColumnas).forEach(col => {
+        if (fila[col] !== undefined && fila[col] !== '') datos[mapaColumnas[col]] = fila[col];
+      });
+      if (!datos.expediente) continue; // fila sin expediente: se omite
+      await apiCall('compras_tramite_crear', { datos });
+      creados++;
+    }
+    msg.className = 'table-note';
+    msg.textContent = `Listo — se crearon ${creados} trámite(s) nuevo(s) a partir del CSV.`;
+    await cargarComprasTramites();
+    await refrescarRegistrosTrasCompras();
+  } catch (err) {
+    msg.className = 'table-note';
+    msg.textContent = 'Error al importar: ' + err.message;
+  }
+  document.getElementById('comprasTramitesImportFile').value = '';
+});
+
+// ---- Migración desde el modelo viejo (Árbol) — aditiva, se puede correr más de una vez ----
+document.getElementById('comprasMigrarBtn').addEventListener('click', async () => {
+  if (!confirm('Esto va a leer todo lo cargado en la Vista Árbol y crear los Trámites equivalentes en este modelo nuevo. No borra ni modifica nada de la Vista Árbol, y se puede correr más de una vez sin duplicar. ¿Continuar?')) return;
+  const msg = document.getElementById('comprasMigrarMsg');
+  msg.hidden = false;
+  msg.textContent = 'Migrando...';
+  try {
+    const data = await apiCall('compras_migrar_a_tramites');
+    const r = data.resultado;
+    msg.textContent = `Listo — ${r.tramitesCreados} trámite(s) nuevo(s) creados, ${r.tramitesYaMigrados} ya estaban migrados (se saltearon), ${r.entregasCreadas} entrega(s) generadas.`;
+    await cargarComprasTramites();
+    await refrescarRegistrosTrasCompras();
+  } catch (err) {
+    msg.textContent = 'Error al migrar: ' + err.message;
+  }
 });
 

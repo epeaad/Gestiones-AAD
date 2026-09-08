@@ -615,6 +615,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .cal-badge.proximo{ background:var(--stage-3); }
 .cal-badge.lejano{ background:#94A3B8; }
 .cal-badge.cal-badge-apertura{ background:var(--stage-1); }
+.cal-badge.entregado{ background:var(--stage-5); }
 .calendar-day-detail{
   margin-top:14px; border:1px solid var(--border); border-radius:9px; padding:14px 16px; background:#FAFBFC;
 }

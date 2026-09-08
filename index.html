@@ -874,6 +874,15 @@
         <p class="table-note" style="margin:0;">Equipos, Máquinas, Instrumentos, Materiales y Bienes — módulo independiente de Contrataciones.</p>
       </div>
 
+      <div class="panel" id="comprasVistaToggle" style="margin-bottom:16px;">
+        <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+          <button type="button" class="btn btn-secondary" id="comprasVistaArbolBtn" onclick="cambiarVistaCompras('arbol')">Vista Árbol (actual)</button>
+          <button type="button" class="btn btn-secondary" id="comprasVistaTramitesBtn" onclick="cambiarVistaCompras('tramites')">Vista Trámites (nueva)</button>
+          <p class="table-note" style="margin:0;">Las dos vistas leen y escriben en hojas separadas de la planilla — todavía no comparten datos. Usá "Vista Trámites" para probar el modelo nuevo sin arriesgar lo ya cargado en el Árbol.</p>
+        </div>
+      </div>
+
+      <div id="comprasArbolWrap">
       <div class="panel" id="comprasToolbar">
         <div class="view-header" style="margin-bottom:10px;">
           <h3 style="margin:0;">Cargar / Importar</h3>
@@ -944,6 +953,95 @@
           <table id="comprasTree" class="data-table"></table>
         </div>
       </div>
+      </div>
+      <!-- /#comprasArbolWrap -->
+
+      <div id="comprasTramitesWrap" hidden>
+        <div class="panel" id="comprasTramitesToolbar">
+          <div class="view-header" style="margin-bottom:10px;">
+            <h3 style="margin:0;">Cargar / Importar / Exportar</h3>
+          </div>
+          <div class="form-actions" style="justify-content:flex-start; gap:10px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" onclick="abrirComprasTramiteForm(null)">+ Nuevo Trámite</button>
+            <label class="btn btn-ghost" style="cursor:pointer;">Importar desde CSV
+              <input type="file" id="comprasTramitesImportFile" accept=".csv" style="display:none;" />
+            </label>
+            <button type="button" id="comprasTramitesExportBtn" class="btn btn-secondary">Exportar a CSV</button>
+            <button type="button" id="comprasMigrarBtn" class="btn btn-ghost">Migrar datos del Árbol (una vez)</button>
+          </div>
+          <p class="table-note" id="comprasTramitesImportMsg" hidden></p>
+          <p class="table-note" id="comprasMigrarMsg" hidden></p>
+        </div>
+
+        <div class="panel" id="comprasTramiteFormPanel" hidden>
+          <h3 id="comprasTramiteFormTitle">Nuevo Trámite</h3>
+          <div class="lifeline" id="comprasTramiteLifeline"></div>
+          <form id="comprasTramiteForm">
+            <div id="comprasTramiteStagePanels"></div>
+            <div class="form-actions">
+              <p id="comprasTramiteFormMsg" class="form-msg" hidden></p>
+              <button type="button" id="comprasTramiteFormCancelarBtn" class="btn btn-ghost">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+          </form>
+
+          <div id="comprasEntregasSection" hidden>
+            <div class="field-grid-divider" style="margin-top:22px;"></div>
+            <div class="stage-panel-title" style="margin-top:6px;"><span class="dot" style="background:var(--stage-3)"></span> Entregas</div>
+            <div id="comprasAmpliacionResumen" class="cert-nota" hidden></div>
+            <div class="table-wrap" style="margin-bottom:14px;">
+              <table id="comprasEntregasTable" class="data-table"></table>
+            </div>
+            <form id="comprasEntregaForm">
+              <div class="field-grid" id="comprasEntregaFormFields"></div>
+              <div class="form-actions">
+                <p id="comprasEntregaFormMsg" class="form-msg" hidden></p>
+                <button type="button" id="comprasEntregaFormCancelarBtn" class="btn btn-ghost" hidden>Cancelar edición</button>
+                <button type="submit" class="btn btn-secondary">+ Agregar Entrega</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="view-header" style="margin-bottom:14px;">
+            <h3 style="margin:0;">Trámites de Compras</h3>
+          </div>
+          <div class="filters-bar" id="comprasTramitesFiltersBar">
+            <div class="filter-field">
+              <label>Pospre</label>
+              <div class="multiselect" data-tfilter="pospre"></div>
+            </div>
+            <div class="filter-field">
+              <label>Expediente</label>
+              <input type="text" data-tfilter="expediente" placeholder="Buscar..." />
+            </div>
+            <div class="filter-field">
+              <label>Año</label>
+              <div class="multiselect" data-tfilter="anio"></div>
+            </div>
+            <div class="filter-field">
+              <label>N° PC</label>
+              <div class="multiselect" data-tfilter="nroPC"></div>
+            </div>
+            <div class="filter-field">
+              <label>Sucursal</label>
+              <div class="multiselect" data-tfilter="sucursal"></div>
+            </div>
+            <div class="filter-field">
+              <label>Estado</label>
+              <div class="multiselect" data-tfilter="estado"></div>
+            </div>
+            <button id="comprasTramitesClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+          </div>
+          <p class="results-count" id="comprasTramitesResultsCount"></p>
+          <div class="scroll-top-bar" id="comprasTramitesScrollTop"><div class="scroll-top-inner" id="comprasTramitesScrollTopInner"></div></div>
+          <div class="table-wrap">
+            <table id="comprasTramitesTable" class="data-table"></table>
+          </div>
+        </div>
+      </div>
+      <!-- /#comprasTramitesWrap -->
     </section>
 
     <!-- ---------- FORMULARIO (alta / edición) ---------- -->
