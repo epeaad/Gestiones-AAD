@@ -4365,7 +4365,8 @@ const COMPRAS_TRAMITE_INICIO_FIELDS = [
   { key: 'montoUnitOficial', label: '$ Unitario Oficial (sin IVA)', type: 'number' },
   { key: 'montoSubtotalOficial', label: '$ Subtotal Oficial (sin IVA)', type: 'number', derived: true },
   { key: 'fechaApertura', label: 'Fecha de Apertura', type: 'date' },
-  { key: 'cantidadPlanificada', label: 'Cantidad Planificada (tope)', type: 'number' }
+  { key: 'cantidadPlanificada', label: 'Cantidad Planificada (tope)', type: 'number' },
+  { key: 'plazoEntrega', label: 'Plazo de Entrega (días desde la Fecha de PC)', type: 'number' }
 ];
 const COMPRAS_TRAMITE_ADJUDICACION_FIELDS = [
   { key: 'montoUnitAdjudicado', label: '$ Unitario Adjudicado (sin IVA)', type: 'number' },
@@ -4624,6 +4625,13 @@ function buildComprasEntregaForm(record) {
   COMPRAS_ENTREGA_FORM_FIELDS.forEach(f => cont.appendChild(comprasEntregaBuildFieldInput(f, record || {})));
   document.getElementById('comprasEntregaFormCancelarBtn').hidden = !record;
   document.querySelector('#comprasEntregaForm button[type="submit"]').textContent = record ? 'Guardar cambios' : '+ Agregar Entrega';
+  // En una Entrega nueva (no edición), el Plazo arranca con el "Plazo de Entrega" que ya se haya
+  // declarado en el Inicio del trámite — se puede pisar a mano si esta Entrega puntual necesita
+  // otro plazo distinto. En una edición no se toca: se respeta lo que esa Entrega ya tenía cargado.
+  if (!record) {
+    const tramite = comprasTramitesCache.find(t => t._id === comprasTramiteFormEditId);
+    if (tramite && tramite.plazoEntrega) setComprasEntregaFormValue('plazo', tramite.plazoEntrega);
+  }
   comprasEntregaRecalcMonto();
 }
 function getComprasEntregaFormValue(key) {
@@ -4770,6 +4778,7 @@ document.getElementById('comprasTramitesExportBtn').addEventListener('click', ()
     'Sucursal / Destino': t.sucursal, 'Matrícula N°': t.matricula, 'Detalle de Matrícula': t.detalleMat,
     'Cantidad': t.cantidad, '$ Unitario Oficial': t.montoUnitOficial, '$ Subtotal Oficial': t.montoSubtotalOficial,
     'Fecha de Apertura': t.fechaApertura, 'Cantidad Planificada (tope)': t.cantidadPlanificada,
+    'Plazo de Entrega (días desde Fecha de PC)': t.plazoEntrega,
     'Cantidad Planificada Gestionada': t.cantidadPlanificadaGestionada, 'Cantidad Planificada Disponible': t.cantidadPlanificadaDisponible,
     '$ Unitario Adjudicado': t.montoUnitAdjudicado, '$ Subtotal Adjudicado': t.montoSubtotalAdjudicado,
     'Contratista / Oferente': t.contratista, 'N° de Pedido de Compras': t.nroPC, 'Fecha de PC': t.fechaPC,
@@ -4801,6 +4810,7 @@ document.getElementById('comprasTramitesImportFile').addEventListener('change', 
       'Sucursal / Destino': 'sucursal', 'Matrícula N°': 'matricula', 'Detalle de Matrícula': 'detalleMat',
       'Cantidad': 'cantidad', '$ Unitario Oficial': 'montoUnitOficial', '$ Subtotal Oficial': 'montoSubtotalOficial',
       'Fecha de Apertura': 'fechaApertura', 'Cantidad Planificada (tope)': 'cantidadPlanificada',
+      'Plazo de Entrega (días desde Fecha de PC)': 'plazoEntrega',
       '$ Unitario Adjudicado': 'montoUnitAdjudicado', '$ Subtotal Adjudicado': 'montoSubtotalAdjudicado',
       'Contratista / Oferente': 'contratista', 'N° de Pedido de Compras': 'nroPC', 'Fecha de PC': 'fechaPC',
       'Estado': 'estado', 'Observaciones': 'observaciones'
