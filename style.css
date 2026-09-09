@@ -284,6 +284,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   .content{ max-width:100% !important; padding:0 12px !important; }
   #appError{ display:none !important; }
   #view-dashboard .control-inline, #dashClearFilters{ display:none !important; }
+  #view-seguimiento .control-inline, #seguFiltersBar, #seguFiltersBarAvanzados{ display:none !important; }
   .print-header{ display:block !important; margin-bottom:14px; }
   .print-title{ margin:0; font-size:16px; font-weight:700; }
   .print-subtitle{ margin:2px 0 0; font-size:11px; color:var(--text-soft); }
@@ -657,6 +658,13 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .data-table tbody tr.row-desierto .col-sticky{ background:#FEF2F2; }
 .data-table tbody tr.row-desierto:hover{ background:#FEE2E2; }
 .data-table tbody tr.row-desierto:hover .col-sticky{ background:#FEE2E2; }
+
+/* Trámites Relanzados: mismo tratamiento, con el tono ámbar clarito de la pastilla de Estado "Relanzado". */
+.data-table tbody tr.row-relanzado{ background:#FFFBEB; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+.data-table tbody tr.row-relanzado td{ border-color:#FDE68A; }
+.data-table tbody tr.row-relanzado .col-sticky{ background:#FFFBEB; }
+.data-table tbody tr.row-relanzado:hover{ background:#FEF3C7; }
+.data-table tbody tr.row-relanzado:hover .col-sticky{ background:#FEF3C7; }
 
 .state-pill{
   display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:600;

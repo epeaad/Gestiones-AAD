@@ -489,7 +489,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -1754,6 +1754,7 @@ function sortRows(rows, sortState, valueFn) {
 function rowClassForEstado(r) {
   if (r.estado === 'Finalizado') return ' class="row-finalizado"';
   if (r.estado === 'Desierto') return ' class="row-desierto"';
+  if (r.estado === 'Relanzado') return ' class="row-relanzado"';
   return '';
 }
 
@@ -2393,6 +2394,11 @@ function toggleContratistaButtons() {
 
 document.getElementById('printDashboardBtn').addEventListener('click', () => {
   document.getElementById('printDate').textContent = new Date().toLocaleString('es-AR');
+  window.print();
+});
+
+document.getElementById('seguPrintBtn').addEventListener('click', () => {
+  document.getElementById('seguPrintDate').textContent = new Date().toLocaleString('es-AR');
   window.print();
 });
 
@@ -4299,7 +4305,7 @@ const COMPRAS_TRAMITES_TABLE_COLS = [
 ];
 const COMPRAS_TRAMITES_MONEY_KEYS = new Set(['montoSubtotalOficial', 'montoSubtotalAdjudicado']);
 const COMPRAS_TRAMITES_NUMBER_KEYS = new Set(['anio', 'cantidad', 'cantidadPlanificadaDisponible']);
-const COMPRAS_TRAMITES_ESTADO_CLASS = { 'Finalizado': 'row-finalizado', 'Desierto': 'row-desierto' };
+const COMPRAS_TRAMITES_ESTADO_CLASS = { 'Finalizado': 'row-finalizado', 'Desierto': 'row-desierto', 'Relanzado': 'row-relanzado' };
 
 function comprasTramitesSortValue(t, key) { return t[key]; }
 
