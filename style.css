@@ -734,6 +734,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .calc-badge{
   display:inline-block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;
   color:var(--brand); background:var(--brand-soft); padding:1px 6px; border-radius:99px; margin-left:4px;
+  cursor:help;
 }
 .calc-badge.sum-badge{ color:var(--stage-4); background:#E6F5F3; }
 .sum-helper{ display:flex; gap:6px; margin-top:6px; }

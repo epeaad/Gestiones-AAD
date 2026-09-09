@@ -797,18 +797,23 @@ function addDays(dateStr, days) {
   return d.toISOString().slice(0, 10);
 }
 function recalcDerivedFields() {
-  const cantidad = parseFloat(getFormValue('cantidadesIIBB')) || 0;
-  const presUnit = parseFloat(getFormValue('presOficialUnitario')) || 0;
-  const adjUnit = parseFloat(getFormValue('adjudicadoUnitario')) || 0;
+  const cantidadRaw = getFormValue('cantidadesIIBB');
+  const presUnitRaw = getFormValue('presOficialUnitario');
+  const adjUnitRaw = getFormValue('adjudicadoUnitario');
+  const cantidad = parseFloat(cantidadRaw) || 0;
+  const presUnit = parseFloat(presUnitRaw) || 0;
+  const adjUnit = parseFloat(adjUnitRaw) || 0;
 
-  // Solo se recalcula (y se pisa lo que hubiera) cuando SÍ hay con qué calcularlo. Si Cantidad o
-  // Unitario están vacíos en este momento —por ejemplo, un trámite clonado/importado que ya trae
-  // el $ Presupuesto Oficial cargado directamente, sin pasar por estos dos campos— NO se borra el
-  // valor que ya estaba, para no perder un dato válido solo porque su "fuente" está vacía ahora.
-  if (cantidad && presUnit) {
+  // Se recalcula (y se pisa lo que hubiera) cuando los dos campos de origen tienen ALGO cargado —
+  // un 0 puesto a propósito cuenta como "algo" (por ejemplo, para vaciar un Total Adjudicado que
+  // quedó mal, se escribe 0 en el $ Unitario y ese 0 se multiplica igual). Lo que protege al valor
+  // ya cargado es que el campo esté VACÍO, no que el número valga cero — así, un trámite clonado o
+  // importado que ya trae el $ Presupuesto Oficial cargado directo, sin pasar por estos dos campos,
+  // no pierde ese dato solo porque su "fuente" está vacía ahora.
+  if (cantidadRaw !== '' && presUnitRaw !== '') {
     setFormValue('presupuestoOficialRubro', (cantidad * presUnit).toFixed(2));
   }
-  if (cantidad && adjUnit) {
+  if (cantidadRaw !== '' && adjUnitRaw !== '') {
     setFormValue('totalAdjudicado', (cantidad * adjUnit).toFixed(2));
   }
 
@@ -842,17 +847,28 @@ document.getElementById('stagePanels').addEventListener('click', (e) => {
 // Valor sentinela para la opción "Otra (nueva)" de los campos con desplegable dinámico (Pospre, Sucursal).
 const DYNAMIC_SELECT_OTRO = '__otro__';
 
+// Texto de ayuda del badge "calculado", según de qué se completa cada campo — para los que se
+// arman con Cantidad × $ Unitario, se avisa además cómo vaciarlos a propósito (ver recalcDerivedFields).
+const DERIVED_FIELD_HINTS = {
+  presupuestoOficialRubro: 'Se completa solo (Cantidad × $ Unitario Oficial). Para dejarlo en 0, escribí 0 en el $ Unitario Oficial (no lo dejes vacío) y se recalcula solo.',
+  totalAdjudicado: 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.',
+  fechaFinContrato: 'Se completa sola (Fecha Inicio Real + Plazo de Entrega).',
+  fechaFinPlazoAmpliada: 'Se completa sola (Fecha Inicio Real + Plazo de Entrega + Ampliación de Plazo).',
+  pctAvanceCertificacion: 'Se calcula solo, sumando las Certificaciones ya cargadas para este trámite.',
+  pctIIBBProyectados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
+  certificadosAAD: 'Se calcula solo, sumando las Certificaciones ya cargadas para este trámite.',
+  sumatoriaMultas: 'Se calcula solo, sumando las Multas cargadas para este trámite.',
+  cantidadCertificadosProcesados: 'Se calcula solo, contando las Certificaciones ya cargadas para este trámite.',
+  cantidadProyectos: 'Se calcula solo, contando los Proyectos ya cargados para este trámite.',
+  cantTotalIIBBProyectados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
+  proyectadosAcumulados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.'
+};
 function buildFieldInput(f, record) {
   const label = document.createElement('label');
   if (LONG_FIELDS.has(f.key)) label.classList.add('span-2');
   const value = record[f.key] != null ? record[f.key] : '';
   const isDerived = DERIVED_FIELDS.has(f.key);
-  // Los campos calculados NO se bloquean con "readonly": se autocompletan solos cuando hay con qué
-  // (ver recalcDerivedFields), pero si quedan con un valor viejo/erróneo porque su fuente está
-  // vacía —por ejemplo, un $ Total Adjudicado que quedó de antes y ahora no tiene $ Unitario
-  // cargado—, la persona tiene que poder escribirlo a mano para corregirlo. Bloquearlo dejaba ese
-  // valor atascado sin ninguna forma de arreglarlo desde la app.
-  const readonlyAttr = '';
+  const readonlyAttr = isDerived ? 'readonly tabindex="-1"' : '';
 
   let inputHtml;
   if (SELECT_FIELDS[f.key]) {
@@ -896,7 +912,8 @@ function buildFieldInput(f, record) {
         <button type="button" class="btn-mini-add" title="Sumar al total">+ Sumar</button>
       </div>`
     : '';
-  label.innerHTML = `<span class="field-label-text">${f.label}${isDerived ? ' <span class="calc-badge">calculado</span>' : ''}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}</span>${inputHtml}${sumHelperHtml}`;
+  const calcHint = DERIVED_FIELD_HINTS[f.key] || 'Se completa solo a partir de otros datos de este trámite.';
+  label.innerHTML = `<span class="field-label-text">${f.label}${isDerived ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>' : ''}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}</span>${inputHtml}${sumHelperHtml}`;
   return label;
 }
 
@@ -4408,11 +4425,7 @@ function comprasTramiteCamposEtapa(etapaId) {
 }
 function comprasTramiteBuildFieldInput(f, record) {
   const value = record[f.key] != null ? record[f.key] : '';
-  // No se bloquea con "readonly": se autocompleta solo cuando hay Cantidad y $ Unitario cargados
-  // (ver comprasTramiteRecalcDerivedFields), pero si queda con un valor viejo/erróneo porque le
-  // falta la fuente, tiene que poder corregirse a mano — mismo criterio que Registros, para no
-  // dejar ningún valor atascado sin forma de arreglarlo desde la app.
-  const readonlyAttr = '';
+  const readonlyAttr = f.derived ? 'readonly tabindex="-1"' : '';
   let inputHtml;
   if (f.type === 'dynselect') {
     const existentes = comprasTramitePospreOpciones();
@@ -4435,7 +4448,10 @@ function comprasTramiteBuildFieldInput(f, record) {
     inputHtml = `<input type="text" data-key="${f.key}" value="${escapeHtml(value)}" ${f.required ? 'required' : ''} />`;
   }
   const label = document.createElement('label');
-  label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}${f.derived ? ' <span class="calc-badge">calculado</span>' : ''}</span>${inputHtml}`;
+  const calcHint = f.key === 'montoSubtotalOficial'
+    ? 'Se completa solo (Cantidad × $ Unitario Oficial). Para dejarlo en 0, escribí 0 en el $ Unitario Oficial (no lo dejes vacío) y se recalcula solo.'
+    : 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.';
+  label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}${f.derived ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>' : ''}</span>${inputHtml}`;
   return label;
 }
 function comprasTramiteStageColorVar(idx) { return 'var(--stage-' + (idx + 1) + ')'; }
@@ -4523,11 +4539,17 @@ function setComprasTramiteFormValue(key, value) {
   if (el) el.value = value;
 }
 function comprasTramiteRecalcDerivedFields() {
-  const cantidad = parseFloat(getComprasTramiteFormValue('cantidad')) || 0;
-  const unitOficial = parseFloat(getComprasTramiteFormValue('montoUnitOficial')) || 0;
-  if (cantidad && unitOficial) setComprasTramiteFormValue('montoSubtotalOficial', (cantidad * unitOficial).toFixed(2));
-  const unitAdj = parseFloat(getComprasTramiteFormValue('montoUnitAdjudicado')) || 0;
-  if (cantidad && unitAdj) setComprasTramiteFormValue('montoSubtotalAdjudicado', (cantidad * unitAdj).toFixed(2));
+  // Igual criterio que Registros (ver recalcDerivedFields): un 0 puesto a propósito en el $
+  // Unitario cuenta como "hay dato" y recalcula igual (para poder vaciar un Subtotal que quedó
+  // mal) — lo que protege el valor ya cargado es que el campo esté VACÍO, no que valga cero.
+  const cantidadRaw = getComprasTramiteFormValue('cantidad');
+  const unitOficialRaw = getComprasTramiteFormValue('montoUnitOficial');
+  const unitAdjRaw = getComprasTramiteFormValue('montoUnitAdjudicado');
+  const cantidad = parseFloat(cantidadRaw) || 0;
+  const unitOficial = parseFloat(unitOficialRaw) || 0;
+  const unitAdj = parseFloat(unitAdjRaw) || 0;
+  if (cantidadRaw !== '' && unitOficialRaw !== '') setComprasTramiteFormValue('montoSubtotalOficial', (cantidad * unitOficial).toFixed(2));
+  if (cantidadRaw !== '' && unitAdjRaw !== '') setComprasTramiteFormValue('montoSubtotalAdjudicado', (cantidad * unitAdj).toFixed(2));
 }
 const COMPRAS_TRAMITE_RECALC_KEYS = new Set(['cantidad', 'montoUnitOficial', 'montoUnitAdjudicado']);
 document.getElementById('comprasTramiteStagePanels').addEventListener('input', (e) => {
@@ -4671,11 +4693,16 @@ function comprasEntregaRecalcMonto() {
   if (!comprasTramiteFormEditId) return;
   const tramite = comprasTramitesCache.find(t => t._id === comprasTramiteFormEditId);
   if (!tramite) return;
-  const cantidad = parseFloat(getComprasEntregaFormValue('cantidad')) || 0;
+  // Mismo criterio que el resto de la app: una Cantidad o un Plazo puestos en 0 a propósito
+  // también recalculan (para dejar el $ de esta entrega, o su Fecha Contractual, en el valor que
+  // corresponde a 0) — lo que importa es que el campo no esté vacío, no que el número sea cero.
+  const cantidadRaw = getComprasEntregaFormValue('cantidad');
+  const cantidad = parseFloat(cantidadRaw) || 0;
   const unitario = parseFloat(tramite.montoUnitAdjudicado) || parseFloat(tramite.montoUnitOficial) || 0;
-  if (cantidad && unitario) setComprasEntregaFormValue('monto', (cantidad * unitario).toFixed(2));
-  const plazo = parseInt(getComprasEntregaFormValue('plazo'));
-  if (tramite.fechaPC && plazo) setComprasEntregaFormValue('fechaContractual', addDays(tramite.fechaPC, plazo));
+  if (cantidadRaw !== '' && unitario) setComprasEntregaFormValue('monto', (cantidad * unitario).toFixed(2));
+  const plazoRaw = getComprasEntregaFormValue('plazo');
+  const plazo = parseInt(plazoRaw) || 0;
+  if (tramite.fechaPC && plazoRaw !== '') setComprasEntregaFormValue('fechaContractual', addDays(tramite.fechaPC, plazo));
 }
 document.getElementById('comprasEntregaFormFields').addEventListener('input', (e) => {
   const key = e.target.dataset.key;
