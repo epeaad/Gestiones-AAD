@@ -541,13 +541,10 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 
 /* ============ TABLE ============ */
 .table-wrap{ position:relative; overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
-.table-wrap::after{
-  content:'';
-  position:absolute; top:0; right:0; bottom:0; width:26px;
-  background:linear-gradient(to right, rgba(15,25,35,0), rgba(15,25,35,0.12));
-  pointer-events:none; opacity:1; transition:opacity .2s; border-radius:0 var(--radius) var(--radius) 0;
-}
-.table-wrap.scrolled-end::after{ opacity:0; }
+/* Se sacó la sombra/degradé que marcaba "hay más para scrollear" (::after) — de tanto en tanto
+   aparecía pegada aunque no hiciera falta scrollear nada, y se pidió sacarla directamente en vez
+   de seguir afinando cuándo debía mostrarse. El scroll horizontal en sí sigue funcionando igual
+   (overflow-x:auto de acá arriba), solo que ya no tiene ningún indicador visual superpuesto. */
 
 /* Barra de scroll horizontal duplicada arriba de la tabla (sincronizada) */
 .scroll-top-bar{ overflow-x:auto; overflow-y:hidden; height:14px; margin-bottom:6px; }
