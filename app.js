@@ -847,7 +847,12 @@ function buildFieldInput(f, record) {
   if (LONG_FIELDS.has(f.key)) label.classList.add('span-2');
   const value = record[f.key] != null ? record[f.key] : '';
   const isDerived = DERIVED_FIELDS.has(f.key);
-  const readonlyAttr = isDerived ? 'readonly tabindex="-1"' : '';
+  // Los campos calculados NO se bloquean con "readonly": se autocompletan solos cuando hay con qué
+  // (ver recalcDerivedFields), pero si quedan con un valor viejo/erróneo porque su fuente está
+  // vacía —por ejemplo, un $ Total Adjudicado que quedó de antes y ahora no tiene $ Unitario
+  // cargado—, la persona tiene que poder escribirlo a mano para corregirlo. Bloquearlo dejaba ese
+  // valor atascado sin ninguna forma de arreglarlo desde la app.
+  const readonlyAttr = '';
 
   let inputHtml;
   if (SELECT_FIELDS[f.key]) {
@@ -4403,7 +4408,11 @@ function comprasTramiteCamposEtapa(etapaId) {
 }
 function comprasTramiteBuildFieldInput(f, record) {
   const value = record[f.key] != null ? record[f.key] : '';
-  const readonlyAttr = f.derived ? 'readonly tabindex="-1"' : '';
+  // No se bloquea con "readonly": se autocompleta solo cuando hay Cantidad y $ Unitario cargados
+  // (ver comprasTramiteRecalcDerivedFields), pero si queda con un valor viejo/erróneo porque le
+  // falta la fuente, tiene que poder corregirse a mano — mismo criterio que Registros, para no
+  // dejar ningún valor atascado sin forma de arreglarlo desde la app.
+  const readonlyAttr = '';
   let inputHtml;
   if (f.type === 'dynselect') {
     const existentes = comprasTramitePospreOpciones();
