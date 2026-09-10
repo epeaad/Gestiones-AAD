@@ -636,10 +636,11 @@ function buildForm(record) {
     panel.id = 'panel-' + etapa.id;
     panel.hidden = idx !== 0;
     if (disabled) panel.hidden = true;
+    panel.style.setProperty('--stage-color', stageColorVar(idx));
 
     const title = document.createElement('div');
     title.className = 'stage-panel-title';
-    title.innerHTML = `<span class="dot" style="background:${stageColorVar(idx)}"></span> ${etapa.label}` +
+    title.innerHTML = `<span class="dot" style="background:${stageColorVar(idx)}">${idx + 1}</span> ${etapa.label}` +
       (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre O.D.P. / O.D.S. — Obra Menor)</span>' : '');
     panel.appendChild(title);
 
@@ -2611,7 +2612,8 @@ document.getElementById('histSnapshotBtn').addEventListener('click', async () =>
 });
 function kpiCard(label, value, sub, colorSemaforo) {
   const dot = colorSemaforo ? `<span class="kpi-dot" style="background:${colorSemaforo}"></span>` : '';
-  return `<div class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${dot}${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  const accentStyle = colorSemaforo ? ` style="--kpi-accent:${colorSemaforo}"` : '';
+  return `<div class="kpi-card"${accentStyle}><div class="kpi-label">${label}</div><div class="kpi-value">${dot}${value}</div><div class="kpi-sub">${sub}</div></div>`;
 }
 function sumField(rows, key) { return rows.reduce((acc, r) => acc + num(r[key]), 0); }
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
@@ -4479,10 +4481,11 @@ function buildComprasTramiteForm(record) {
     panel.className = 'stage-panel';
     panel.id = 'compras-tramite-panel-' + etapa.id;
     panel.hidden = idx !== 0;
+    panel.style.setProperty('--stage-color', comprasTramiteStageColorVar(idx));
 
     const title = document.createElement('div');
     title.className = 'stage-panel-title';
-    title.innerHTML = `<span class="dot" style="background:${comprasTramiteStageColorVar(idx)}"></span> ${etapa.label}`;
+    title.innerHTML = `<span class="dot" style="background:${comprasTramiteStageColorVar(idx)}">${idx + 1}</span> ${etapa.label}`;
     panel.appendChild(title);
 
     const grid = document.createElement('div');

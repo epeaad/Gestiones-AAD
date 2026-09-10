@@ -237,12 +237,20 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 
 /* ============ KPI / PANELS ============ */
 .kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:20px; }
+/* Cada tarjeta lleva un filete de color arriba: el semáforo de la métrica (verde/ámbar/rojo) cuando
+   la tarjeta ya trae uno —% Ejecución, Desvío, % IIBB—, o el color de marca para el resto. Antes
+   las 12 tarjetas eran indistinguibles entre sí (mismo borde gris, mismo fondo blanco) y toda la
+   fila se leía como un bloque de texto plano; el filete + más sombra + el valor más grande alcanza
+   para que la fila se lea como un tablero de indicadores, sin caer en color por card sin sentido. */
 .kpi-card{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-  padding:16px 18px;
+  padding:15px 18px 14px; border-top:3px solid var(--kpi-accent, var(--brand));
+  box-shadow:0 1px 3px rgba(11,79,108,0.05);
+  transition:box-shadow .15s ease, transform .15s ease;
 }
+.kpi-card:hover{ box-shadow:0 5px 16px rgba(11,79,108,0.12); transform:translateY(-1px); }
 .kpi-card .kpi-label{ font-size:12px; color:var(--text-soft); font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
-.kpi-card .kpi-value{ font-family:var(--font-mono); font-size:22px; font-weight:600; margin-top:6px; }
+.kpi-card .kpi-value{ font-family:var(--font-mono); font-size:24px; font-weight:700; margin-top:7px; letter-spacing:-0.01em; }
 .kpi-dot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; vertical-align:middle; }
 .kpi-card .kpi-sub{ font-size:12px; color:var(--text-soft); margin-top:4px; }
 #compKpiRow .kpi-card .kpi-value{ font-size:17px; }
@@ -342,14 +350,16 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 /* ---- Jerarquía: los paneles "principales" (gráficos centrales del Dashboard) llevan más peso
    visual que los secundarios (resúmenes, tablas de detalle) para que la vista tenga un orden de
    lectura claro en vez de que todo se vea al mismo nivel. ---- */
-.panel-primary{ border-color:var(--border); box-shadow:0 1px 3px rgba(11,79,108,0.06); }
+.panel-primary{ border-color:var(--border); box-shadow:0 1px 4px rgba(11,79,108,0.07); }
 .panel-primary h3{ font-size:16px; font-weight:700; color:var(--text); }
 
 /* ---- Título de sección (eyebrow) para separar los grandes bloques del Dashboard: KPIs, Análisis
-   visual, Detalle — sin agregar otro nivel de <h2>, solo una etiqueta chica y discreta. ---- */
+   visual, Detalle — sin agregar otro nivel de <h2>, solo una etiqueta chica. Color de marca (en vez
+   de gris) para que, ahora que las tarjetas de abajo pesan más, el separador siga leyéndose como
+   una división real entre bloques y no se lo lleve puesto el contraste nuevo. ---- */
 .section-label{
-  font-size:11px; font-weight:700; color:var(--text-soft); text-transform:uppercase;
-  letter-spacing:0.06em; margin:22px 0 10px; display:flex; align-items:center; gap:8px;
+  font-size:11px; font-weight:700; color:var(--brand); text-transform:uppercase;
+  letter-spacing:0.06em; margin:26px 0 12px; display:flex; align-items:center; gap:8px;
 }
 .section-label:first-child{ margin-top:0; }
 .section-label::after{ content:''; flex:1; height:1px; background:var(--border); }
@@ -693,12 +703,39 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .lifeline .stage-node.disabled{ opacity:0.35; cursor:not-allowed; }
 
 /* ============ FORM ============ */
+/* Antes cada etapa del formulario (Lanzamiento / Adjudicación / Proyectos / Certificación) era una
+   tarjeta blanca lisa con un título chico de 14px y un puntito de 10px — visualmente indistinguible
+   de un grupo de campos sueltos. Alguien que entra por primera vez no la lee como "un paso del
+   trámite" y no entiende la agrupación. Ahora el título se convierte en una barra de encabezado que
+   ocupa todo el ancho de la tarjeta, teñida con el color de esa etapa (el mismo que ya usa el
+   stepper de arriba), con un círculo numerado — la etapa realmente es una secuencia de pasos, por
+   eso el número tiene sentido acá. overflow:hidden recorta la tarjeta para que las esquinas
+   superiores de la barra respeten el radius del card. */
 .stage-panel{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-  padding:20px 22px; margin-bottom:16px;
+  padding:20px 22px; margin-bottom:18px; overflow:hidden;
+  box-shadow:0 1px 2px rgba(11,79,108,0.04);
 }
-.stage-panel-title{ display:flex; align-items:center; gap:10px; margin:0 0 16px; font-size:14px; font-weight:600; }
-.stage-panel-title .dot{ width:10px; height:10px; border-radius:50%; }
+.stage-panel-title{
+  display:flex; align-items:center; gap:11px;
+  margin:-20px -22px 20px; padding:14px 22px;
+  background:color-mix(in srgb, var(--stage-color, var(--brand)) 11%, #fff);
+  border-bottom:2px solid color-mix(in srgb, var(--stage-color, var(--brand)) 32%, #fff);
+  font-size:15px; font-weight:700; letter-spacing:-0.005em; color:var(--text);
+}
+.stage-panel-title .dot{
+  width:23px; height:23px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:11.5px; font-weight:700; font-family:var(--font-mono);
+  box-shadow:0 1px 2px rgba(0,0,0,0.18);
+}
+/* Dentro de un subsection-card (el bloque ámbar de "Datos únicos del contrato", que ya se destaca
+   solo con su propio fondo y borde de acento) el título vuelve al tratamiento simple de antes: la
+   barra y el número duplicarían el énfasis sobre un bloque que ya es, en sí, un destaque. */
+.subsection-card .stage-panel-title{
+  margin:0 0 12px; padding:0; background:none; border-bottom:none; font-size:14px; font-weight:600;
+}
+.subsection-card .stage-panel-title .dot{ width:10px; height:10px; font-size:0; box-shadow:none; }
 .field-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px 16px; }
 .field-grid label{ display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; color:var(--text-soft); }
 .field-grid label.span-2{ grid-column:span 2; }
