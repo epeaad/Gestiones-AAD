@@ -236,23 +236,39 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .topbar .btn-ghost:hover{ background:rgba(255,255,255,0.1); }
 
 /* ============ KPI / PANELS ============ */
-.kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:12px; margin-bottom:20px; }
+/* Grilla fija de 6 columnas (2 filas de 6 para las 12 tarjetas del Dashboard) en vez de auto-fit:
+   así el acomodo no depende del ancho de ventana — siempre son 2 filas parejas, no 7+5 ni 4+4+4
+   según cuánto entre. En ventanas angostas (tablet/notebook chica) baja a 3 y después a 2 columnas
+   para que las tarjetas no se aplasten force fit-content. */
+.kpi-row{ display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:10px; margin-bottom:20px; }
+@media (max-width:1180px){ .kpi-row{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
+@media (max-width:640px){ .kpi-row{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
 /* Cada tarjeta lleva un filete de color arriba: el semáforo de la métrica (verde/ámbar/rojo) cuando
    la tarjeta ya trae uno —% Ejecución, Desvío, % IIBB—, o el color de marca para el resto. Antes
    las 12 tarjetas eran indistinguibles entre sí (mismo borde gris, mismo fondo blanco) y toda la
    fila se leía como un bloque de texto plano; el filete + más sombra + el valor más grande alcanza
-   para que la fila se lea como un tablero de indicadores, sin caer en color por card sin sentido. */
+   para que la fila se lea como un tablero de indicadores, sin caer en color por card sin sentido.
+   Con 6 en la fila el padding y la tipografía bajan un poco (label/value/sub más chicos) para que
+   el número y la etiqueta más largos ("% IIBB Proyectados / Gestionados") entren sin verse
+   amontonados ni forzar una tercera línea de más. */
 .kpi-card{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-  padding:15px 18px 14px; border-top:3px solid var(--kpi-accent, var(--brand));
+  padding:12px 13px 11px; border-top:3px solid var(--kpi-accent, var(--brand));
   box-shadow:0 1px 3px rgba(11,79,108,0.05);
   transition:box-shadow .15s ease, transform .15s ease;
+  min-width:0; /* permite que la tarjeta se achique dentro de su columna de grilla sin desbordar */
 }
 .kpi-card:hover{ box-shadow:0 5px 16px rgba(11,79,108,0.12); transform:translateY(-1px); }
-.kpi-card .kpi-label{ font-size:12px; color:var(--text-soft); font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
-.kpi-card .kpi-value{ font-family:var(--font-mono); font-size:24px; font-weight:700; margin-top:7px; letter-spacing:-0.01em; }
-.kpi-dot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; vertical-align:middle; }
-.kpi-card .kpi-sub{ font-size:12px; color:var(--text-soft); margin-top:4px; }
+.kpi-card .kpi-label{
+  font-size:10.5px; color:var(--text-soft); font-weight:600; text-transform:uppercase;
+  letter-spacing:0.02em; line-height:1.25;
+}
+.kpi-card .kpi-value{
+  font-family:var(--font-mono); font-size:19px; font-weight:700; margin-top:5px;
+  letter-spacing:-0.01em; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.kpi-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+.kpi-card .kpi-sub{ font-size:10.5px; color:var(--text-soft); margin-top:3px; line-height:1.3; }
 #compKpiRow .kpi-card .kpi-value{ font-size:17px; }
 .text-success{ color:#16A34A !important; }
 .text-danger{ color:var(--danger) !important; }
