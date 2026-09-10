@@ -2081,15 +2081,15 @@ function renderDashboard() {
     kpiCard('Trámites (filtro actual)', rows.length, 'de ' + state.registros.length + ' totales'),
     kpiCard('Presupuesto oficial total', formatMillions(totalPresOficial), 'sin IVA'),
     kpiCard('Total adjudicado', formatMillions(totalAdjudicado), 'sin IVA'),
-    kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'sin IVA'),
-    kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado', colorPctEjecucion),
     kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial', colorDesvio),
-    kpiCard('Multas acumuladas', formatMillions(totalMultas), subMultas),
-    kpiCard('$ Reconocimiento acumulado', formatMillions(totalReconocimiento), 'suma de certificaciones cargadas'),
     kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
-    kpiCard('Contratistas en semáforo rojo', contratistaStats.rojo + ' / ' + contratistaStats.total, contratistaStats.total ? '<40% de avance · ' + ((contratistaStats.rojo / contratistaStats.total) * 100).toFixed(1) + '% del total' : 'sin contratistas en este filtro'),
     kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
     kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)', colorPctIIBB),
+    kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'sin IVA'),
+    kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado', colorPctEjecucion),
+    kpiCard('$ Reconocimiento acumulado', formatMillions(totalReconocimiento), 'suma de certificaciones cargadas'),
+    kpiCard('Multas acumuladas', formatMillions(totalMultas), subMultas),
+    kpiCard('Contratistas en semáforo rojo', contratistaStats.rojo + ' / ' + contratistaStats.total, contratistaStats.total ? '<40% de avance · ' + ((contratistaStats.rojo / contratistaStats.total) * 100).toFixed(1) + '% del total' : 'sin contratistas en este filtro'),
   ].join('');
 
 

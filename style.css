@@ -236,7 +236,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .topbar .btn-ghost:hover{ background:rgba(255,255,255,0.1); }
 
 /* ============ KPI / PANELS ============ */
-.kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:20px; }
+.kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:12px; margin-bottom:20px; }
 /* Cada tarjeta lleva un filete de color arriba: el semáforo de la métrica (verde/ámbar/rojo) cuando
    la tarjeta ya trae uno —% Ejecución, Desvío, % IIBB—, o el color de marca para el resto. Antes
    las 12 tarjetas eran indistinguibles entre sí (mismo borde gris, mismo fondo blanco) y toda la
@@ -381,6 +381,27 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text);
 }
 .filter-field-wide{ min-width:240px; }
+
+/* ---- "Agrupar por": a diferencia de un filtro más (que solo recorta filas), este control cambia
+   la FORMA de toda la tabla de abajo — pero antes era un <select> blanco más, igual a cualquier
+   filtro, y se perdía en el resto de los controles. Fondo y borde de color de marca + su etiqueta
+   en mayúsculas fuerte lo separan visualmente del resto: no es "otro filtro", es el que decide
+   cómo se agrupan los datos. Mismo tratamiento en Dashboard ("Detalle por agrupación") y en
+   Comparativa interanual, donde aparece el mismo control. ---- */
+.group-by-highlight{
+  display:flex; align-items:center; gap:9px;
+  background:var(--brand-soft); border:1.5px solid var(--brand);
+  border-radius:9px; padding:7px 12px 7px 13px; margin:0;
+  font-weight:400;
+}
+.group-by-highlight .group-by-text{
+  font-size:11.5px; font-weight:700; color:var(--brand-dark);
+  text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap;
+}
+.group-by-highlight select{
+  padding:6px 9px; border:1px solid var(--brand); border-radius:6px;
+  background:#fff; color:var(--brand-dark); font-weight:600;
+}
 
 /* ---- Filtros avanzados: colapsados por defecto para no abrumar con 13 controles a la vista;
    el botón alterna una segunda fila con los filtros más específicos/analíticos. ---- */
