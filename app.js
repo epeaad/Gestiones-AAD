@@ -804,16 +804,20 @@ function recalcDerivedFields() {
   const presUnit = parseFloat(presUnitRaw) || 0;
   const adjUnit = parseFloat(adjUnitRaw) || 0;
 
-  // Se recalcula (y se pisa lo que hubiera) cuando los dos campos de origen tienen ALGO cargado —
-  // un 0 puesto a propósito cuenta como "algo" (por ejemplo, para vaciar un Total Adjudicado que
-  // quedó mal, se escribe 0 en el $ Unitario y ese 0 se multiplica igual). Lo que protege al valor
-  // ya cargado es que el campo esté VACÍO, no que el número valga cero — así, un trámite clonado o
-  // importado que ya trae el $ Presupuesto Oficial cargado directo, sin pasar por estos dos campos,
-  // no pierde ese dato solo porque su "fuente" está vacía ahora.
-  if (cantidadRaw !== '' && presUnitRaw !== '') {
+  // Se recalcula (y se pisa lo que hubiera) apenas UNO de los dos campos de origen tiene ALGO
+  // cargado — un 0 puesto a propósito cuenta como "algo" (por ejemplo, para vaciar un Total
+  // Adjudicado que quedó mal, se escribe 0 en el $ Unitario y ese 0 se multiplica igual, tomando
+  // el otro campo como 0 si está vacío). Antes se exigía que los DOS campos tuvieran algo cargado
+  // (AND), lo que hacía que la multiplicación por cero no se disparara en valores heredados: si
+  // Cantidad venía vacía (típico en trámites heredados de una ampliación) y se cargaba 0 en el $
+  // Unitario, el Presupuesto Oficial se quedaba pegado con el valor viejo en vez de pasar a 0. Lo
+  // que protege al valor ya cargado sigue siendo que los DOS campos estén VACÍOS a la vez — así,
+  // un trámite clonado o importado que ya trae el $ Presupuesto Oficial cargado directo, sin pasar
+  // por estos dos campos, no pierde ese dato solo porque sus "fuentes" están vacías.
+  if (cantidadRaw !== '' || presUnitRaw !== '') {
     setFormValue('presupuestoOficialRubro', (cantidad * presUnit).toFixed(2));
   }
-  if (cantidadRaw !== '' && adjUnitRaw !== '') {
+  if (cantidadRaw !== '' || adjUnitRaw !== '') {
     setFormValue('totalAdjudicado', (cantidad * adjUnit).toFixed(2));
   }
 
