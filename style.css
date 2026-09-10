@@ -259,7 +259,15 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   min-width:0; /* permite que la tarjeta se achique dentro de su columna de grilla sin desbordar */
 }
 .kpi-card:hover{ box-shadow:0 5px 16px rgba(11,79,108,0.12); transform:translateY(-1px); }
+/* Las etiquetas tienen distinto largo ("% Ejecución" vs "% IIBB Proyectados / Gestionados") y
+   según el ancho de columna ocupan de 1 a 3 líneas — sin esto, el número de cada tarjeta arranca
+   a una altura distinta según cuántas líneas tenga SU etiqueta, y la fila se ve "ondulada" en vez
+   de alineada. Reservamos la altura de 3 líneas (la etiqueta más larga en la columna más angosta)
+   en TODAS las tarjetas por igual, así el valor siempre arranca en el mismo renglón sin importar
+   si su propia etiqueta usó 1, 2 o 3 líneas. Mismo criterio que ya usa .field-grid .field-label-text
+   en el formulario para el mismo problema (etiquetas con y sin badge "calculado"). */
 .kpi-card .kpi-label{
+  display:block; min-height:40px;
   font-size:10.5px; color:var(--text-soft); font-weight:600; text-transform:uppercase;
   letter-spacing:0.02em; line-height:1.25;
 }
@@ -268,7 +276,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   letter-spacing:-0.01em; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .kpi-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
-.kpi-card .kpi-sub{ font-size:10.5px; color:var(--text-soft); margin-top:3px; line-height:1.3; }
+.kpi-card .kpi-sub{ font-size:10.5px; color:var(--text-soft); margin-top:3px; line-height:1.3; min-height:14px; }
 #compKpiRow .kpi-card .kpi-value{ font-size:17px; }
 .text-success{ color:#16A34A !important; }
 .text-danger{ color:var(--danger) !important; }
