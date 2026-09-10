@@ -705,37 +705,45 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 /* ============ FORM ============ */
 /* Antes cada etapa del formulario (Lanzamiento / Adjudicación / Proyectos / Certificación) era una
    tarjeta blanca lisa con un título chico de 14px y un puntito de 10px — visualmente indistinguible
-   de un grupo de campos sueltos. Alguien que entra por primera vez no la lee como "un paso del
-   trámite" y no entiende la agrupación. Ahora el título se convierte en una barra de encabezado que
-   ocupa todo el ancho de la tarjeta, teñida con el color de esa etapa (el mismo que ya usa el
-   stepper de arriba), con un círculo numerado — la etapa realmente es una secuencia de pasos, por
-   eso el número tiene sentido acá. overflow:hidden recorta la tarjeta para que las esquinas
-   superiores de la barra respeten el radius del card. */
+   de un grupo de campos sueltos. Le agregamos una barra de encabezado con el color de esa etapa
+   (el mismo que ya usa el stepper de arriba) y un círculo numerado — pero eso solo no alcanzaba:
+   etapas como "Lanzamiento" tienen 13 campos, más de los que entran en una pantalla, así que apenas
+   el usuario scrollea un poco DENTRO de esa etapa (como en la captura que mandaron), el encabezado
+   se va arriba de la vista y los campos vuelven a leerse como sueltos — el problema no era el
+   estilo, era que el título desaparecía. position:sticky lo deja fijo arriba de .main-area (el
+   contenedor que scrollea) mientras esa etapa sigue en pantalla, y background sólido (no un tinte
+   claro) para que se note incluso al lado de los campos ya tocados. top:3px para no tapar la
+   franja de carga (.top-loading-bar, que ya ocupa esos primeros 3px cuando hay una llamada en
+   curso). z-index por encima de los inputs pero por debajo de esa franja y de cualquier modal. */
 .stage-panel{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-  padding:20px 22px; margin-bottom:18px; overflow:hidden;
+  padding:20px 22px; margin-bottom:18px;
   box-shadow:0 1px 2px rgba(11,79,108,0.04);
 }
 .stage-panel-title{
   display:flex; align-items:center; gap:11px;
+  position:sticky; top:3px; z-index:3;
   margin:-20px -22px 20px; padding:14px 22px;
-  background:color-mix(in srgb, var(--stage-color, var(--brand)) 11%, #fff);
-  border-bottom:2px solid color-mix(in srgb, var(--stage-color, var(--brand)) 32%, #fff);
-  font-size:15px; font-weight:700; letter-spacing:-0.005em; color:var(--text);
+  background:var(--stage-color, var(--brand)); color:#fff;
+  border-radius:var(--radius) var(--radius) 0 0;
+  font-size:15px; font-weight:700; letter-spacing:-0.005em;
+  box-shadow:0 2px 8px rgba(0,0,0,0.16);
 }
 .stage-panel-title .dot{
   width:23px; height:23px; border-radius:50%; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,0.22); border:1.5px solid rgba(255,255,255,0.6);
   color:#fff; font-size:11.5px; font-weight:700; font-family:var(--font-mono);
-  box-shadow:0 1px 2px rgba(0,0,0,0.18);
 }
 /* Dentro de un subsection-card (el bloque ámbar de "Datos únicos del contrato", que ya se destaca
    solo con su propio fondo y borde de acento) el título vuelve al tratamiento simple de antes: la
-   barra y el número duplicarían el énfasis sobre un bloque que ya es, en sí, un destaque. */
+   barra fija y el número duplicarían el énfasis sobre un bloque que ya es, en sí, un destaque —
+   y no necesita quedar pegada arriba porque es un bloque corto de 2 campos, no una etapa larga. */
 .subsection-card .stage-panel-title{
-  margin:0 0 12px; padding:0; background:none; border-bottom:none; font-size:14px; font-weight:600;
+  position:static; margin:0 0 12px; padding:0; background:none; color:var(--text);
+  box-shadow:none; font-size:14px; font-weight:600;
 }
-.subsection-card .stage-panel-title .dot{ width:10px; height:10px; font-size:0; box-shadow:none; }
+.subsection-card .stage-panel-title .dot{ width:10px; height:10px; font-size:0; border:none; }
 .field-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px 16px; }
 .field-grid label{ display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; color:var(--text-soft); }
 .field-grid label.span-2{ grid-column:span 2; }

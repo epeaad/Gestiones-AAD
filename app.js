@@ -640,7 +640,7 @@ function buildForm(record) {
 
     const title = document.createElement('div');
     title.className = 'stage-panel-title';
-    title.innerHTML = `<span class="dot" style="background:${stageColorVar(idx)}">${idx + 1}</span> ${etapa.label}` +
+    title.innerHTML = `<span class="dot">${idx + 1}</span> ${etapa.label}` +
       (isProyectos ? ' <span style="font-weight:400;color:var(--text-soft);font-size:12px;">(solo aplica a Pospre O.D.P. / O.D.S. — Obra Menor)</span>' : '');
     panel.appendChild(title);
 
@@ -4485,7 +4485,7 @@ function buildComprasTramiteForm(record) {
 
     const title = document.createElement('div');
     title.className = 'stage-panel-title';
-    title.innerHTML = `<span class="dot" style="background:${comprasTramiteStageColorVar(idx)}">${idx + 1}</span> ${etapa.label}`;
+    title.innerHTML = `<span class="dot">${idx + 1}</span> ${etapa.label}`;
     panel.appendChild(title);
 
     const grid = document.createElement('div');
