@@ -2326,8 +2326,10 @@ function renderDashboard() {
   filas = sortRows(filas, state.dashSort, dashValueFn);
 
   const allEntries = filas;
-  const entries = allEntries.slice(0, 12);
-  const hayMasGrupos = allEntries.length > entries.length;
+  // En pantalla se recortan a los 12 grupos principales por prolijidad, pero un reporte impreso
+  // necesita el detalle completo: en modo impresión (ver dashPrintMode más abajo) no se recorta.
+  const entries = dashPrintMode ? allEntries : allEntries.slice(0, 12);
+  const hayMasGrupos = !dashPrintMode && allEntries.length > entries.length;
 
   // Totales sobre TODOS los grupos (no solo los 12 que se muestran), para que coincida con los KPIs de arriba
   const totalGeneral = allEntries.reduce((acc, f) => {
@@ -2367,9 +2369,11 @@ function renderDashboard() {
 
   const nota = document.getElementById('dashTableNota');
   if (nota) {
-    nota.textContent = hayMasGrupos
-      ? `Se muestran los 12 grupos principales según el orden actual, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles. Hacé click en un encabezado para cambiar el orden.`
-      : 'Hacé click en un encabezado de la tabla para ordenar por esa columna.';
+    nota.textContent = dashPrintMode
+      ? `Detalle completo: ${allEntries.length} grupo(s).`
+      : hayMasGrupos
+        ? `Se muestran los 12 grupos principales según el orden actual, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles. Hacé click en un encabezado para cambiar el orden.`
+        : 'Hacé click en un encabezado de la tabla para ordenar por esa columna.';
     nota.hidden = false;
   }
 }
@@ -2440,6 +2444,27 @@ function toggleContratistaButtons() {
   document.getElementById('contratistaTop10Btn').classList.toggle('btn-toggle-active', contratistaMode === 'top10');
   document.getElementById('contratistaTodosBtn').classList.toggle('btn-toggle-active', contratistaMode === 'todos');
 }
+
+// ---- Impresión del Dashboard: la tabla "Detalle por agrupación" muestra en pantalla solo los 12
+// grupos principales (para que no sea interminable de scrollear), pero un reporte en PDF necesita
+// el detalle completo. Justo antes de imprimir —ya sea con el botón "Imprimir a PDF" o con Ctrl+P /
+// el menú "Imprimir" del navegador, que también disparan beforeprint/afterprint— se vuelve a
+// renderizar el Dashboard sin ese recorte, y al cerrar el diálogo de impresión se restaura la vista
+// normal en pantalla.
+let dashPrintMode = false;
+window.addEventListener('beforeprint', () => {
+  const viewDashboard = document.getElementById('view-dashboard');
+  if (viewDashboard && !viewDashboard.hidden) {
+    dashPrintMode = true;
+    renderDashboard();
+  }
+});
+window.addEventListener('afterprint', () => {
+  if (dashPrintMode) {
+    dashPrintMode = false;
+    renderDashboard();
+  }
+});
 
 document.getElementById('printDashboardBtn').addEventListener('click', () => {
   document.getElementById('printDate').textContent = new Date().toLocaleString('es-AR');
