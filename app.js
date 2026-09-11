@@ -44,7 +44,7 @@ const LONG_FIELDS = new Set(['detalleRubro','observaciones','seguimiento']);
 // ---- Campos calculados automáticamente: no se editan a mano ----
 const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados']);
 // Campos "fuente" que, al cambiar, disparan el recálculo
-const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','adjudicadoUnitario','fechaInicioReal','plazoEntrega','ampliacionPlazo']);
+const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','adjudicadoUnitario','fechaActoAdmin','fechaInicioReal','plazoEntrega','ampliacionPlazo']);
 // Campos "acumulador": tienen un mini sumador al lado para ir agregando valores sin calcular a mano
 const SUM_HELPER_FIELDS = new Set([]);
 
@@ -822,12 +822,34 @@ function recalcDerivedFields() {
     setFormValue('totalAdjudicado', (cantidad * adjUnit).toFixed(2));
   }
 
+  const fActoAdmin = getFormValue('fechaActoAdmin');
   const fInicioReal = getFormValue('fechaInicioReal');
   const plazoEntrega = parseInt(getFormValue('plazoEntrega')) || 0;
   const ampliacion = parseInt(getFormValue('ampliacionPlazo')) || 0;
-  if (fInicioReal) {
-    setFormValue('fechaFinContrato', addDays(fInicioReal, plazoEntrega));
-    setFormValue('fechaFinPlazoAmpliada', addDays(fInicioReal, plazoEntrega + ampliacion));
+
+  // Fecha base para contabilizar el plazo y calcular la fecha de finalización:
+  // el contrato debe iniciar antes de los 40 días corridos posteriores a la Fecha Acto Admin de
+  // Adjudicación (tope: Fecha Acto Admin + 40d).
+  //  a) Si eso ocurre (la Fecha Inicio Real está cargada y cae dentro del tope), se toma la Fecha
+  //     Inicio Real como base.
+  //  b) Si no ocurre (todavía no hay Fecha Inicio Real, o quedó después del tope), se toma como
+  //     base la Fecha Acto Admin + 40d.
+  // Ambas fechas quedan en formato ISO (yyyy-MM-dd), por lo que se pueden comparar como texto.
+  const fLimite = fActoAdmin ? addDays(fActoAdmin, 40) : '';
+  let fechaBase = '';
+  if (fInicioReal && fLimite && fInicioReal <= fLimite) {
+    fechaBase = fInicioReal;
+  } else if (fLimite) {
+    fechaBase = fLimite;
+  } else if (fInicioReal) {
+    // No hay Fecha Acto Admin cargada: no se puede aplicar el tope de 40 días, se usa la Fecha
+    // Inicio Real tal cual (comportamiento previo, para no romper trámites viejos sin ese dato).
+    fechaBase = fInicioReal;
+  }
+
+  if (fechaBase) {
+    setFormValue('fechaFinContrato', addDays(fechaBase, plazoEntrega));
+    setFormValue('fechaFinPlazoAmpliada', addDays(fechaBase, plazoEntrega + ampliacion));
   }
 
 }
@@ -857,8 +879,8 @@ const DYNAMIC_SELECT_OTRO = '__otro__';
 const DERIVED_FIELD_HINTS = {
   presupuestoOficialRubro: 'Se completa solo (Cantidad × $ Unitario Oficial). Para dejarlo en 0, escribí 0 en el $ Unitario Oficial (no lo dejes vacío) y se recalcula solo.',
   totalAdjudicado: 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.',
-  fechaFinContrato: 'Se completa sola (Fecha Inicio Real + Plazo de Entrega).',
-  fechaFinPlazoAmpliada: 'Se completa sola (Fecha Inicio Real + Plazo de Entrega + Ampliación de Plazo).',
+  fechaFinContrato: 'Se completa sola: (Fecha Inicio Real, o Fecha Acto Admin + 40d si el inicio real no ocurrió dentro de ese tope) + Plazo de Entrega.',
+  fechaFinPlazoAmpliada: 'Se completa sola: (Fecha Inicio Real, o Fecha Acto Admin + 40d si el inicio real no ocurrió dentro de ese tope) + Plazo de Entrega + Ampliación de Plazo.',
   pctAvanceCertificacion: 'Se calcula solo, sumando las Certificaciones ya cargadas para este trámite.',
   pctIIBBProyectados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
   certificadosAAD: 'Se calcula solo, sumando las Certificaciones ya cargadas para este trámite.',
