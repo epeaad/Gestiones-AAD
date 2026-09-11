@@ -312,7 +312,15 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   .print-header{ display:block !important; margin-bottom:14px; }
   .print-title{ margin:0; font-size:16px; font-weight:700; }
   .print-subtitle{ margin:2px 0 0; font-size:11px; color:var(--text-soft); }
-  .panel, .kpi-card, .contratista-card{ box-shadow:none !important; border:1px solid #ccc !important; break-inside:avoid; }
+  /* OJO: "break-inside:avoid" en el .panel (no solo en las tarjetas chicas) rompía la paginación de
+     cualquier panel más alto que una hoja (la tabla "Detalle por agrupación" con todos los grupos, el
+     pivot de Sucursales, o un gráfico) — Chrome, al no poder mantenerlo entero en una página, terminaba
+     directamente DESCARTANDO el contenido en vez de partirlo en la siguiente. Por eso esas secciones no
+     aparecían en el PDF. El "avoid" solo tiene sentido para elementos chicos que sí entran enteros en
+     una hoja (una tarjeta de KPI, una tarjeta de contratista): ahí sí evita que corten una tarjeta a la
+     mitad. El .panel en sí queda con break-inside:auto (el comportamiento normal: se parte si hace falta). */
+  .panel{ box-shadow:none !important; border:1px solid #ccc !important; break-inside:auto; }
+  .kpi-card, .contratista-card{ box-shadow:none !important; border:1px solid #ccc !important; break-inside:avoid; }
   body{ background:#fff !important; }
 
   /* Las tablas anchas (p. ej. "Detalle por agrupación", con ~20 columnas) se ven bien en pantalla

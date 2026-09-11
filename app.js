@@ -2179,6 +2179,11 @@ function renderDashboard() {
     plugins: [pointLabelPlugin],
     options: {
       responsive:true, maintainAspectRatio:false,
+      // Sin animación en modo impresión: Chart.js normalmente dibuja el gráfico en el próximo frame
+      // (vía requestAnimationFrame), pero window.print() toma la instantánea de la página de forma
+      // sincrónica, sin esperar ese frame — con la animación activada, el gráfico salía en blanco en
+      // el PDF. Desactivarla fuerza el dibujo completo en el mismo instante en que se crea el chart.
+      animation: dashPrintMode ? false : undefined,
       scales:{
         x:{ ticks:{ autoSkip:false, maxRotation:60, minRotation:30, callback: function(value) { return truncateLabel(this.getLabelForValue(value), 26); } } },
         y:{ beginAtZero:true, title:{ display:true, text:'Millones de $' } },
@@ -2248,6 +2253,8 @@ function renderDashboard() {
     options: {
       indexAxis: 'y',
       responsive:true, maintainAspectRatio:false,
+      // Ídem chart anterior: sin animación en modo impresión, para que dibuje de una sola vez.
+      animation: dashPrintMode ? false : undefined,
       scales:{
         x:{ beginAtZero:true, max: EJE_MAX_PC, title:{ display:true, text:'% Certificación' } },
         y:{ ticks:{ font:{ size:11 } } }
