@@ -2535,7 +2535,8 @@ function renderPivotSucursalEstado(rows) {
 
   const filas = Object.entries(bySucursal).map(([sucursal, v]) => ({
     sucursal, total: v.total, Adjudicado: v.Adjudicado, Desierto: v.Desierto, Relanzado: v.Relanzado, Finalizado: v.Finalizado,
-    pctAdjudicados: v.total > 0 ? (v.Adjudicado / v.total) * 100 : 0
+    pctAdjudicados: v.total > 0 ? (v.Adjudicado / v.total) * 100 : 0,
+    pctFinalizados: v.total > 0 ? (v.Finalizado / v.total) * 100 : 0
   })).sort((a, b) => b.total - a.total);
 
   const totales = filas.reduce((acc, f) => {
@@ -2544,11 +2545,12 @@ function renderPivotSucursalEstado(rows) {
     return acc;
   }, { total: 0, Adjudicado: 0, Desierto: 0, Relanzado: 0, Finalizado: 0 });
   const pctAdjudicadosTotal = totales.total > 0 ? (totales.Adjudicado / totales.total) * 100 : 0;
+  const pctFinalizadosTotal = totales.total > 0 ? (totales.Finalizado / totales.total) * 100 : 0;
 
   const table = document.getElementById('dashPivotTable');
-  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Contratos vigentes</th><th>Adjudicado</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th></tr></thead><tbody>' +
-    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td></tr>`).join('') +
-    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td></tr>` +
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Contratos vigentes</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Finalizados</th></tr></thead><tbody>' +
+    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
+    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
     '</tbody>';
   setupScrollShadow(table.closest('.table-wrap'));
 }
