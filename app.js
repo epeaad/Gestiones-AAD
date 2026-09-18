@@ -2526,7 +2526,10 @@ function renderPivotSucursalEstado(rows) {
   });
 
   const filas = Object.entries(bySucursal).map(([sucursal, v]) => ({
-    sucursal, total: v.total, Adjudicado: v.Adjudicado, Desierto: v.Desierto, Relanzado: v.Relanzado, Finalizado: v.Finalizado
+    sucursal, total: v.total, Adjudicado: v.Adjudicado, Desierto: v.Desierto, Relanzado: v.Relanzado, Finalizado: v.Finalizado,
+    pctAdjudicados: v.total > 0 ? (v.Adjudicado / v.total) * 100 : 0,
+    pctDesiertos: v.total > 0 ? (v.Desierto / v.total) * 100 : 0,
+    pctFinalizados: v.total > 0 ? (v.Finalizado / v.total) * 100 : 0
   })).sort((a, b) => b.total - a.total);
 
   const totales = filas.reduce((acc, f) => {
@@ -2539,56 +2542,11 @@ function renderPivotSucursalEstado(rows) {
   const pctFinalizadosTotal = totales.total > 0 ? (totales.Finalizado / totales.total) * 100 : 0;
 
   const table = document.getElementById('dashPivotTable');
-  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Trámites iniciados</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th></tr></thead><tbody>' +
-    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td></tr>`).join('') +
-    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td></tr>` +
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Trámites iniciados</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Desiertos</th><th>% de Finalizados</th></tr></thead><tbody>' +
+    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctDesiertos.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
+    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctDesiertosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
     '</tbody>';
   setupScrollShadow(table.closest('.table-wrap'));
-
-  // ---- Donuts: % Adjudicados / % de Desiertos / % de Finalizados, sobre el TOTAL del filtro
-  // actual (no por Sucursal) — se muestran al lado de la tabla, a la altura de la columna
-  // "Finalizado" en adelante, como resumen visual rápido de esos tres porcentajes. ----
-  renderDonutPivotSucursal('donutPctAdjudicados', pctAdjudicadosTotal, '#166534', '#DCFCE7');
-  renderDonutPivotSucursal('donutPctDesiertos', pctDesiertosTotal, '#991B1B', '#FEE2E2');
-  renderDonutPivotSucursal('donutPctFinalizados', pctFinalizadosTotal, '#3730A3', '#E0E7FF');
-}
-
-// Plugin "casero" para dibujar el % en el centro de cada donut (mismo patrón que los otros
-// plugins de Chart.js de esta app, como barEndLabelPlugin).
-const donutCenterTextPlugin = {
-  id: 'donutCenterTextPlugin',
-  afterDraw(chart) {
-    const { ctx, chartArea } = chart;
-    const pct = chart.config.data.datasets[0].data[0];
-    const cx = (chartArea.left + chartArea.right) / 2;
-    const cy = (chartArea.top + chartArea.bottom) / 2;
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '700 20px "IBM Plex Sans", sans-serif';
-    ctx.fillStyle = '#16202A';
-    ctx.fillText(pct.toFixed(0) + '%', cx, cy);
-    ctx.restore();
-  }
-};
-const donutsPivotSucursal = {};
-function renderDonutPivotSucursal(canvasId, pct, colorLleno, colorResto) {
-  const el = document.getElementById(canvasId);
-  if (!el) return;
-  const ctx = el.getContext('2d');
-  if (donutsPivotSucursal[canvasId]) donutsPivotSucursal[canvasId].destroy();
-  donutsPivotSucursal[canvasId] = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      datasets: [{ data: [pct, Math.max(0, 100 - pct)], backgroundColor: [colorLleno, colorResto], borderWidth: 0 }]
-    },
-    plugins: [donutCenterTextPlugin],
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: '72%',
-      animation: dashPrintMode ? false : undefined,
-      plugins: { legend: { display: false }, tooltip: { enabled: false } }
-    }
-  });
 }
 
 // Agrupa por Adjudicatario y calcula el semáforo de cada uno (🔴 <40% · 🟡 40-74% · 🟢 ≥75% de
