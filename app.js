@@ -2548,7 +2548,7 @@ function renderPivotSucursalEstado(rows) {
   const pctFinalizadosTotal = totales.total > 0 ? (totales.Finalizado / totales.total) * 100 : 0;
 
   const table = document.getElementById('dashPivotTable');
-  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Contratos vigentes</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Finalizados</th></tr></thead><tbody>' +
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Trámites iniciados</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Finalizados</th></tr></thead><tbody>' +
     filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
     `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
     '</tbody>';
