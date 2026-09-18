@@ -1966,7 +1966,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-let chartAdjCertSucursal, chartCertificacionPC;
+let chartAdjCertSucursal, chartCertificacionPC, chartPivotSucursalEstado;
 
 document.getElementById('dashGroupBy').addEventListener('change', renderDashboard);
 
@@ -2056,12 +2056,6 @@ function renderDashboard() {
     .filter(c => idsFiltrados.has(c.idTramite))
     .reduce((acc, c) => acc + num(c.montoReconocimiento), 0);
 
-  // ---- Desiertos vs. Adjudicados: sobre los trámites del filtro actual que ya tienen uno de estos dos estados ----
-  const cantDesiertos = rows.filter(r => r.estado === 'Desierto').length;
-  const cantAdjudicados = rows.filter(r => r.estado === 'Adjudicado').length;
-  const totalDesAdj = cantDesiertos + cantAdjudicados;
-  const pctDesiertos = totalDesAdj > 0 ? (cantDesiertos / totalDesAdj) * 100 : 0;
-
   // ---- Obras Menores (Pospre O.D.P. / O.D.S.): IIBB Proyectados sobre el filtro actual ----
   const rowsObraMenor = rows.filter(r => isObraMenorPospre(r.pospre));
   const sumaIIBBProyectados = sumField(rowsObraMenor, 'cantTotalIIBBProyectados');
@@ -2100,11 +2094,9 @@ function renderDashboard() {
 
   const kpiRow = document.getElementById('kpiRow');
   kpiRow.innerHTML = [
-    kpiCard('Trámites (filtro actual)', rows.length, 'de ' + state.registros.length + ' totales'),
     kpiCard('Presupuesto oficial total', formatMillions(totalPresOficial), 'sin IVA'),
     kpiCard('Total adjudicado', formatMillions(totalAdjudicado), 'sin IVA'),
     kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial', colorDesvio),
-    kpiCard('Desiertos / Adjudicados', cantDesiertos + ' / ' + cantAdjudicados, totalDesAdj > 0 ? pctDesiertos.toFixed(1) + '% de los procesos definidos salieron desiertos' : 'sin procesos definidos en este filtro'),
     kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
     kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)', colorPctIIBB),
     kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'sin IVA'),
@@ -2536,6 +2528,7 @@ function renderPivotSucursalEstado(rows) {
   const filas = Object.entries(bySucursal).map(([sucursal, v]) => ({
     sucursal, total: v.total, Adjudicado: v.Adjudicado, Desierto: v.Desierto, Relanzado: v.Relanzado, Finalizado: v.Finalizado,
     pctAdjudicados: v.total > 0 ? (v.Adjudicado / v.total) * 100 : 0,
+    pctDesiertos: v.total > 0 ? (v.Desierto / v.total) * 100 : 0,
     pctFinalizados: v.total > 0 ? (v.Finalizado / v.total) * 100 : 0
   })).sort((a, b) => b.total - a.total);
 
@@ -2545,13 +2538,47 @@ function renderPivotSucursalEstado(rows) {
     return acc;
   }, { total: 0, Adjudicado: 0, Desierto: 0, Relanzado: 0, Finalizado: 0 });
   const pctAdjudicadosTotal = totales.total > 0 ? (totales.Adjudicado / totales.total) * 100 : 0;
+  const pctDesiertosTotal = totales.total > 0 ? (totales.Desierto / totales.total) * 100 : 0;
   const pctFinalizadosTotal = totales.total > 0 ? (totales.Finalizado / totales.total) * 100 : 0;
 
   const table = document.getElementById('dashPivotTable');
-  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Trámites iniciados</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Finalizados</th></tr></thead><tbody>' +
-    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
-    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Trámites iniciados</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Desiertos</th><th>% de Finalizados</th></tr></thead><tbody>' +
+    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctDesiertos.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
+    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctDesiertosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
     '</tbody>';
+  setupScrollShadow(table.closest('.table-wrap'));
+
+  // ---- Gráfico complementario: barras horizontales 100% apiladas por Sucursal (% de cada
+  // Estado sobre el total de trámites iniciados de esa sucursal), para reconocer de un vistazo
+  // qué sucursales tienen más Desiertos/Relanzados en proporción, más allá de los valores
+  // absolutos de la tabla. Mismos colores que el "state-pill" del detalle por agrupación. ----
+  const ctxPivot = document.getElementById('chartPivotSucursalEstado').getContext('2d');
+  if (chartPivotSucursalEstado) chartPivotSucursalEstado.destroy();
+  chartPivotSucursalEstado = new Chart(ctxPivot, {
+    type: 'bar',
+    data: {
+      labels: filas.map(f => truncateLabel(f.sucursal, 26)),
+      datasets: [
+        { label: 'Adjudicado (en curso)', data: filas.map(f => f.pctAdjudicados), backgroundColor: '#166534', stack: 'estado' },
+        { label: 'Desierto', data: filas.map(f => f.pctDesiertos), backgroundColor: '#991B1B', stack: 'estado' },
+        { label: 'Relanzado', data: filas.map(f => f.total > 0 ? (f.Relanzado / f.total) * 100 : 0), backgroundColor: '#92400E', stack: 'estado' },
+        { label: 'Finalizado', data: filas.map(f => f.pctFinalizados), backgroundColor: '#3730A3', stack: 'estado' }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      animation: dashPrintMode ? false : undefined,
+      scales: {
+        x: { stacked: true, min: 0, max: 100, title: { display: true, text: '% de trámites iniciados' } },
+        y: { stacked: true, ticks: { autoSkip: false } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.x.toFixed(0) + '%' } }
+      }
+    }
+  });
   setupScrollShadow(table.closest('.table-wrap'));
 }
 
