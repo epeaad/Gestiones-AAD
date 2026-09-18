@@ -1966,7 +1966,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-let chartAdjCertSucursal, chartCertificacionPC, chartPivotSucursalEstado;
+let chartAdjCertSucursal, chartCertificacionPC;
 
 document.getElementById('dashGroupBy').addEventListener('change', renderDashboard);
 
@@ -2546,39 +2546,6 @@ function renderPivotSucursalEstado(rows) {
     filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctDesiertos.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
     `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctDesiertosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
     '</tbody>';
-  setupScrollShadow(table.closest('.table-wrap'));
-
-  // ---- Gráfico complementario: barras horizontales 100% apiladas por Sucursal (% de cada
-  // Estado sobre el total de trámites iniciados de esa sucursal), para reconocer de un vistazo
-  // qué sucursales tienen más Desiertos/Relanzados en proporción, más allá de los valores
-  // absolutos de la tabla. Mismos colores que el "state-pill" del detalle por agrupación. ----
-  const ctxPivot = document.getElementById('chartPivotSucursalEstado').getContext('2d');
-  if (chartPivotSucursalEstado) chartPivotSucursalEstado.destroy();
-  chartPivotSucursalEstado = new Chart(ctxPivot, {
-    type: 'bar',
-    data: {
-      labels: filas.map(f => truncateLabel(f.sucursal, 26)),
-      datasets: [
-        { label: 'Adjudicado (en curso)', data: filas.map(f => f.pctAdjudicados), backgroundColor: '#166534', stack: 'estado' },
-        { label: 'Desierto', data: filas.map(f => f.pctDesiertos), backgroundColor: '#991B1B', stack: 'estado' },
-        { label: 'Relanzado', data: filas.map(f => f.total > 0 ? (f.Relanzado / f.total) * 100 : 0), backgroundColor: '#92400E', stack: 'estado' },
-        { label: 'Finalizado', data: filas.map(f => f.pctFinalizados), backgroundColor: '#3730A3', stack: 'estado' }
-      ]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      animation: dashPrintMode ? false : undefined,
-      scales: {
-        x: { stacked: true, min: 0, max: 100, title: { display: true, text: '% de trámites iniciados' } },
-        y: { stacked: true, ticks: { autoSkip: false } }
-      },
-      plugins: {
-        legend: { position: 'bottom' },
-        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.x.toFixed(0) + '%' } }
-      }
-    }
-  });
   setupScrollShadow(table.closest('.table-wrap'));
 }
 
