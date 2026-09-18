@@ -2269,7 +2269,7 @@ function renderDashboard() {
   // ---- Resumen por Contratista (tarjetas con semáforo) ----
   renderContratistaResumen(rows);
 
-  // ---- Contratos vigentes por Sucursal: Adjudicados vs. Vacío (sin adjudicar) ----
+  // ---- Contratos vigentes por Sucursal: por Estado (Adjudicado / Desierto / Relanzado / Finalizado) ----
   renderPivotSucursalEstado(rows);
 
   // ---- Tabla de detalle (según "Agrupar por") ----
@@ -2519,34 +2519,36 @@ function exportTableToCsv(tableEl, filename) {
   URL.revokeObjectURL(url);
 }
 
-// ---- Contratos vigentes por Sucursal: cuenta trámites con y sin Adjudicatario cargado ----
-// "Vacío" = trámite sin Adjudicatario (no confundir con ESTADO_VACIO_LABEL, que es sobre el
-// campo Estado): es el mismo criterio de "sin contratista adjudicado" que usa la síntesis
-// contrato por contrato de un informe de estrategia (sección "Contratos Vigentes por Sucursal").
+// ---- Contratos vigentes por Sucursal: cuenta trámites por Estado ----
+// Usa exclusivamente los 4 estados del detalle por agrupación (state-pill de Registros):
+// Adjudicado, Desierto, Relanzado, Finalizado. Un trámite sin ninguno de estos 4 estados
+// cargados no se contabiliza en ninguna columna de estado (pero sí en "Contratos vigentes").
+const ESTADOS_PIVOT_SUCURSAL = ['Adjudicado', 'Desierto', 'Relanzado', 'Finalizado'];
 function renderPivotSucursalEstado(rows) {
   const bySucursal = {};
   rows.forEach(r => {
     const key = (r.sucursal || '(sin sucursal)').toString().trim() || '(sin sucursal)';
-    if (!bySucursal[key]) bySucursal[key] = { total: 0, adjudicados: 0 };
+    if (!bySucursal[key]) bySucursal[key] = { total: 0, Adjudicado: 0, Desierto: 0, Relanzado: 0, Finalizado: 0 };
     bySucursal[key].total++;
-    if (r.adjudicatario && String(r.adjudicatario).trim()) bySucursal[key].adjudicados++;
+    if (ESTADOS_PIVOT_SUCURSAL.includes(r.estado)) bySucursal[key][r.estado]++;
   });
 
   const filas = Object.entries(bySucursal).map(([sucursal, v]) => ({
-    sucursal, total: v.total, adjudicados: v.adjudicados, vacio: v.total - v.adjudicados,
-    pctAdjudicados: v.total > 0 ? (v.adjudicados / v.total) * 100 : 0
+    sucursal, total: v.total, Adjudicado: v.Adjudicado, Desierto: v.Desierto, Relanzado: v.Relanzado, Finalizado: v.Finalizado,
+    pctAdjudicados: v.total > 0 ? (v.Adjudicado / v.total) * 100 : 0
   })).sort((a, b) => b.total - a.total);
 
   const totales = filas.reduce((acc, f) => {
-    acc.total += f.total; acc.adjudicados += f.adjudicados; acc.vacio += f.vacio;
+    acc.total += f.total; acc.Adjudicado += f.Adjudicado; acc.Desierto += f.Desierto;
+    acc.Relanzado += f.Relanzado; acc.Finalizado += f.Finalizado;
     return acc;
-  }, { total: 0, adjudicados: 0, vacio: 0 });
-  const pctAdjudicadosTotal = totales.total > 0 ? (totales.adjudicados / totales.total) * 100 : 0;
+  }, { total: 0, Adjudicado: 0, Desierto: 0, Relanzado: 0, Finalizado: 0 });
+  const pctAdjudicadosTotal = totales.total > 0 ? (totales.Adjudicado / totales.total) * 100 : 0;
 
   const table = document.getElementById('dashPivotTable');
-  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Contratos vigentes</th><th>Adjudicados</th><th>Vacío (sin adjudicar)</th><th>% Adjudicados</th></tr></thead><tbody>' +
-    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.adjudicados}</td><td>${f.vacio}</td><td>${f.pctAdjudicados.toFixed(0)}%</td></tr>`).join('') +
-    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.adjudicados}</td><td>${totales.vacio}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td></tr>` +
+  table.innerHTML = '<thead><tr><th>Sucursal</th><th>Contratos vigentes</th><th>Adjudicado</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th></tr></thead><tbody>' +
+    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td></tr>`).join('') +
+    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td></tr>` +
     '</tbody>';
   setupScrollShadow(table.closest('.table-wrap'));
 }
