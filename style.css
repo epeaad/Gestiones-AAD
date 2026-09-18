@@ -636,6 +636,12 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .table-note{ font-size:11.5px; color:var(--text-soft); margin:0 0 8px; }
 .cert-nota-warning{ margin:12px 0 0; color:#7C3AED; font-weight:500; }
 
+/* "Data bar" en columnas de % (ej. tabla "Trámites iniciados por Sucursal — por Estado"):
+   el fondo con degradé viene por style inline (calculado por JS según el valor); acá solo se
+   fija la tipografía/alineación para que el número se lea cómodo sobre la barra. */
+.pct-bar-cell{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-weight:600; text-align:right; min-width:64px; }
+.data-table tr.dash-table-total .pct-bar-cell{ font-weight:700; }
+
 /* ---- Proyectos: aviso cuando algún proyecto supera el $ Km de LAMT techo de su contrato ---- */
 .alerta-techo-lamt{
   background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; border-radius:var(--radius);

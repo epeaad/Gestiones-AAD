@@ -2543,10 +2543,19 @@ function renderPivotSucursalEstado(rows) {
 
   const table = document.getElementById('dashPivotTable');
   table.innerHTML = '<thead><tr><th>Sucursal</th><th>Trámites iniciados</th><th>Adjudicado (en curso)</th><th>Desierto</th><th>Relanzado</th><th>Finalizado</th><th>% Adjudicados</th><th>% de Desiertos</th><th>% de Finalizados</th></tr></thead><tbody>' +
-    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td><td>${f.pctAdjudicados.toFixed(0)}%</td><td>${f.pctDesiertos.toFixed(0)}%</td><td>${f.pctFinalizados.toFixed(0)}%</td></tr>`).join('') +
-    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td><td>${pctAdjudicadosTotal.toFixed(0)}%</td><td>${pctDesiertosTotal.toFixed(0)}%</td><td>${pctFinalizadosTotal.toFixed(0)}%</td></tr>` +
+    filas.map(f => `<tr><td>${escapeHtml(f.sucursal)}</td><td>${f.total}</td><td>${f.Adjudicado}</td><td>${f.Desierto}</td><td>${f.Relanzado}</td><td>${f.Finalizado}</td>${pctBarCell(f.pctAdjudicados, '#BBF7D0')}${pctBarCell(f.pctDesiertos, '#FECACA')}${pctBarCell(f.pctFinalizados, '#C7D2FE')}</tr>`).join('') +
+    `<tr class="dash-table-total"><td>TOTAL</td><td>${totales.total}</td><td>${totales.Adjudicado}</td><td>${totales.Desierto}</td><td>${totales.Relanzado}</td><td>${totales.Finalizado}</td>${pctBarCell(pctAdjudicadosTotal, '#BBF7D0')}${pctBarCell(pctDesiertosTotal, '#FECACA')}${pctBarCell(pctFinalizadosTotal, '#C7D2FE')}</tr>` +
     '</tbody>';
   setupScrollShadow(table.closest('.table-wrap'));
+}
+
+// "Data bar" tipo Excel/Google Sheets: la celda de % lleva de fondo una barra sólida que se
+// llena según el valor (0-100), con el número por encima, para poder comparar sucursales de
+// un vistazo sin leer cada número. barColor es un tono pastel (mismo criterio que los
+// state-pill: fondo claro, texto oscuro siempre legible, se llene lo que se llene la barra).
+function pctBarCell(pct, barColor) {
+  const p = Math.max(0, Math.min(100, pct));
+  return `<td class="pct-bar-cell" style="background:linear-gradient(to right, ${barColor} ${p}%, transparent ${p}%)">${p.toFixed(0)}%</td>`;
 }
 
 // Agrupa por Adjudicatario y calcula el semáforo de cada uno (🔴 <40% · 🟡 40-74% · 🟢 ≥75% de
