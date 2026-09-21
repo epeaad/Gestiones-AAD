@@ -499,7 +499,7 @@ async function boot() {
     const data = await apiCall('listar');
     state.campos = data.campos;
     state.etapas = data.etapas;
-    state.registros = data.registros;
+    state.registros = data.registros || [];
     if (!state.registros.length) {
       showAppError('Conectado correctamente, pero la hoja "Gestiones Plan" no devolvió ninguna fila. Revisá que esa pestaña tenga tus datos y que su nombre sea exactamente "Gestiones Plan".');
     }
@@ -997,13 +997,23 @@ document.getElementById('recordForm').addEventListener('submit', async (e) => {
     }
     msg.className = 'form-msg ok';
     msg.hidden = false;
-    const data = await apiCall('listar');
-    state.registros = data.registros;
-    populateFilterOptions();
   } catch (err) {
     msg.textContent = 'Error: ' + err.message;
     msg.className = 'form-msg err';
     msg.hidden = false;
+    return;
+  }
+  // El trámite ya quedó guardado en el servidor en este punto (arriba). Lo que sigue es solo
+  // refrescar en memoria la lista y los combos de filtros para que el resto de la app (Registros,
+  // Dashboard, etc.) vea el dato nuevo sin tener que recargar la página. Va en su propio try/catch,
+  // separado del guardado: si algo falla acá, el trámite NO se pierde ni hay que cargarlo de nuevo,
+  // así que nunca debe pisar el mensaje de éxito con un "Error" que asuste sin motivo.
+  try {
+    const data = await apiCall('listar');
+    state.registros = data.registros || [];
+    populateFilterOptions();
+  } catch (err) {
+    console.error('No se pudo refrescar la lista de trámites después de guardar:', err);
   }
 });
 
@@ -1630,6 +1640,7 @@ const DASH_TEXTO_CAMPOS = [
 // Avance desde/hasta, y Buscar palabra (Contiene/No contiene). Recibe el objeto de filtros
 // (state.filtrosCompartidos o state.filtrosCompartidos) para no duplicar esta lógica en cada módulo. ----
 function aplicarFiltrosAvanzados(rows, filtros) {
+  rows = rows || [];
   const desde = filtros.fechaPCDesde;
   const hasta = filtros.fechaPCHasta;
   if (desde || hasta) {
@@ -1675,7 +1686,7 @@ function filteredForDashboard() {
 }
 
 function applyFilters(rows, filtros, keys) {
-  return rows.filter(r => {
+  return (rows || []).filter(r => {
     return keys.every(k => {
       const fval = filtros[k];
       if (k === 'expediente') {
@@ -1926,7 +1937,7 @@ async function clonarTramite(r) {
   try {
     await apiCall('crear', { datos });
     const data = await apiCall('listar');
-    state.registros = data.registros;
+    state.registros = data.registros || [];
     populateFilterOptions();
     renderRegistros();
   } catch (err) {
@@ -1941,7 +1952,7 @@ async function eliminarTramite(r) {
   try {
     await apiCall('eliminar', { id: r._id });
     const data = await apiCall('listar');
-    state.registros = data.registros;
+    state.registros = data.registros || [];
     populateFilterOptions();
     renderRegistros();
   } catch (err) {
@@ -3126,7 +3137,7 @@ document.getElementById('buscarDuplicadosBtn').addEventListener('click', () => {
         msg.hidden = false;
         btn.disabled = true;
         const data = await apiCall('listar');
-        state.registros = data.registros;
+        state.registros = data.registros || [];
         populateFilterOptions();
       } catch (err) {
         msg.textContent = 'Error: ' + err.message;
@@ -3180,7 +3191,7 @@ async function abrirVistaCertificaciones() {
 async function cargarCertificacionesDatos() {
   const data = await apiCall('certificaciones_listar');
   certCamposCache = data.campos;
-  certListaCache = data.certificaciones;
+  certListaCache = data.certificaciones || [];
   // El Detalle del Rubro no se guarda en la hoja de Certificaciones: se toma en vivo del trámite
   // (PC) al que pertenece cada certificación, para saber de un vistazo qué se está certificando.
   // La Sucursal se toma de la misma forma, para poder ordenar el detalle Pospre → Sucursal → PC →
@@ -3315,7 +3326,7 @@ async function clonarCertificacion(c) {
   try {
     await apiCall('certificaciones_crear', { datos: Object.assign({ idTramite: c.idTramite }, datos) });
     const data = await apiCall('listar');
-    state.registros = data.registros;
+    state.registros = data.registros || [];
     await cargarCertificaciones();
   } catch (err) {
     alert('Error al clonar: ' + err.message);
@@ -3373,7 +3384,7 @@ document.getElementById('certForm').addEventListener('submit', async (e) => {
     document.getElementById('certForm').reset();
     seleccionarTramiteParaCertificar(certTramiteActual); // limpia el form pero deja el trámite elegido para cargar otra
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
-    state.registros = data.registros;
+    state.registros = data.registros || [];
     await cargarCertificaciones();
   } catch (err) {
     msg.textContent = 'Error: ' + err.message;
@@ -3529,7 +3540,7 @@ document.getElementById('certImportConfirmarBtn').addEventListener('click', asyn
   document.getElementById('certImportPreviewWrap').hidden = true;
 
   const data = await apiCall('listar'); // refresca los rollups (% de avance, etc.) de los trámites afectados
-  state.registros = data.registros;
+  state.registros = data.registros || [];
   await cargarCertificaciones();
 });
 
@@ -3613,7 +3624,7 @@ function renderCertTable() {
         try {
           await apiCall('certificaciones_eliminar', { id: c._id });
           const data = await apiCall('listar');
-          state.registros = data.registros;
+          state.registros = data.registros || [];
           await cargarCertificaciones();
         } catch (err) {
           alert('Error: ' + err.message);
@@ -3660,7 +3671,7 @@ async function cargarProyectos() {
   try {
     const data = await apiCall('proyectos_listar');
     proyCamposCache = data.campos;
-    proyListaCache = data.proyectos;
+    proyListaCache = data.proyectos || [];
     renderProyTable();
   } catch (err) {
     showAppError('No se pudieron cargar los proyectos: ' + err.message);
@@ -3888,7 +3899,7 @@ document.getElementById('proyForm').addEventListener('submit', async (e) => {
     document.getElementById('proyForm').reset();
     seleccionarTramiteParaProyecto(proyTramiteActual); // limpia el form pero deja el trámite elegido para cargar otro
     const data = await apiCall('listar'); // refresca los totales del trámite (rollup)
-    state.registros = data.registros;
+    state.registros = data.registros || [];
     await cargarProyectos();
   } catch (err) {
     msg.textContent = 'Error: ' + err.message;
@@ -4076,7 +4087,7 @@ document.getElementById('proyImportConfirmarBtn').addEventListener('click', asyn
   document.getElementById('proyImportPreviewWrap').hidden = true;
 
   const data = await apiCall('listar'); // refresca los rollups de los trámites afectados
-  state.registros = data.registros;
+  state.registros = data.registros || [];
   await cargarProyectos();
 });
 
@@ -4210,7 +4221,7 @@ function renderProyTable() {
         try {
           await apiCall('proyectos_eliminar', { id: p._id });
           const data = await apiCall('listar');
-          state.registros = data.registros;
+          state.registros = data.registros || [];
           await cargarProyectos();
         } catch (err) {
           alert('Error: ' + err.message);
@@ -4236,7 +4247,7 @@ function renderProyTable() {
 async function refrescarRegistrosTrasCompras() {
   try {
     const data = await apiCall('listar');
-    state.registros = data.registros;
+    state.registros = data.registros || [];
   } catch (err) {
     console.error('No se pudo refrescar Registros después del cambio en Compras:', err);
     return;
