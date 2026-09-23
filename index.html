@@ -68,7 +68,7 @@
         <span class="nav-icon">◔</span> Seguimiento de Avance
       </button>
       <button class="nav-btn" data-view="estadio">
-        <span class="nav-icon">⏱</span> Estadío Actual
+        <span class="nav-icon">⏱</span> Estadío de los Trámites
       </button>
       <button class="nav-btn" data-view="comparativa">
         <span class="nav-icon">⇄</span> Comparativa
@@ -363,7 +363,11 @@
     <!-- ---------- ESTADÍO ACTUAL (Contrataciones + Compras, unificado) ---------- -->
     <section id="view-estadio" class="view" hidden>
       <div class="view-header">
-        <h2>Estadío Actual de los Trámites</h2>
+        <h2>Estadío de los Trámites</h2>
+        <div class="control-inline">
+          <button type="button" id="estadioExportBtn" class="btn btn-secondary">Exportar a CSV</button>
+          <button type="button" id="estadioPrintBtn" class="btn btn-secondary">Imprimir a PDF</button>
+        </div>
       </div>
       <p class="table-note">
         Dónde está circulando cada trámite ahora mismo (Contrataciones y Compras juntos) y hace cuántos días está en ese
@@ -393,6 +397,11 @@
         </div>
         <button id="estadioRiesgoBtn" class="btn risk-toggle-btn">⚠ Con demora <span class="risk-badge" id="estadioRiesgoBadge">0</span></button>
         <button id="estadioLimpiarBtn" class="btn btn-ghost">Limpiar filtros</button>
+      </div>
+
+      <div class="print-header">
+        <p class="print-title">Gestiones AAD — Estadío de los Trámites</p>
+        <p class="print-subtitle">Impreso el <span id="estadioPrintDate"></span></p>
       </div>
 
       <p class="results-count" id="estadioResultsCount"></p>

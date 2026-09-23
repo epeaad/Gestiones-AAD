@@ -309,6 +309,13 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   #appError{ display:none !important; }
   #view-dashboard .control-inline, #dashClearFilters{ display:none !important; }
   #view-seguimiento .control-inline, #seguFiltersBar, #seguFiltersBarAvanzados{ display:none !important; }
+  #view-estadio .control-inline, #estadioFiltersBar{ display:none !important; }
+  /* El <select> de edición inline de "Estadío Actual" no tiene sentido en un PDF (no se puede
+     interactuar con un papel): se oculta y se muestra en su lugar el texto plano equivalente
+     (.estadio-print-text), que ya viaja en el mismo <td> oculto en pantalla — ver estadioColHtml
+     en app.js. */
+  .estadio-select{ display:none !important; }
+  .estadio-print-text{ display:inline !important; }
   .print-header{ display:block !important; margin-bottom:14px; }
   .print-title{ margin:0; font-size:16px; font-weight:700; }
   .print-subtitle{ margin:2px 0 0; font-size:11px; color:var(--text-soft); }
@@ -743,6 +750,9 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   font-size:12px; padding:3px 6px; border:1px solid var(--border); border-radius:6px;
   background:#fff; max-width:100%;
 }
+/* Par con .estadio-select: mismo <td>, versión texto plano para el PDF (ver regla @media print
+   más arriba) — oculta en pantalla, donde manda el <select> editable. */
+.estadio-print-text{ display:none; }
 
 /* ============ LIFELINE (stepper) ============ */
 .lifeline{ display:flex; align-items:center; margin-bottom:22px; }

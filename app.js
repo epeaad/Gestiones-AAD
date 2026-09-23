@@ -492,7 +492,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -2502,24 +2502,19 @@ document.getElementById('dashDetalleExportBtn').addEventListener('click', () => 
   exportTableToCsv(document.getElementById('dashTable'), 'detalle_por_agrupacion.csv');
 });
 
-/** Exporta cualquier <table> del DOM a un archivo .csv, tomando el texto tal como se ve (respeta
- *  el orden de columnas, el agrupamiento y los filtros ya aplicados en pantalla). Se le agrega BOM
- *  UTF-8 al archivo para que Excel muestre bien los acentos y la "ñ" al abrirlo. */
-function exportTableToCsv(tableEl, filename) {
-  if (!tableEl) return;
-  const escapeCsv = (texto) => {
-    const limpio = (texto || '').replace(/\s+/g, ' ').trim();
-    return /[",;\n]/.test(limpio) ? '"' + limpio.replace(/"/g, '""') + '"' : limpio;
-  };
-  const filas = [];
-  tableEl.querySelectorAll('thead tr').forEach(tr => {
-    filas.push(Array.from(tr.querySelectorAll('th')).map(th => escapeCsv(th.textContent)).join(';'));
-  });
-  tableEl.querySelectorAll('tbody tr').forEach(tr => {
-    filas.push(Array.from(tr.querySelectorAll('td')).map(td => escapeCsv(td.textContent)).join(';'));
-  });
+/** Escapa un valor para una celda CSV (separador ";", comillas dobles si hace falta) — una sola
+ *  implementación, usada por exportTableToCsv (lee el DOM) y por exportarEstadioCsv (lee el array
+ *  ya filtrado/ordenado, porque la columna "Estadío Actual" es un <select> en pantalla y su
+ *  textContent traería las opciones del combo, no el valor elegido). */
+function csvEscape(texto) {
+  const limpio = String(texto || '').replace(/\s+/g, ' ').trim();
+  return /[",;\n]/.test(limpio) ? '"' + limpio.replace(/"/g, '""') + '"' : limpio;
+}
+/** Arma el archivo .csv (con BOM UTF-8, para que Excel muestre bien acentos/"ñ") a partir de filas
+ *  ya armadas como arrays de texto, y dispara la descarga. */
+function descargarCsv(filas, filename) {
   if (filas.length <= 1) { alert('No hay datos para exportar con los filtros actuales.'); return; }
-  const csv = '\uFEFF' + filas.join('\r\n');
+  const csv = '\uFEFF' + filas.map(fila => fila.map(csvEscape).join(';')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2529,6 +2524,20 @@ function exportTableToCsv(tableEl, filename) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Exporta cualquier <table> del DOM a un archivo .csv, tomando el texto tal como se ve (respeta
+ *  el orden de columnas, el agrupamiento y los filtros ya aplicados en pantalla). */
+function exportTableToCsv(tableEl, filename) {
+  if (!tableEl) return;
+  const filas = [];
+  tableEl.querySelectorAll('thead tr').forEach(tr => {
+    filas.push(Array.from(tr.querySelectorAll('th')).map(th => th.textContent));
+  });
+  tableEl.querySelectorAll('tbody tr').forEach(tr => {
+    filas.push(Array.from(tr.querySelectorAll('td')).map(td => td.textContent));
+  });
+  descargarCsv(filas, filename);
 }
 
 // ---- Contratos vigentes por Sucursal: cuenta trámites por Estado ----
@@ -5154,7 +5163,11 @@ function estadioColHtml(f, col) {
       (state.estadiosAdministrativos || []).map(e =>
         `<option value="${escapeHtml(e)}" ${f.estadioActual === e ? 'selected' : ''}>${escapeHtml(e)}</option>`)
     );
-    return `<td><select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}">${opts.join('')}</select></td>`;
+    // Dos versiones del mismo dato en el mismo <td>: el <select> editable para pantalla, y un
+    // texto plano (.estadio-print-text) para el PDF — ver @media print en style.css. No afecta
+    // la exportación a CSV, que no lee el DOM (ver exportarEstadioCsv más abajo).
+    return `<td><select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}">${opts.join('')}</select>` +
+      `<span class="estadio-print-text">${escapeHtml(f.estadioActual || '—')}</span></td>`;
   }
   return `<td>${escapeHtml(f[col.key])}</td>`;
 }
@@ -5246,4 +5259,24 @@ document.getElementById('estadioLimpiarBtn').addEventListener('click', () => {
   document.getElementById('estadioFiltroEstadio').value = '';
   document.getElementById('estadioFiltroTexto').value = '';
   renderEstadioActual();
+});
+
+// ---- Exportar / Imprimir — mismo patrón que Registros y Seguimiento de Avance ----
+// A diferencia de exportTableToCsv (que lee el texto tal como está en el DOM), acá se arma el CSV
+// directo desde estadioFilasFiltradas(): la columna "Estadío Actual" es un <select> en pantalla, y
+// su textContent traería las opciones del combo entero, no el valor elegido — ver csvEscape.
+function exportarEstadioCsv() {
+  const filas = sortRows(estadioFilasFiltradas(), estadioSort, estadioSortValue);
+  const encabezado = ESTADIO_TABLE_COLS.map(c => c.label);
+  const cuerpo = filas.map(f => ESTADIO_TABLE_COLS.map(col => {
+    if (col.key === 'diasEnEstadio') return f.diasEnEstadio == null ? 'Sin estadío cargado' : (f.diasEnEstadio + ' día(s)');
+    if (col.key === 'estadioActual') return f.estadioActual || '—';
+    return f[col.key];
+  }));
+  descargarCsv([encabezado].concat(cuerpo), 'estadio_tramites.csv');
+}
+document.getElementById('estadioExportBtn').addEventListener('click', exportarEstadioCsv);
+document.getElementById('estadioPrintBtn').addEventListener('click', () => {
+  document.getElementById('estadioPrintDate').textContent = new Date().toLocaleString('es-AR');
+  window.print();
 });
