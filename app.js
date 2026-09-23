@@ -45,7 +45,16 @@ const DYNAMIC_SELECT_FIELDS = new Set(['pospre', 'sucursal', 'estadioActual']);
 const LONG_FIELDS = new Set(['detalleRubro','observaciones','seguimiento']);
 
 // ---- Campos calculados automáticamente: no se editan a mano ----
-const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados','estadioDesde']);
+const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados']);
+// Campos que se autocompletan como SUGERENCIA pero quedan editables (a diferencia de
+// DERIVED_FIELDS, que son de solo lectura): "En este Estadío desde" se rellena solo con la fecha
+// de hoy apenas cambia el Estadío Administrativo Actual, pero si el trámite ya estaba en ese
+// estadío desde antes, se puede corregir a mano — el backend respeta esa fecha en vez de pisarla
+// (ver _aplicarCambioEstadio en Code.gs). Mismo mapa usado por buildFieldInput (Registros) y
+// comprasTramiteBuildFieldInput (Compras) — un solo lugar para el texto del badge.
+const AUTO_SUGGESTED_FIELD_HINTS = {
+  estadioDesde: 'Se sugiere la fecha de hoy apenas cambiás el Estadío Administrativo Actual, pero la podés corregir si el trámite ya está en ese estadío desde antes.'
+};
 // Campos "fuente" que, al cambiar, disparan el recálculo
 const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','adjudicadoUnitario','fechaActoAdmin','fechaInicioReal','plazoEntrega','ampliacionPlazo']);
 // Campos "acumulador": tienen un mini sumador al lado para ir agregando valores sin calcular a mano
@@ -867,6 +876,15 @@ document.getElementById('stagePanels').addEventListener('input', (e) => {
     recalcDerivedFields();
   }
 });
+// Al cambiar el Estadío Administrativo Actual (el <select> o, si se eligió "+ Otra (nueva)...",
+// el texto libre que lo reemplaza — los dos comparten el mismo "name" gracias al mecanismo de
+// DYNAMIC_SELECT_FIELDS), se sugiere la fecha de hoy en "En este Estadío desde". Sigue siendo
+// editable después: si el trámite ya estaba en ese estadío desde antes, se corrige a mano.
+document.getElementById('stagePanels').addEventListener('change', (e) => {
+  if (e.target.name === 'estadioActual') {
+    setFormValue('estadioDesde', new Date().toISOString().slice(0, 10));
+  }
+});
 document.getElementById('stagePanels').addEventListener('click', (e) => {
   if (!e.target.classList.contains('btn-mini-add')) return;
   const label = e.target.closest('label');
@@ -897,8 +915,7 @@ const DERIVED_FIELD_HINTS = {
   cantidadCertificadosProcesados: 'Se calcula solo, contando las Certificaciones ya cargadas para este trámite.',
   cantidadProyectos: 'Se calcula solo, contando los Proyectos ya cargados para este trámite.',
   cantTotalIIBBProyectados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
-  proyectadosAcumulados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
-  estadioDesde: 'Se completa sola con la fecha de hoy apenas cambiás el Estadío Administrativo Actual — no se carga a mano.'
+  proyectadosAcumulados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.'
 };
 function buildFieldInput(f, record) {
   const label = document.createElement('label');
@@ -954,7 +971,11 @@ function buildFieldInput(f, record) {
       </div>`
     : '';
   const calcHint = DERIVED_FIELD_HINTS[f.key] || 'Se completa solo a partir de otros datos de este trámite.';
-  label.innerHTML = `<span class="field-label-text">${f.label}${isDerived ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>' : ''}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}</span>${inputHtml}${sumHelperHtml}`;
+  const esAutoSugerido = AUTO_SUGGESTED_FIELD_HINTS.hasOwnProperty(f.key);
+  const badgeHtml = isDerived
+    ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>'
+    : (esAutoSugerido ? ' <span class="calc-badge" title="' + escapeHtml(AUTO_SUGGESTED_FIELD_HINTS[f.key]) + '">sugerido ⓘ</span>' : '');
+  label.innerHTML = `<span class="field-label-text">${f.label}${badgeHtml}${isSumHelper ? ' <span class="calc-badge sum-badge">acumulable</span>' : ''}</span>${inputHtml}${sumHelperHtml}`;
   return label;
 }
 
@@ -1917,6 +1938,19 @@ function setupScrollShadow(wrap, topBarId, topInnerId) {
   }
 }
 
+// ---- Copia texto al portapapeles, con feedback visual en el botón (✅ un instante) — una sola
+//      implementación, usada por "Copiar datos" (Registros) y por "Copiar N° de Expediente"
+//      (Estadío de los Trámites). ----
+function copiarAlPortapapeles(texto, btn) {
+  navigator.clipboard.writeText(texto).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '✅';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  }).catch(() => {
+    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
+  });
+}
+
 // ---- Copiar: pasa un resumen del trámite al portapapeles ----
 function copiarTramite(r, btn) {
   const resumen = [
@@ -1933,13 +1967,7 @@ function copiarTramite(r, btn) {
     'Total Certificado: ' + formatMoney(r.certificadosAAD),
   ].join('\n');
 
-  navigator.clipboard.writeText(resumen).then(() => {
-    const original = btn.textContent;
-    btn.textContent = '✅';
-    setTimeout(() => { btn.textContent = original; }, 1200);
-  }).catch(() => {
-    alert('No se pudo copiar. Tu navegador puede estar bloqueando el acceso al portapapeles.');
-  });
+  copiarAlPortapapeles(resumen, btn);
 }
 
 // ---- Clonar: crea un trámite nuevo con los mismos datos ----
@@ -4519,14 +4547,15 @@ const COMPRAS_TRAMITE_ADJUDICACION_FIELDS = [
   // cerrada), con "+ Otro (nuevo)" a texto libre — ver comprasTramiteBuildFieldInput() y el
   // comentario en Code.gs junto a ESTADIOS_ADMINISTRATIVOS.
   { key: 'estadioActual', label: 'Estadío Administrativo Actual', type: 'dynselect' },
-  { key: 'estadioDesde', label: 'En este Estadío desde', type: 'date', derived: true }
+  { key: 'estadioDesde', label: 'En este Estadío desde', type: 'date' }
 ];
-// Textos del badge "calculado ⓘ" en el formulario de Trámite de Compras — un mapa por clave
-// (mismo criterio que DERIVED_FIELD_HINTS del lado de Registros), no una serie de ternarios.
+// Textos del badge "calculado ⓘ" / "sugerido ⓘ" en el formulario de Trámite de Compras — un mapa
+// por clave (mismo criterio que DERIVED_FIELD_HINTS del lado de Registros), no una serie de
+// ternarios. AUTO_SUGGESTED_FIELD_HINTS (definido junto a DERIVED_FIELDS, arriba en el archivo) es
+// la misma fuente que usa Registros para "estadioDesde" — no se duplica el texto acá.
 const COMPRAS_TRAMITE_CALC_HINTS = {
   montoSubtotalOficial: 'Se completa solo (Cantidad × $ Unitario Oficial). Para dejarlo en 0, escribí 0 en el $ Unitario Oficial (no lo dejes vacío) y se recalcula solo.',
-  montoSubtotalAdjudicado: 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.',
-  estadioDesde: 'Se completa sola con la fecha de hoy apenas cambiás el Estadío Administrativo Actual — no se carga a mano.'
+  montoSubtotalAdjudicado: 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.'
 };
 // ---- Pospre en "Nuevo Trámite": desplegable validado contra los Pospre ya cargados (en
 //      Registros o en otros Trámites de Compras), con opción de agregar uno nuevo si hace falta
@@ -4582,7 +4611,11 @@ function comprasTramiteBuildFieldInput(f, record) {
   // agregar un tercer "else" más para "estadioDesde", repitiendo el mismo patrón cada vez que
   // aparece un campo calculado nuevo).
   const calcHint = COMPRAS_TRAMITE_CALC_HINTS[f.key] || 'Se completa solo a partir de otros datos de este trámite.';
-  label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}${f.derived ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>' : ''}</span>${inputHtml}`;
+  const esAutoSugerido = AUTO_SUGGESTED_FIELD_HINTS.hasOwnProperty(f.key);
+  const badgeHtml = f.derived
+    ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>'
+    : (esAutoSugerido ? ' <span class="calc-badge" title="' + escapeHtml(AUTO_SUGGESTED_FIELD_HINTS[f.key]) + '">sugerido ⓘ</span>' : '');
+  label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}${badgeHtml}</span>${inputHtml}`;
   return label;
 }
 function comprasTramiteStageColorVar(idx) { return 'var(--stage-' + (idx + 1) + ')'; }
@@ -4651,6 +4684,18 @@ function buildComprasTramiteForm(record) {
   comprasTramiteActiveStage = COMPRAS_TRAMITE_ETAPAS[0].id;
   setComprasTramiteActiveStage(comprasTramiteActiveStage);
 }
+// Al cambiar el Estadío Administrativo Actual de este formulario (el <select> o, si se eligió
+// "+ Otro (nuevo)...", el texto libre que lo reemplaza), se sugiere la fecha de hoy en "En este
+// Estadío desde" — sigue editable después. Mismo criterio que el equivalente en Registros
+// (ver el listener 'change' de #stagePanels), delegado una sola vez sobre el contenedor fijo, no
+// dentro de buildComprasTramiteForm, porque ese contenedor persiste entre reconstrucciones del
+// formulario (solo cambia su contenido interno).
+document.getElementById('comprasTramiteStagePanels').addEventListener('change', (e) => {
+  if (e.target.dataset && e.target.dataset.key === 'estadioActual') {
+    const desdeInput = document.querySelector('#comprasTramiteStagePanels [data-key="estadioDesde"]');
+    if (desdeInput) desdeInput.value = new Date().toISOString().slice(0, 10);
+  }
+});
 function setComprasTramiteActiveStage(stageId) {
   comprasTramiteActiveStage = stageId;
   document.getElementById('comprasTramiteLifeline').querySelectorAll('.stage-node').forEach(n => {
@@ -5174,10 +5219,12 @@ function poblarEstadioFiltroAnio() {
 }
 
 // Guarda el cambio de estadío de UNA fila (edición inline, sin abrir el formulario completo) y
-// pega al endpoint correcto según de qué módulo vino — el backend hace el resto (autoestampar
-// estadioDesde), ver _aplicarCambioEstadio en Code.gs.
-async function estadioGuardarCambio(id, modulo, nuevoValor) {
+// pega al endpoint correcto según de qué módulo vino — el backend hace el resto (si "fecha" viene
+// vacía, autoestampa hoy; si viene cargada, la respeta tal cual — ver _aplicarCambioEstadio en
+// Code.gs, para cuando el trámite ya lleva unos días en ese estadío al momento de anotarlo).
+async function estadioGuardarCambio(id, modulo, nuevoValor, fecha) {
   const datos = { estadioActual: nuevoValor };
+  if (fecha) datos.estadioDesde = fecha;
   try {
     if (modulo === 'Compras') {
       await apiCall('compras_tramite_actualizar', { id, datos });
@@ -5197,6 +5244,14 @@ function estadioColHtml(f, col) {
   if (col.key === 'anio') {
     return `<td class="mono">${escapeHtml(f.anio)}</td>`;
   }
+  if (col.key === 'expediente') {
+    // Botón de copiar aparte del texto: hace falta poder llevar el N° de Expediente al sistema de
+    // seguimiento de expedientes de la empresa sin que el click abra el trámite completo (por eso
+    // lleva su propio stopPropagation, ver el wiring más abajo).
+    return `<td class="td-copy"><span class="td-copy-text">${escapeHtml(f.expediente)}</span>` +
+      `<button type="button" class="icon-btn copy-expediente-btn" data-copiar="${escapeHtml(f.expediente)}" ` +
+        `title="Copiar N° de Expediente">📋</button></td>`;
+  }
   if (col.key === 'extracto') {
     return `<td class="td-truncate" title="${escapeHtml(f.extracto)}">${escapeHtml(f.extracto)}</td>`;
   }
@@ -5210,15 +5265,21 @@ function estadioColHtml(f, col) {
     const opts = ['<option value="">— Elegí —</option>'].concat(
       opciones.map(e => `<option value="${escapeHtml(e)}" ${f.estadioActual === e ? 'selected' : ''}>${escapeHtml(e)}</option>`)
     ).concat([`<option value="${DYNAMIC_SELECT_OTRO}">+ Otra (nueva)...</option>`]);
-    // Tres elementos en el mismo <td>: el <select> editable (con "+ Otra (nueva)..." al final, para
-    // escribir un estadío que todavía no existe), el <input> de texto libre que aparece al elegir
-    // esa opción (oculto hasta entonces), y un texto plano (.estadio-print-text) para el PDF — ver
-    // @media print en style.css. Nada de esto afecta la exportación a CSV, que no lee el DOM
-    // (ver exportarEstadioCsv más abajo).
-    return `<td>` +
-      `<select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}">${opts.join('')}</select>` +
-      `<input type="text" class="estadio-otro-input" data-id="${f._id}" data-modulo="${f.modulo}" ` +
-        `placeholder="Escribí el estadío..." hidden />` +
+    const hoy = new Date().toISOString().slice(0, 10);
+    // El <select> guarda derecho SOLO si no cambiaste de estadío (o sea, tocar la fila sin
+    // realmente cambiar nada no dispara nada). En cuanto elegís un estadío DISTINTO del que ya
+    // tenía (o "+ Otra (nueva)..."), aparece la fila de confirmación con la fecha — precargada en
+    // hoy, pero editable — porque a veces el trámite ya está en ese estadío desde hace unos días y
+    // no desde el momento en que lo estás anotando. Recién ahí, con el botón ✓ (o Enter en la
+    // fecha), se guarda. Un texto plano (.estadio-print-text) cubre el PDF — ver @media print en
+    // style.css. Nada de esto afecta la exportación a CSV, que no lee el DOM (ver exportarEstadioCsv).
+    return `<td class="estadio-edit-cell">` +
+      `<select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}" data-original="${escapeHtml(f.estadioActual)}">${opts.join('')}</select>` +
+      `<input type="text" class="estadio-otro-input" placeholder="Escribí el estadío..." hidden />` +
+      `<div class="estadio-confirm-row" hidden>` +
+        `<input type="date" class="estadio-fecha-input" value="${escapeHtml(f.estadioDesde || hoy)}" max="${hoy}" title="Desde cuándo está en este estadío" />` +
+        `<button type="button" class="icon-btn estadio-guardar-btn" title="Guardar">✓</button>` +
+      `</div>` +
       `<span class="estadio-print-text">${escapeHtml(f.estadioActual || '—')}</span>` +
       `</td>`;
   }
@@ -5263,43 +5324,68 @@ function renderEstadioActual() {
   setupScrollShadow(table.closest('.table-wrap'), 'estadioScrollTop', 'estadioScrollTopInner');
   wireSortableHeaders(table, estadioSort, renderEstadioActual);
 
-  // Edición inline — elegir un valor del <select> guarda solo; elegir "+ Otra (nueva)..." abre el
-  // <input> de texto libre de al lado (mismo par select+input que ya usa el resto de la app para
-  // Pospre/Sucursal, ver DYNAMIC_SELECT_OTRO), que guarda al perder el foco o con Enter.
-  table.querySelectorAll('select.estadio-select').forEach(sel => {
+  // Copiar N° de Expediente: no toca el servidor ni abre nada, así que no hace falta re-renderizar.
+  table.querySelectorAll('.copy-expediente-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copiarAlPortapapeles(btn.dataset.copiar, btn);
+    });
+  });
+
+  // Edición inline del Estadío: elegir un valor DISTINTO del actual (o "+ Otra (nueva)...") abre
+  // la fila de confirmación con la fecha — ver el comentario grande en estadioColHtml. Recién al
+  // tocar ✓ (o Enter en la fecha) se guarda de verdad, contra el id/módulo de ESA fila.
+  table.querySelectorAll('td.estadio-edit-cell').forEach(td => {
+    const sel = td.querySelector('select.estadio-select');
+    const otroInput = td.querySelector('input.estadio-otro-input');
+    const confirmRow = td.querySelector('.estadio-confirm-row');
+    const fechaInput = td.querySelector('.estadio-fecha-input');
+    const guardarBtn = td.querySelector('.estadio-guardar-btn');
+    const original = sel.dataset.original || '';
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    const confirmar = () => {
+      const valor = sel.hidden ? otroInput.value.trim() : sel.value;
+      if (!valor) { alert('Elegí o escribí un estadío.'); return; }
+      estadioGuardarCambio(sel.dataset.id, sel.dataset.modulo, valor, fechaInput.value);
+    };
+
     sel.addEventListener('click', (e) => e.stopPropagation());
     sel.addEventListener('change', (e) => {
       e.stopPropagation();
       if (sel.value === DYNAMIC_SELECT_OTRO) {
-        const input = sel.nextElementSibling; // .estadio-otro-input
         sel.hidden = true;
-        input.hidden = false;
-        input.value = '';
-        input.focus();
+        otroInput.hidden = false;
+        otroInput.value = '';
+        otroInput.focus();
+        confirmRow.hidden = false;
+        fechaInput.value = hoy;
         return;
       }
-      estadioGuardarCambio(sel.dataset.id, sel.dataset.modulo, sel.value);
+      // Cambio real de estadío: aparece la fila de confirmación (fecha sugerida = hoy, editable).
+      // Volver a elegir el mismo valor que ya tenía la vuelve a ocultar — no hay nada que guardar.
+      const cambio = sel.value !== original;
+      confirmRow.hidden = !cambio;
+      if (cambio) fechaInput.value = hoy;
     });
-  });
-  table.querySelectorAll('input.estadio-otro-input').forEach(input => {
-    input.addEventListener('click', (e) => e.stopPropagation());
-    const confirmar = () => {
-      const valor = input.value.trim();
-      if (!valor) { renderEstadioActual(); return; } // vacío: cancela, vuelve a mostrar el <select>
-      estadioGuardarCambio(input.dataset.id, input.dataset.modulo, valor);
-    };
-    input.addEventListener('keydown', (e) => {
+    otroInput.addEventListener('click', (e) => e.stopPropagation());
+    otroInput.addEventListener('keydown', (e) => e.stopPropagation());
+    fechaInput.addEventListener('click', (e) => e.stopPropagation());
+    fechaInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') { e.preventDefault(); confirmar(); }
-      if (e.key === 'Escape') { e.preventDefault(); renderEstadioActual(); }
     });
-    input.addEventListener('blur', confirmar);
+    guardarBtn.addEventListener('click', (e) => { e.stopPropagation(); confirmar(); });
   });
 
-  // Click en el resto de la fila: abre el trámite completo en su módulo de origen (Registros o Compras).
+  // Click en el resto de la fila: abre el trámite completo en su módulo de origen (Registros o
+  // Compras). Excluye cualquier control interactivo de la fila (el <select>/<input> de Estadío, su
+  // fila de confirmación, el botón ✓, el botón de copiar Expediente) — esto es justamente lo que
+  // antes no pasaba con "Copiar Expediente": el click terminaba abriendo el formulario completo y
+  // cambiando de módulo en medio del flujo de carga.
   table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
     tr.addEventListener('click', (e) => {
-      if (e.target.closest('select') || e.target.closest('input')) return;
+      if (e.target.closest('select, input, button')) return;
       const id = tr.dataset.id, modulo = tr.dataset.modulo;
       if (modulo === 'Compras') {
         showView('compras');

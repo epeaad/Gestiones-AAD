@@ -314,8 +314,9 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
      interactuar con un papel): se oculta y se muestra en su lugar el texto plano equivalente
      (.estadio-print-text), que ya viaja en el mismo <td> oculto en pantalla — ver estadioColHtml
      en app.js. */
-  .estadio-select, .estadio-otro-input{ display:none !important; }
+  .estadio-select, .estadio-otro-input, .estadio-confirm-row{ display:none !important; }
   .estadio-print-text{ display:inline !important; }
+  .copy-expediente-btn{ display:none !important; }
   .print-header{ display:block !important; margin-bottom:14px; }
   .print-title{ margin:0; font-size:16px; font-weight:700; }
   .print-subtitle{ margin:2px 0 0; font-size:11px; color:var(--text-soft); }
@@ -757,6 +758,23 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 /* Par con .estadio-select: mismo <td>, versión texto plano para el PDF (ver regla @media print
    más arriba) — oculta en pantalla, donde manda el <select> editable. */
 .estadio-print-text{ display:none; }
+
+/* ---- Estadío de los Trámites: celda de edición apilada (select arriba, fila de confirmación con
+   fecha + botón ✓ debajo, solo cuando hay un cambio real en curso — ver estadioColHtml). ---- */
+.estadio-edit-cell{ min-width:150px; }
+.estadio-confirm-row{ display:flex; align-items:center; gap:5px; margin-top:5px; }
+.estadio-confirm-row input.estadio-fecha-input{
+  font-size:11px; padding:3px 5px; border:1px solid var(--brand); border-radius:6px;
+  background:#fff; max-width:128px;
+}
+.estadio-guardar-btn{ width:24px; height:24px; font-size:12px; margin-right:0; flex-shrink:0; }
+
+/* ---- Copiar N° de Expediente (Estadío de los Trámites): botón aparte del texto, con su propio
+   stopPropagation (ver renderEstadioActual) para no disparar el click de la fila, que abriría el
+   trámite completo y cambiaría de módulo en medio del flujo de carga/validación. ---- */
+.td-copy{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.td-copy-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.copy-expediente-btn{ width:24px; height:24px; font-size:12px; margin-right:0; flex-shrink:0; }
 
 /* ============ LIFELINE (stepper) ============ */
 .lifeline{ display:flex; align-items:center; margin-bottom:22px; }
