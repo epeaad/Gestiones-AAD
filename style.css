@@ -316,7 +316,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
      en app.js. */
   .estadio-select, .estadio-otro-input, .estadio-confirm-row{ display:none !important; }
   .estadio-print-text{ display:inline !important; }
-  .copy-expediente-btn{ display:none !important; }
+  .copy-expediente-btn, .estadio-eliminar-btn{ display:none !important; }
   .print-header{ display:block !important; margin-bottom:14px; }
   .print-title{ margin:0; font-size:16px; font-weight:700; }
   .print-subtitle{ margin:2px 0 0; font-size:11px; color:var(--text-soft); }

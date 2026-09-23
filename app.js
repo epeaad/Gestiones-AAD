@@ -5113,8 +5113,8 @@ document.getElementById('comprasMigrarBtn').addEventListener('click', async () =
 
 // Umbrales del semáforo de "días en el estadío" (mismos 3 colores que .state-pill ya usa en el
 // resto de la app) — un solo lugar para ajustarlos si hace falta.
-const ESTADIO_DIAS_ALERTA = 7;   // desde acá, ámbar
-const ESTADIO_DIAS_CRITICO = 15; // desde acá, rojo
+const ESTADIO_DIAS_ALERTA = 4;   // desde acá, ámbar
+const ESTADIO_DIAS_CRITICO = 7;  // desde acá, rojo Y "⚠ Con demora" (más de 6 días = 7 o más)
 
 let estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false };
 let estadioSort = { key: 'diasEnEstadio', dir: -1 }; // por defecto: lo más demorado, arriba
@@ -5154,7 +5154,16 @@ function normalizarParaEstadio(item, modulo) {
 }
 
 function estadioFilasCompletas() {
-  const regs = (state.registros || []).map(r => normalizarParaEstadio(r, 'Contrataciones'));
+  // Las filas espejo de Compras (rubro:'Compras', generadas automáticamente en "Gestiones Plan" —
+  // ver esFilaEspejoDeCompras) NO se muestran en este módulo: cada trámite de Compras ya aparece
+  // acá una vez, con Módulo "Compras" y su Estadío editable. Mostrar también su copia espejo
+  // (bloqueada, con el mismo Expediente) es información redundante y confunde — por eso se filtran
+  // antes de llegar a cualquier filtro, conteo o exportación de este panel. La fila espejo en sí
+  // sigue existiendo en "Gestiones Plan" (la necesitan el Dashboard y otros módulos para sumar
+  // presupuesto/adjudicado de Compras junto con el resto), solo no se lista ACÁ.
+  const regs = (state.registros || [])
+    .map(r => normalizarParaEstadio(r, 'Contrataciones'))
+    .filter(f => !f.esEspejoDeCompras);
   const compras = (comprasTramitesCache || []).map(t => normalizarParaEstadio(t, 'Compras'));
   return regs.concat(compras);
 }
@@ -5261,6 +5270,28 @@ async function estadioGuardarCambio(id, modulo, nuevoValor, fecha) {
   renderEstadioActual(); // repone la tabla con el dato real del servidor, haya salido bien o mal
 }
 
+// Elimina un trámite directamente desde este panel (solo admin, lo valida también el backend) —
+// mismo criterio de confirmación que ya usan eliminarTramite (Registros) y eliminarComprasTramite
+// (Compras); esto solo decide a cuál de los dos pegarle según el Módulo de la fila.
+async function estadioEliminarTramite(id, modulo, nombre) {
+  const extra = modulo === 'Compras' ? ' Se van a borrar también sus Entregas y su fila espejo en Registros.' : '';
+  if (!confirm('¿Eliminar definitivamente el trámite "' + (nombre || '') + '"? Esta acción no se puede deshacer.' + extra)) return;
+  try {
+    if (modulo === 'Compras') {
+      await apiCall('compras_tramite_eliminar', { id });
+      await cargarComprasTramites();
+      await refrescarRegistrosTrasCompras();
+    } else {
+      await apiCall('eliminar', { id });
+      const data = await apiCall('listar');
+      state.registros = data.registros || [];
+    }
+  } catch (err) {
+    alert('Error al eliminar: ' + err.message);
+  }
+  renderEstadioActual();
+}
+
 function estadioColHtml(f, col) {
   if (col.key === 'anio') {
     return `<td class="mono">${escapeHtml(f.anio)}</td>`;
@@ -5281,6 +5312,9 @@ function estadioColHtml(f, col) {
   }
   if (col.key === 'estadioActual') {
     if (f.esEspejoDeCompras) {
+      // Defensivo, no debería llegar a dispararse nunca: estadioFilasCompletas() ya filtra las
+      // filas espejo antes de que lleguen acá (ver ese comentario). Se deja como red de seguridad
+      // por si en el futuro algo vuelve a llamar a estadioColHtml con una de estas filas.
       return `<td title="Esta fila es una copia automática de un trámite de Compras. Para cambiar su Estadío, hacelo desde la fila de Compras de este mismo trámite.">` +
         `${escapeHtml(f.estadioActual || '—')} 🔒</td>`;
     }
@@ -5314,6 +5348,7 @@ function estadioColHtml(f, col) {
 function renderEstadioActual() {
   poblarEstadioFiltroAnio();
   poblarEstadioFiltroSelect();
+  const isAdmin = state.session && state.session.rol === 'admin';
   let filas = estadioFilasFiltradas();
   filas = sortRows(filas, estadioSort, estadioSortValue);
 
@@ -5339,9 +5374,12 @@ function renderEstadioActual() {
     return;
   }
 
-  const thead = sortableTheadHtml(ESTADIO_TABLE_COLS, estadioSort, '');
+  const thead = sortableTheadHtml(ESTADIO_TABLE_COLS, estadioSort, isAdmin ? '<th>Acciones</th>' : '');
   const tbody = '<tbody>' + filas.map(f => {
-    const tds = ESTADIO_TABLE_COLS.map(col => estadioColHtml(f, col)).join('');
+    const tds = ESTADIO_TABLE_COLS.map(col => estadioColHtml(f, col)).join('') +
+      (isAdmin ? `<td class="row-actions"><button type="button" class="icon-btn danger estadio-eliminar-btn" ` +
+        `data-id="${f._id}" data-modulo="${f.modulo}" data-nombre="${escapeHtml(f.expediente || f.pospre || '')}" ` +
+        `title="Eliminar trámite">🗑️</button></td>` : '');
     return `<tr data-id="${f._id}" data-modulo="${f.modulo}">${tds}</tr>`;
   }).join('') + '</tbody>';
 
@@ -5354,6 +5392,15 @@ function renderEstadioActual() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       copiarAlPortapapeles(btn.dataset.copiar, btn);
+    });
+  });
+
+  // Eliminar manual (solo admin) — para limpiar a mano algún trámite puntual (por ejemplo, algún
+  // residuo viejo que haya quedado de antes del arreglo de la colisión de columnas).
+  table.querySelectorAll('.estadio-eliminar-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      estadioEliminarTramite(btn.dataset.id, btn.dataset.modulo, btn.dataset.nombre);
     });
   });
 
