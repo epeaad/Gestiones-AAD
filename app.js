@@ -14,7 +14,7 @@ window.addEventListener('orientationchange', setRealViewportHeight);
 // ---- Tipos de campo para generar el formulario automáticamente ----
 const DATE_FIELDS = new Set([
   'fechaInicioExpte','fechaPedidoCompras','fechaActoAdmin',
-  'fechaInicioReal','fechaFinContrato','fechaFinPlazoAmpliada'
+  'fechaInicioReal','fechaFinContrato','fechaFinPlazoAmpliada','estadioDesde'
 ]);
 const MONTH_FIELDS = new Set(['mmAAkmLAMT']); // campos tipo "mes/año" (input type="month")
 const NUMBER_FIELDS = new Set([
@@ -31,6 +31,8 @@ const SELECT_FIELDS = {
   previstoPlan: ['Si','No'],
   movilidadInspeccion: ['Si','No'],
   estado: ['Adjudicado','Desierto','Relanzado','Finalizado']
+  // 'estadioActual' se agrega acá mismo en boot(), con la lista que manda el backend
+  // (state.estadiosAdministrativos) — no se hardcodea una segunda vez del lado del frontend.
 };
 // Etiqueta usada para representar, en filtros/agrupaciones, los trámites que todavía no tienen
 // un Estado cargado (sin adjudicar). No es un valor real de la base: es un valor "sentinela"
@@ -42,7 +44,7 @@ const DYNAMIC_SELECT_FIELDS = new Set(['pospre', 'sucursal']);
 const LONG_FIELDS = new Set(['detalleRubro','observaciones','seguimiento']);
 
 // ---- Campos calculados automáticamente: no se editan a mano ----
-const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados']);
+const DERIVED_FIELDS = new Set(['presupuestoOficialRubro','totalAdjudicado','fechaFinContrato','fechaFinPlazoAmpliada','pctAvanceCertificacion','pctIIBBProyectados','certificadosAAD','sumatoriaMultas','cantidadCertificadosProcesados','cantidadProyectos','cantTotalIIBBProyectados','proyectadosAcumulados','estadioDesde']);
 // Campos "fuente" que, al cambiar, disparan el recálculo
 const RECALC_TRIGGER_FIELDS = new Set(['cantidadesIIBB','presOficialUnitario','adjudicadoUnitario','fechaActoAdmin','fechaInicioReal','plazoEntrega','ampliacionPlazo']);
 // Campos "acumulador": tienen un mini sumador al lado para ir agregando valores sin calcular a mano
@@ -261,6 +263,7 @@ function showView(name) {
   if (name === 'usuarios') renderUsuarios();
   if (name === 'seguimiento') renderSeguimiento();
   if (name === 'comparativa') renderComparativa();
+  if (name === 'estadio') renderEstadioActual();
 }
 
 document.getElementById('formNewBtn').addEventListener('click', () => {
@@ -500,6 +503,11 @@ async function boot() {
     state.campos = data.campos;
     state.etapas = data.etapas;
     state.registros = data.registros || [];
+    // Lista de Estadíos Administrativos: viene del backend (ESTADIOS_ADMINISTRATIVOS en Code.gs),
+    // una sola fuente para Contrataciones y Compras — ver SELECT_FIELDS.estadioActual más abajo y
+    // COMPRAS_TRAMITE_ADJUDICACION_FIELDS, que usan esta misma lista en vez de tener cada uno la suya.
+    state.estadiosAdministrativos = data.estadiosAdministrativos || [];
+    SELECT_FIELDS.estadioActual = state.estadiosAdministrativos;
     if (!state.registros.length) {
       showAppError('Conectado correctamente, pero la hoja "Gestiones Plan" no devolvió ninguna fila. Revisá que esa pestaña tenga tus datos y que su nombre sea exactamente "Gestiones Plan".');
     }
@@ -888,7 +896,8 @@ const DERIVED_FIELD_HINTS = {
   cantidadCertificadosProcesados: 'Se calcula solo, contando las Certificaciones ya cargadas para este trámite.',
   cantidadProyectos: 'Se calcula solo, contando los Proyectos ya cargados para este trámite.',
   cantTotalIIBBProyectados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
-  proyectadosAcumulados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.'
+  proyectadosAcumulados: 'Se calcula solo, sumando los Proyectos ya cargados para este trámite.',
+  estadioDesde: 'Se completa sola con la fecha de hoy apenas cambiás el Estadío Administrativo Actual — no se carga a mano.'
 };
 function buildFieldInput(f, record) {
   const label = document.createElement('label');
@@ -4305,6 +4314,15 @@ async function cargarComprasTramites() {
   try {
     const data = await apiCall('compras_tramites_listar');
     comprasTramitesCache = data.tramites || [];
+    // Opciones del <select> de "Estadío Administrativo Actual" del formulario de Compras: misma
+    // lista que ya llegó en state.estadiosAdministrativos (boot -> 'listar'), o la que venga en
+    // esta respuesta si por algún motivo boot() todavía no corrió — nunca una lista propia acá.
+    const estadioCampo = COMPRAS_TRAMITE_ADJUDICACION_FIELDS.find(f => f.key === 'estadioActual');
+    if (estadioCampo) {
+      const lista = (state.estadiosAdministrativos && state.estadiosAdministrativos.length)
+        ? state.estadiosAdministrativos : (data.estadiosAdministrativos || []);
+      estadioCampo.options = [''].concat(lista);
+    }
     comprasTramitesMeta = {
       estados: data.estados || [],
       tiposEntrega: data.tiposEntrega || [],
@@ -4488,8 +4506,20 @@ const COMPRAS_TRAMITE_ADJUDICACION_FIELDS = [
   { key: 'nroPC', label: 'N° de Pedido de Compras', type: 'text' },
   { key: 'fechaPC', label: 'Fecha de PC', type: 'date' },
   { key: 'estado', label: 'Estado', type: 'select', options: ['', 'Adjudicado', 'Desierto', 'Relanzado', 'Finalizado'] },
-  { key: 'observaciones', label: 'Observaciones', type: 'text' }
+  { key: 'observaciones', label: 'Observaciones', type: 'text' },
+  // Mismo concepto y misma lista que en Contrataciones (SELECT_FIELDS.estadioActual) — las
+  // opciones reales se completan en cargarComprasTramites(), a partir de lo que manda el backend
+  // (state.estadiosAdministrativos), no hardcodeadas acá.
+  { key: 'estadioActual', label: 'Estadío Administrativo Actual', type: 'select', options: [''] },
+  { key: 'estadioDesde', label: 'En este Estadío desde', type: 'date', derived: true }
 ];
+// Textos del badge "calculado ⓘ" en el formulario de Trámite de Compras — un mapa por clave
+// (mismo criterio que DERIVED_FIELD_HINTS del lado de Registros), no una serie de ternarios.
+const COMPRAS_TRAMITE_CALC_HINTS = {
+  montoSubtotalOficial: 'Se completa solo (Cantidad × $ Unitario Oficial). Para dejarlo en 0, escribí 0 en el $ Unitario Oficial (no lo dejes vacío) y se recalcula solo.',
+  montoSubtotalAdjudicado: 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.',
+  estadioDesde: 'Se completa sola con la fecha de hoy apenas cambiás el Estadío Administrativo Actual — no se carga a mano.'
+};
 // ---- Pospre en "Nuevo Trámite": desplegable validado contra los Pospre ya cargados (en
 //      Registros o en otros Trámites de Compras), con opción de agregar uno nuevo si hace falta
 //      — mismo criterio que ya usa el resto de la app para este mismo campo. ----
@@ -4519,16 +4549,18 @@ function comprasTramiteBuildFieldInput(f, record) {
   } else if (f.type === 'select') {
     inputHtml = `<select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}</select>`;
   } else if (f.type === 'date') {
-    inputHtml = `<input type="date" data-key="${f.key}" value="${escapeHtml(value)}" />`;
+    inputHtml = `<input type="date" data-key="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else if (f.type === 'number') {
     inputHtml = `<input type="text" inputmode="decimal" class="num-decimal" data-key="${f.key}" value="${escapeHtml(value)}" ${readonlyAttr} />`;
   } else {
     inputHtml = `<input type="text" data-key="${f.key}" value="${escapeHtml(value)}" ${f.required ? 'required' : ''} />`;
   }
   const label = document.createElement('label');
-  const calcHint = f.key === 'montoSubtotalOficial'
-    ? 'Se completa solo (Cantidad × $ Unitario Oficial). Para dejarlo en 0, escribí 0 en el $ Unitario Oficial (no lo dejes vacío) y se recalcula solo.'
-    : 'Se completa solo (Cantidad × $ Unitario Adjudicado). Para dejarlo en 0, escribí 0 en el $ Unitario Adjudicado (no lo dejes vacío) y se recalcula solo.';
+  // Mismo criterio que DERIVED_FIELD_HINTS del lado de Registros: un mapa por clave, no una
+  // cadena de ternarios que solo contempla dos casos particulares (lo cual habría obligado a
+  // agregar un tercer "else" más para "estadioDesde", repitiendo el mismo patrón cada vez que
+  // aparece un campo calculado nuevo).
+  const calcHint = COMPRAS_TRAMITE_CALC_HINTS[f.key] || 'Se completa solo a partir de otros datos de este trámite.';
   label.innerHTML = `<span class="field-label-text">${escapeHtml(f.label)}${f.derived ? ' <span class="calc-badge" title="' + escapeHtml(calcHint) + '">calculado ⓘ</span>' : ''}</span>${inputHtml}`;
   return label;
 }
@@ -4981,3 +5013,237 @@ document.getElementById('comprasMigrarBtn').addEventListener('click', async () =
   }
 });
 
+
+// ============================================================
+// ESTADÍO ACTUAL — panel unificado (Contrataciones + Compras)
+// ------------------------------------------------------------
+// Objetivo: ver de un vistazo dónde está circulando cada trámite (Estadío Administrativo Actual,
+// ver ESTADIOS_ADMINISTRATIVOS en Code.gs) y hace cuántos días está ahí, sin scrollear las tablas
+// grandes de Registros/Compras. Los datos NO se vuelven a pedir al servidor acá: se reusan
+// state.registros y comprasTramitesCache, que boot() ya precarga a los dos.
+// ============================================================
+
+// Umbrales del semáforo de "días en el estadío" (mismos 3 colores que .state-pill ya usa en el
+// resto de la app) — un solo lugar para ajustarlos si hace falta.
+const ESTADIO_DIAS_ALERTA = 7;   // desde acá, ámbar
+const ESTADIO_DIAS_CRITICO = 15; // desde acá, rojo
+
+let estadioFiltros = { modulo: '', estadio: '', texto: '', riesgo: false };
+let estadioSort = { key: 'diasEnEstadio', dir: -1 }; // por defecto: lo más demorado, arriba
+
+function diasDesde(fechaStr) {
+  if (!fechaStr) return null;
+  const d = new Date(fechaStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  return Math.round((hoy - d) / 86400000);
+}
+
+// Convierte un registro de Contrataciones o un trámite de Compras a una forma común — la ÚNICA
+// función que sabe que los dos módulos usan nombres de campo distintos para lo mismo (nroPC vs.
+// nroPedidoCompras, extracto vs. detalleRubro). El resto de este módulo no vuelve a preguntar de
+// qué módulo vino cada fila, salvo para saber a qué endpoint pegarle al editar o abrir el detalle.
+function normalizarParaEstadio(item, modulo) {
+  return {
+    _id: item._id,
+    modulo,
+    pospre: item.pospre || '',
+    expediente: item.expediente || '',
+    nroPC: modulo === 'Compras' ? (item.nroPC || '') : (item.nroPedidoCompras || ''),
+    extracto: modulo === 'Compras' ? (item.extracto || '') : (item.detalleRubro || ''),
+    sucursal: item.sucursal || '',
+    estadioActual: item.estadioActual || '',
+    estadioDesde: item.estadioDesde || '',
+    diasEnEstadio: diasDesde(item.estadioDesde)
+  };
+}
+
+function estadioFilasCompletas() {
+  const regs = (state.registros || []).map(r => normalizarParaEstadio(r, 'Contrataciones'));
+  const compras = (comprasTramitesCache || []).map(t => normalizarParaEstadio(t, 'Compras'));
+  return regs.concat(compras);
+}
+
+function estadioEsRiesgo(f) {
+  return f.diasEnEstadio != null && f.diasEnEstadio >= ESTADIO_DIAS_CRITICO;
+}
+
+function estadioFilasFiltradas() {
+  const texto = (estadioFiltros.texto || '').trim().toLowerCase();
+  return estadioFilasCompletas().filter(f => {
+    if (estadioFiltros.modulo && f.modulo !== estadioFiltros.modulo) return false;
+    if (estadioFiltros.estadio) {
+      if (estadioFiltros.estadio === '__vacio__') { if (f.estadioActual) return false; }
+      else if (f.estadioActual !== estadioFiltros.estadio) return false;
+    }
+    if (texto) {
+      const hay = [f.pospre, f.expediente, f.nroPC, f.extracto].some(v => String(v || '').toLowerCase().includes(texto));
+      if (!hay) return false;
+    }
+    if (estadioFiltros.riesgo && !estadioEsRiesgo(f)) return false;
+    return true;
+  });
+}
+
+const ESTADIO_TABLE_COLS = [
+  { key: 'modulo', label: 'Módulo' },
+  { key: 'pospre', label: 'Pospre' },
+  { key: 'expediente', label: 'Expediente' },
+  { key: 'nroPC', label: 'N° PC' },
+  { key: 'extracto', label: 'Extracto' },
+  { key: 'sucursal', label: 'Sucursal' },
+  { key: 'estadioActual', label: 'Estadío Actual' },
+  { key: 'diasEnEstadio', label: 'Días en el Estadío' }
+];
+
+function estadioSortValue(f, key) {
+  if (key === 'diasEnEstadio') return f.diasEnEstadio == null ? -1 : f.diasEnEstadio;
+  return String(f[key] != null ? f[key] : '').toLowerCase();
+}
+
+function estadioDiasPillHtml(f) {
+  if (f.diasEnEstadio == null) return `<span class="state-pill state-default">— (sin estadío cargado)</span>`;
+  let cls = 'state-Adjudicado'; // verde — mismos colores que ya usa .state-pill en el resto de la app
+  if (f.diasEnEstadio >= ESTADIO_DIAS_CRITICO) cls = 'state-Desierto'; // rojo
+  else if (f.diasEnEstadio >= ESTADIO_DIAS_ALERTA) cls = 'state-Relanzado'; // ámbar
+  return `<span class="state-pill ${cls}">${f.diasEnEstadio} día(s)</span>`;
+}
+
+function poblarEstadioFiltroSelect() {
+  const sel = document.getElementById('estadioFiltroEstadio');
+  if (!sel) return;
+  const actual = sel.value;
+  const opts = ['<option value="">Todos</option>', '<option value="__vacio__">(Sin estadío cargado)</option>']
+    .concat((state.estadiosAdministrativos || []).map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`));
+  sel.innerHTML = opts.join('');
+  sel.value = actual;
+}
+
+// Guarda el cambio de estadío de UNA fila (edición inline, sin abrir el formulario completo) y
+// pega al endpoint correcto según de qué módulo vino — el backend hace el resto (autoestampar
+// estadioDesde), ver _aplicarCambioEstadio en Code.gs.
+async function estadioGuardarCambio(id, modulo, nuevoValor) {
+  const datos = { estadioActual: nuevoValor };
+  try {
+    if (modulo === 'Compras') {
+      await apiCall('compras_tramite_actualizar', { id, datos });
+      await cargarComprasTramites();
+    } else {
+      await apiCall('actualizar', { id, datos });
+      const data = await apiCall('listar');
+      state.registros = data.registros || [];
+    }
+  } catch (err) {
+    alert('No se pudo guardar el cambio de estadío: ' + err.message);
+  }
+  renderEstadioActual(); // repone la tabla con el dato real del servidor, haya salido bien o mal
+}
+
+function estadioColHtml(f, col) {
+  if (col.key === 'extracto') {
+    return `<td class="td-truncate" title="${escapeHtml(f.extracto)}">${escapeHtml(f.extracto)}</td>`;
+  }
+  if (col.key === 'diasEnEstadio') {
+    return `<td class="mono">${estadioDiasPillHtml(f)}</td>`;
+  }
+  if (col.key === 'estadioActual') {
+    const puedeEditar = state.session && state.session.rol !== 'consulta';
+    if (!puedeEditar) return `<td>${escapeHtml(f.estadioActual || '—')}</td>`;
+    const opts = ['<option value="">— Elegí —</option>'].concat(
+      (state.estadiosAdministrativos || []).map(e =>
+        `<option value="${escapeHtml(e)}" ${f.estadioActual === e ? 'selected' : ''}>${escapeHtml(e)}</option>`)
+    );
+    return `<td><select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}">${opts.join('')}</select></td>`;
+  }
+  return `<td>${escapeHtml(f[col.key])}</td>`;
+}
+
+function renderEstadioActual() {
+  poblarEstadioFiltroSelect();
+  let filas = estadioFilasFiltradas();
+  filas = sortRows(filas, estadioSort, estadioSortValue);
+
+  const total = estadioFilasCompletas().length;
+  const countEl = document.getElementById('estadioResultsCount');
+  if (countEl) countEl.textContent = filas.length + ' trámite(s) encontrado(s), de ' + total + ' totales.';
+
+  const riesgoBtn = document.getElementById('estadioRiesgoBtn');
+  if (riesgoBtn) {
+    riesgoBtn.classList.toggle('active', estadioFiltros.riesgo);
+    const badge = document.getElementById('estadioRiesgoBadge');
+    if (badge) badge.textContent = estadioFilasCompletas().filter(estadioEsRiesgo).length;
+  }
+
+  const table = document.getElementById('estadioTable');
+  if (!table) return;
+  if (!total) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay trámites cargados (ni en Contrataciones ni en Compras).</td></tr></tbody>';
+    return;
+  }
+  if (!filas.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Ningún trámite coincide con los filtros aplicados.</td></tr></tbody>';
+    return;
+  }
+
+  const thead = sortableTheadHtml(ESTADIO_TABLE_COLS, estadioSort, '');
+  const tbody = '<tbody>' + filas.map(f => {
+    const tds = ESTADIO_TABLE_COLS.map(col => estadioColHtml(f, col)).join('');
+    return `<tr data-id="${f._id}" data-modulo="${f.modulo}">${tds}</tr>`;
+  }).join('') + '</tbody>';
+
+  table.innerHTML = thead + tbody;
+  setupScrollShadow(table.closest('.table-wrap'), 'estadioScrollTop', 'estadioScrollTopInner');
+  wireSortableHeaders(table, estadioSort, renderEstadioActual);
+
+  // Edición inline: cambiar el <select> de una fila guarda solo, sin abrir ningún formulario.
+  table.querySelectorAll('select.estadio-select').forEach(sel => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', (e) => {
+      e.stopPropagation();
+      estadioGuardarCambio(sel.dataset.id, sel.dataset.modulo, sel.value);
+    });
+  });
+
+  // Click en el resto de la fila: abre el trámite completo en su módulo de origen (Registros o Compras).
+  table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('select')) return;
+      const id = tr.dataset.id, modulo = tr.dataset.modulo;
+      if (modulo === 'Compras') {
+        showView('compras');
+        abrirComprasTramiteForm(id);
+      } else {
+        const record = state.registros.find(r => r._id === id);
+        if (record) openRecordForEdit(record);
+      }
+    });
+  });
+}
+
+// ---- Filtros de la barra (estado propio, aislado del resto de la app — ver comentario de diseño) ----
+document.getElementById('estadioFiltroModulo').addEventListener('change', (e) => {
+  estadioFiltros.modulo = e.target.value;
+  renderEstadioActual();
+});
+document.getElementById('estadioFiltroEstadio').addEventListener('change', (e) => {
+  estadioFiltros.estadio = e.target.value;
+  renderEstadioActual();
+});
+let estadioTextoDebounce = null;
+document.getElementById('estadioFiltroTexto').addEventListener('input', (e) => {
+  clearTimeout(estadioTextoDebounce);
+  const valor = e.target.value;
+  estadioTextoDebounce = setTimeout(() => { estadioFiltros.texto = valor; renderEstadioActual(); }, 250);
+});
+document.getElementById('estadioRiesgoBtn').addEventListener('click', () => {
+  estadioFiltros.riesgo = !estadioFiltros.riesgo;
+  renderEstadioActual();
+});
+document.getElementById('estadioLimpiarBtn').addEventListener('click', () => {
+  estadioFiltros = { modulo: '', estadio: '', texto: '', riesgo: false };
+  document.getElementById('estadioFiltroModulo').value = '';
+  document.getElementById('estadioFiltroEstadio').value = '';
+  document.getElementById('estadioFiltroTexto').value = '';
+  renderEstadioActual();
+});

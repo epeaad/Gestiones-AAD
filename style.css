@@ -737,6 +737,13 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .state-Finalizado{ background:#E0E7FF; color:#3730A3; }
 .state-default{ background:#F1F5F9; color:#475569; }
 
+/* ---- Estadío Actual: <select> de edición inline en la celda de la tabla (mismo tamaño de fuente
+   que el resto de .data-table, borde liviano para no competir con el semáforo de al lado) ---- */
+.data-table td select.estadio-select{
+  font-size:12px; padding:3px 6px; border:1px solid var(--border); border-radius:6px;
+  background:#fff; max-width:100%;
+}
+
 /* ============ LIFELINE (stepper) ============ */
 .lifeline{ display:flex; align-items:center; margin-bottom:22px; }
 .lifeline .stage-node{

@@ -67,6 +67,9 @@
       <button class="nav-btn" data-view="seguimiento">
         <span class="nav-icon">◔</span> Seguimiento de Avance
       </button>
+      <button class="nav-btn" data-view="estadio">
+        <span class="nav-icon">⏱</span> Estadío Actual
+      </button>
       <button class="nav-btn" data-view="comparativa">
         <span class="nav-icon">⇄</span> Comparativa
       </button>
@@ -354,6 +357,49 @@
         <div class="table-wrap table-wrap-seguimiento">
           <table id="seguimientoTable" class="data-table data-table-heatmap"></table>
         </div>
+      </div>
+    </section>
+
+    <!-- ---------- ESTADÍO ACTUAL (Contrataciones + Compras, unificado) ---------- -->
+    <section id="view-estadio" class="view" hidden>
+      <div class="view-header">
+        <h2>Estadío Actual de los Trámites</h2>
+      </div>
+      <p class="table-note">
+        Dónde está circulando cada trámite ahora mismo (Contrataciones y Compras juntos) y hace cuántos días está en ese
+        estadío. Ordenado por demora de mayor a menor. Para cambiar el estadío de un trámite, elegí uno nuevo en la
+        columna "Estadío Actual" de su fila — se guarda solo, sin abrir el formulario. Para ver el trámite completo,
+        hacé click en cualquier otra parte de la fila.
+      </p>
+
+      <div class="filters-bar" id="estadioFiltersBar">
+        <div class="filter-field">
+          <label>Módulo</label>
+          <select id="estadioFiltroModulo">
+            <option value="">Todos</option>
+            <option value="Contrataciones">Contrataciones</option>
+            <option value="Compras">Compras</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Estadío</label>
+          <select id="estadioFiltroEstadio">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Pospre / Expediente / PC / Extracto</label>
+          <input type="text" id="estadioFiltroTexto" placeholder="Buscar..." />
+        </div>
+        <button id="estadioRiesgoBtn" class="btn risk-toggle-btn">⚠ Con demora <span class="risk-badge" id="estadioRiesgoBadge">0</span></button>
+        <button id="estadioLimpiarBtn" class="btn btn-ghost">Limpiar filtros</button>
+      </div>
+
+      <p class="results-count" id="estadioResultsCount"></p>
+
+      <div class="scroll-top-bar" id="estadioScrollTop"><div class="scroll-top-inner" id="estadioScrollTopInner"></div></div>
+      <div class="table-wrap">
+        <table id="estadioTable" class="data-table"></table>
       </div>
     </section>
 
