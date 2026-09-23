@@ -11,6 +11,17 @@ setRealViewportHeight();
 window.addEventListener('resize', setRealViewportHeight);
 window.addEventListener('orientationchange', setRealViewportHeight);
 
+// ---- Fila "espejo" generada automáticamente desde un trámite de Compras (ver
+//      _sincronizarRegistroTramiteCompra en Code.gs): no se edita el Estadío ahí, se edita desde
+//      el trámite de Compras de origen. Un solo lugar con este chequeo — lo usan tanto el panel
+//      "Estadío de los Trámites" (normalizarParaEstadio) como el formulario completo de Registros
+//      (buildFieldInput), para no repetir la misma condición dos veces. ----
+const FINGERPRINT_ESPEJO_COMPRAS = 'Generado automáticamente desde el módulo Compras.';
+function esFilaEspejoDeCompras(record) {
+  return record && record.rubro === 'Compras' &&
+    String(record.observaciones || '').indexOf(FINGERPRINT_ESPEJO_COMPRAS) === 0;
+}
+
 // ---- Tipos de campo para generar el formulario automáticamente ----
 const DATE_FIELDS = new Set([
   'fechaInicioExpte','fechaPedidoCompras','fechaActoAdmin',
@@ -925,7 +936,12 @@ function buildFieldInput(f, record) {
   const readonlyAttr = isDerived ? 'readonly tabindex="-1"' : '';
 
   let inputHtml;
-  if (SELECT_FIELDS[f.key]) {
+  if (f.key === 'estadioActual' && esFilaEspejoDeCompras(record)) {
+    // Fila espejo de un trámite de Compras: acá se muestra de solo lectura, con una nota — el
+    // Estadío real se carga desde el trámite de Compras de origen (ver esFilaEspejoDeCompras).
+    inputHtml = `<input type="text" value="${escapeHtml(value)}" readonly tabindex="-1" ` +
+      `title="Copia automática de un trámite de Compras. Para cambiar el Estadío, hacelo desde el trámite de Compras de origen." />`;
+  } else if (SELECT_FIELDS[f.key]) {
     const opts = ['<option value="">—</option>'].concat(
       SELECT_FIELDS[f.key].map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`)
     );
@@ -5117,9 +5133,14 @@ function diasDesde(fechaStr) {
 // nroPedidoCompras, extracto vs. detalleRubro). El resto de este módulo no vuelve a preguntar de
 // qué módulo vino cada fila, salvo para saber a qué endpoint pegarle al editar o abrir el detalle.
 function normalizarParaEstadio(item, modulo) {
+  // Las filas de Contrataciones generadas automáticamente por un trámite de Compras ("filas
+  // espejo") no deben editarse desde acá: el Estadío real de ese trámite se carga desde su fila
+  // de Compras — ver esFilaEspejoDeCompras, arriba.
+  const esEspejoDeCompras = modulo === 'Contrataciones' && esFilaEspejoDeCompras(item);
   return {
     _id: item._id,
     modulo,
+    esEspejoDeCompras,
     pospre: item.pospre || '',
     anio: item.anio != null ? item.anio : '',
     expediente: item.expediente || '',
@@ -5259,6 +5280,10 @@ function estadioColHtml(f, col) {
     return `<td class="mono">${estadioDiasPillHtml(f)}</td>`;
   }
   if (col.key === 'estadioActual') {
+    if (f.esEspejoDeCompras) {
+      return `<td title="Esta fila es una copia automática de un trámite de Compras. Para cambiar su Estadío, hacelo desde la fila de Compras de este mismo trámite.">` +
+        `${escapeHtml(f.estadioActual || '—')} 🔒</td>`;
+    }
     const puedeEditar = state.session && state.session.rol !== 'consulta';
     if (!puedeEditar) return `<td>${escapeHtml(f.estadioActual || '—')}</td>`;
     const opciones = estadioOpcionesDinamicas();
