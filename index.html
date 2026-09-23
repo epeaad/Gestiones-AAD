@@ -371,9 +371,9 @@
       </div>
       <p class="table-note">
         Dónde está circulando cada trámite ahora mismo (Contrataciones y Compras juntos) y hace cuántos días está en ese
-        estadío. Ordenado por demora de mayor a menor. Para cambiar el estadío de un trámite, elegí uno nuevo en la
-        columna "Estadío Actual" de su fila — se guarda solo, sin abrir el formulario. Para ver el trámite completo,
-        hacé click en cualquier otra parte de la fila.
+        estadío. Ordenado por demora de mayor a menor. Para cambiar el estadío de un trámite, elegí uno de la lista en
+        la columna "Estadío Actual" de su fila, o elegí "+ Otra (nueva)..." para escribir uno que todavía no existe — se
+        guarda solo, sin abrir el formulario. Para ver el trámite completo, hacé click en cualquier otra parte de la fila.
       </p>
 
       <div class="filters-bar" id="estadioFiltersBar">
@@ -383,6 +383,12 @@
             <option value="">Todos</option>
             <option value="Contrataciones">Contrataciones</option>
             <option value="Compras">Compras</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Año de la Gestión</label>
+          <select id="estadioFiltroAnio">
+            <option value="">Todos</option>
           </select>
         </div>
         <div class="filter-field">

@@ -314,7 +314,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
      interactuar con un papel): se oculta y se muestra en su lugar el texto plano equivalente
      (.estadio-print-text), que ya viaja en el mismo <td> oculto en pantalla — ver estadioColHtml
      en app.js. */
-  .estadio-select{ display:none !important; }
+  .estadio-select, .estadio-otro-input{ display:none !important; }
   .estadio-print-text{ display:inline !important; }
   .print-header{ display:block !important; margin-bottom:14px; }
   .print-title{ margin:0; font-size:16px; font-weight:700; }
@@ -749,6 +749,10 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .data-table td select.estadio-select{
   font-size:12px; padding:3px 6px; border:1px solid var(--border); border-radius:6px;
   background:#fff; max-width:100%;
+}
+.data-table td input.estadio-otro-input{
+  font-size:12px; padding:3px 6px; border:1px solid var(--brand); border-radius:6px;
+  background:#fff; max-width:160px;
 }
 /* Par con .estadio-select: mismo <td>, versión texto plano para el PDF (ver regla @media print
    más arriba) — oculta en pantalla, donde manda el <select> editable. */

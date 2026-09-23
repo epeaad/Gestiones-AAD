@@ -31,8 +31,9 @@ const SELECT_FIELDS = {
   previstoPlan: ['Si','No'],
   movilidadInspeccion: ['Si','No'],
   estado: ['Adjudicado','Desierto','Relanzado','Finalizado']
-  // 'estadioActual' se agrega acá mismo en boot(), con la lista que manda el backend
-  // (state.estadiosAdministrativos) — no se hardcodea una segunda vez del lado del frontend.
+  // 'estadioActual' NO va acá: es un desplegable DINÁMICO (ver DYNAMIC_SELECT_FIELDS), no una
+  // lista cerrada — así el usuario puede escribir los estadíos reales de la organización en vez
+  // de elegir entre opciones que alguien tipeó de antemano.
 };
 // Etiqueta usada para representar, en filtros/agrupaciones, los trámites que todavía no tienen
 // un Estado cargado (sin adjudicar). No es un valor real de la base: es un valor "sentinela"
@@ -40,7 +41,7 @@ const SELECT_FIELDS = {
 const ESTADO_VACIO_LABEL = 'Vacío (sin adjudicar)';
 // Campos con opciones dinámicas: se cargan a partir de los valores ya existentes en la base
 // (evita errores de tipeo, obliga a elegir uno de los que ya existen).
-const DYNAMIC_SELECT_FIELDS = new Set(['pospre', 'sucursal']);
+const DYNAMIC_SELECT_FIELDS = new Set(['pospre', 'sucursal', 'estadioActual']);
 const LONG_FIELDS = new Set(['detalleRubro','observaciones','seguimiento']);
 
 // ---- Campos calculados automáticamente: no se editan a mano ----
@@ -503,11 +504,11 @@ async function boot() {
     state.campos = data.campos;
     state.etapas = data.etapas;
     state.registros = data.registros || [];
-    // Lista de Estadíos Administrativos: viene del backend (ESTADIOS_ADMINISTRATIVOS en Code.gs),
-    // una sola fuente para Contrataciones y Compras — ver SELECT_FIELDS.estadioActual más abajo y
-    // COMPRAS_TRAMITE_ADJUDICACION_FIELDS, que usan esta misma lista en vez de tener cada uno la suya.
+    // Lista "semilla" de Estadíos Administrativos: viene del backend (ESTADIOS_ADMINISTRATIVOS en
+    // Code.gs), una sola fuente para Contrataciones y Compras. Se combina con lo que ya se usó en
+    // los datos reales — ver estadioOpcionesDinamicas() — porque el campo es un desplegable
+    // DINÁMICO (DYNAMIC_SELECT_FIELDS), no una lista cerrada.
     state.estadiosAdministrativos = data.estadiosAdministrativos || [];
-    SELECT_FIELDS.estadioActual = state.estadiosAdministrativos;
     if (!state.registros.length) {
       showAppError('Conectado correctamente, pero la hoja "Gestiones Plan" no devolvió ninguna fila. Revisá que esa pestaña tenga tus datos y que su nombre sea exactamente "Gestiones Plan".');
     }
@@ -913,7 +914,11 @@ function buildFieldInput(f, record) {
     );
     inputHtml = `<select name="${f.key}">${opts.join('')}</select>`;
   } else if (DYNAMIC_SELECT_FIELDS.has(f.key)) {
-    const existentes = uniqueValues(f.key);
+    // 'estadioActual' es el único campo dinámico cuyas opciones no salen solo de state.registros:
+    // tiene que combinar Contrataciones y Compras (ver estadioOpcionesDinamicas), porque es el
+    // mismo concepto compartido entre los dos módulos — si cada uno mirara solo su propia lista,
+    // volveríamos a tener dos taxonomías que se desalinean con el tiempo.
+    const existentes = f.key === 'estadioActual' ? estadioOpcionesDinamicas() : uniqueValues(f.key);
     // Si el registro que se está editando tiene un valor que ya no está en la lista (caso raro), lo incluimos igual para no perderlo.
     if (value && !existentes.includes(value)) existentes.unshift(value);
     const opts = ['<option value="">— Elegí un ' + escapeHtml(f.label) + ' existente —</option>'].concat(
@@ -4323,15 +4328,9 @@ async function cargarComprasTramites() {
   try {
     const data = await apiCall('compras_tramites_listar');
     comprasTramitesCache = data.tramites || [];
-    // Opciones del <select> de "Estadío Administrativo Actual" del formulario de Compras: misma
-    // lista que ya llegó en state.estadiosAdministrativos (boot -> 'listar'), o la que venga en
-    // esta respuesta si por algún motivo boot() todavía no corrió — nunca una lista propia acá.
-    const estadioCampo = COMPRAS_TRAMITE_ADJUDICACION_FIELDS.find(f => f.key === 'estadioActual');
-    if (estadioCampo) {
-      const lista = (state.estadiosAdministrativos && state.estadiosAdministrativos.length)
-        ? state.estadiosAdministrativos : (data.estadiosAdministrativos || []);
-      estadioCampo.options = [''].concat(lista);
-    }
+    // Ya no hace falta precargar opciones acá: "Estadío Administrativo Actual" pasó a ser un
+    // desplegable dinámico (type: 'dynselect') — sus opciones se calculan al vuelo en
+    // estadioOpcionesDinamicas(), combinando Contrataciones + Compras + la semilla del backend.
     comprasTramitesMeta = {
       estados: data.estados || [],
       tiposEntrega: data.tiposEntrega || [],
@@ -4516,10 +4515,10 @@ const COMPRAS_TRAMITE_ADJUDICACION_FIELDS = [
   { key: 'fechaPC', label: 'Fecha de PC', type: 'date' },
   { key: 'estado', label: 'Estado', type: 'select', options: ['', 'Adjudicado', 'Desierto', 'Relanzado', 'Finalizado'] },
   { key: 'observaciones', label: 'Observaciones', type: 'text' },
-  // Mismo concepto y misma lista que en Contrataciones (SELECT_FIELDS.estadioActual) — las
-  // opciones reales se completan en cargarComprasTramites(), a partir de lo que manda el backend
-  // (state.estadiosAdministrativos), no hardcodeadas acá.
-  { key: 'estadioActual', label: 'Estadío Administrativo Actual', type: 'select', options: [''] },
+  // Mismo concepto y mismo mecanismo que en Contrataciones: desplegable DINÁMICO (no una lista
+  // cerrada), con "+ Otro (nuevo)" a texto libre — ver comprasTramiteBuildFieldInput() y el
+  // comentario en Code.gs junto a ESTADIOS_ADMINISTRATIVOS.
+  { key: 'estadioActual', label: 'Estadío Administrativo Actual', type: 'dynselect' },
   { key: 'estadioDesde', label: 'En este Estadío desde', type: 'date', derived: true }
 ];
 // Textos del badge "calculado ⓘ" en el formulario de Trámite de Compras — un mapa por clave
@@ -4537,6 +4536,14 @@ function comprasTramitePospreOpciones() {
   (comprasTramitesCache || []).forEach(t => { if (t.pospre) set.add(String(t.pospre).trim()); });
   return Array.from(set).sort();
 }
+// Qué función de opciones usa cada campo 'dynselect' de este formulario — así
+// comprasTramiteBuildFieldInput no queda atado a un solo campo (ver más abajo).
+// estadioOpcionesDinamicas() está definida más adelante en el archivo, junto al resto del módulo
+// "Estadío de los Trámites"; al ser function declarations, el orden en el archivo no importa.
+const COMPRAS_TRAMITE_DYNSELECT_OPCIONES = {
+  pospre: comprasTramitePospreOpciones,
+  estadioActual: () => estadioOpcionesDinamicas()
+};
 function comprasTramiteCamposEtapa(etapaId) {
   return etapaId === 'inicio' ? COMPRAS_TRAMITE_INICIO_FIELDS : COMPRAS_TRAMITE_ADJUDICACION_FIELDS;
 }
@@ -4545,7 +4552,12 @@ function comprasTramiteBuildFieldInput(f, record) {
   const readonlyAttr = f.derived ? 'readonly tabindex="-1"' : '';
   let inputHtml;
   if (f.type === 'dynselect') {
-    const existentes = comprasTramitePospreOpciones();
+    // Cada campo 'dynselect' tiene su propia función de opciones (ver COMPRAS_TRAMITE_DYNSELECT_OPCIONES,
+    // junto a COMPRAS_TRAMITE_ADJUDICACION_FIELDS) — antes esto llamaba siempre a
+    // comprasTramitePospreOpciones(), lo cual era correcto solo mientras Pospre fue el único campo
+    // de este tipo en el formulario.
+    const opcionesFn = COMPRAS_TRAMITE_DYNSELECT_OPCIONES[f.key] || (() => []);
+    const existentes = opcionesFn();
     if (value && !existentes.includes(value)) existentes.unshift(value);
     const opts = ['<option value="">— Elegí un ' + escapeHtml(f.label) + ' existente —</option>'].concat(
       existentes.map(o => `<option value="${escapeHtml(o)}" ${value === o ? 'selected' : ''}>${escapeHtml(o)}</option>`)
@@ -4609,19 +4621,20 @@ function buildComprasTramiteForm(record) {
     panelsWrap.appendChild(panel);
   });
 
-  // Desplegable dinámico de Pospre: elegir "+ Otro (nuevo)" muestra el input de texto libre en
-  // su lugar (mismo comportamiento que ya usa el resto de la app para este campo).
-  const pospreSel = panelsWrap.querySelector('select[data-dyn-key="pospre"]');
-  if (pospreSel) {
-    const row = pospreSel.nextElementSibling;
+  // Desplegables dinámicos de este formulario (Pospre, Estadío Administrativo Actual): elegir
+  // "+ Otro (nuevo)" muestra el input de texto libre en su lugar — generalizado para cualquier
+  // campo 'dynselect' presente, no solo Pospre (antes esto solo buscaba el <select> de Pospre
+  // puntualmente).
+  panelsWrap.querySelectorAll('select.dyn-select').forEach(sel => {
+    const row = sel.nextElementSibling;
     const otroInput = row.querySelector('.dyn-otro-input');
     const volverBtn = row.querySelector('.dyn-otro-volver');
-    pospreSel.addEventListener('change', () => {
-      if (pospreSel.value === DYNAMIC_SELECT_OTRO) {
-        pospreSel.hidden = true;
-        delete pospreSel.dataset.key;
+    sel.addEventListener('change', () => {
+      if (sel.value === DYNAMIC_SELECT_OTRO) {
+        sel.hidden = true;
+        delete sel.dataset.key;
         row.hidden = false;
-        otroInput.dataset.key = 'pospre';
+        otroInput.dataset.key = sel.dataset.dynKey;
         otroInput.value = '';
         otroInput.focus();
       }
@@ -4629,11 +4642,11 @@ function buildComprasTramiteForm(record) {
     volverBtn.addEventListener('click', () => {
       row.hidden = true;
       delete otroInput.dataset.key;
-      pospreSel.hidden = false;
-      pospreSel.dataset.key = 'pospre';
-      pospreSel.value = '';
+      sel.hidden = false;
+      sel.dataset.key = sel.dataset.dynKey;
+      sel.value = '';
     });
-  }
+  });
 
   comprasTramiteActiveStage = COMPRAS_TRAMITE_ETAPAS[0].id;
   setComprasTramiteActiveStage(comprasTramiteActiveStage);
@@ -5024,12 +5037,17 @@ document.getElementById('comprasMigrarBtn').addEventListener('click', async () =
 
 
 // ============================================================
-// ESTADÍO ACTUAL — panel unificado (Contrataciones + Compras)
+// ESTADÍO DE LOS TRÁMITES — panel unificado (Contrataciones + Compras)
 // ------------------------------------------------------------
-// Objetivo: ver de un vistazo dónde está circulando cada trámite (Estadío Administrativo Actual,
-// ver ESTADIOS_ADMINISTRATIVOS en Code.gs) y hace cuántos días está ahí, sin scrollear las tablas
-// grandes de Registros/Compras. Los datos NO se vuelven a pedir al servidor acá: se reusan
-// state.registros y comprasTramitesCache, que boot() ya precarga a los dos.
+// Objetivo: ver de un vistazo dónde está circulando cada trámite (Estadío Administrativo Actual)
+// y hace cuántos días está ahí, sin scrollear las tablas grandes de Registros/Compras. Los datos
+// NO se vuelven a pedir al servidor acá: se reusan state.registros y comprasTramitesCache, que
+// boot() ya precarga a los dos.
+//
+// "Estadío Administrativo Actual" es un desplegable DINÁMICO (mismo mecanismo que Pospre/Sucursal
+// — ver DYNAMIC_SELECT_FIELDS), no una lista cerrada: las opciones se arman con lo que ya se usó
+// en Contrataciones + Compras (estadioOpcionesDinamicas), y siempre hay un "+ Otra (nueva)..." a
+// texto libre — tanto en el formulario completo como en la edición rápida de esta tabla.
 // ============================================================
 
 // Umbrales del semáforo de "días en el estadío" (mismos 3 colores que .state-pill ya usa en el
@@ -5037,7 +5055,7 @@ document.getElementById('comprasMigrarBtn').addEventListener('click', async () =
 const ESTADIO_DIAS_ALERTA = 7;   // desde acá, ámbar
 const ESTADIO_DIAS_CRITICO = 15; // desde acá, rojo
 
-let estadioFiltros = { modulo: '', estadio: '', texto: '', riesgo: false };
+let estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false };
 let estadioSort = { key: 'diasEnEstadio', dir: -1 }; // por defecto: lo más demorado, arriba
 
 function diasDesde(fechaStr) {
@@ -5058,6 +5076,7 @@ function normalizarParaEstadio(item, modulo) {
     _id: item._id,
     modulo,
     pospre: item.pospre || '',
+    anio: item.anio != null ? item.anio : '',
     expediente: item.expediente || '',
     nroPC: modulo === 'Compras' ? (item.nroPC || '') : (item.nroPedidoCompras || ''),
     extracto: modulo === 'Compras' ? (item.extracto || '') : (item.detalleRubro || ''),
@@ -5074,6 +5093,18 @@ function estadioFilasCompletas() {
   return regs.concat(compras);
 }
 
+// Opciones del desplegable dinámico de "Estadío Administrativo Actual": lo ya usado en
+// Contrataciones + lo ya usado en Compras + la semilla del backend (ESTADIOS_ADMINISTRATIVOS en
+// Code.gs, vacía por defecto — ver ese comentario). Una sola función, usada por el formulario
+// completo de los dos módulos (buildFieldInput / COMPRAS_TRAMITE_DYNSELECT_OPCIONES) y por la
+// edición rápida de esta tabla (estadioColHtml) — así un estadío tipeado en un módulo aparece
+// como sugerencia en el otro, en vez de que cada uno arme su propia lista por separado.
+function estadioOpcionesDinamicas() {
+  const set = new Set(state.estadiosAdministrativos || []);
+  estadioFilasCompletas().forEach(f => { if (f.estadioActual) set.add(f.estadioActual); });
+  return Array.from(set).sort();
+}
+
 function estadioEsRiesgo(f) {
   return f.diasEnEstadio != null && f.diasEnEstadio >= ESTADIO_DIAS_CRITICO;
 }
@@ -5082,6 +5113,7 @@ function estadioFilasFiltradas() {
   const texto = (estadioFiltros.texto || '').trim().toLowerCase();
   return estadioFilasCompletas().filter(f => {
     if (estadioFiltros.modulo && f.modulo !== estadioFiltros.modulo) return false;
+    if (estadioFiltros.anio && String(f.anio) !== estadioFiltros.anio) return false;
     if (estadioFiltros.estadio) {
       if (estadioFiltros.estadio === '__vacio__') { if (f.estadioActual) return false; }
       else if (f.estadioActual !== estadioFiltros.estadio) return false;
@@ -5098,6 +5130,7 @@ function estadioFilasFiltradas() {
 const ESTADIO_TABLE_COLS = [
   { key: 'modulo', label: 'Módulo' },
   { key: 'pospre', label: 'Pospre' },
+  { key: 'anio', label: 'Año' },
   { key: 'expediente', label: 'Expediente' },
   { key: 'nroPC', label: 'N° PC' },
   { key: 'extracto', label: 'Extracto' },
@@ -5108,6 +5141,7 @@ const ESTADIO_TABLE_COLS = [
 
 function estadioSortValue(f, key) {
   if (key === 'diasEnEstadio') return f.diasEnEstadio == null ? -1 : f.diasEnEstadio;
+  if (key === 'anio') return num(f.anio);
   return String(f[key] != null ? f[key] : '').toLowerCase();
 }
 
@@ -5124,8 +5158,18 @@ function poblarEstadioFiltroSelect() {
   if (!sel) return;
   const actual = sel.value;
   const opts = ['<option value="">Todos</option>', '<option value="__vacio__">(Sin estadío cargado)</option>']
-    .concat((state.estadiosAdministrativos || []).map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`));
+    .concat(estadioOpcionesDinamicas().map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`));
   sel.innerHTML = opts.join('');
+  sel.value = actual;
+}
+function poblarEstadioFiltroAnio() {
+  const sel = document.getElementById('estadioFiltroAnio');
+  if (!sel) return;
+  const actual = sel.value;
+  const anios = Array.from(new Set(estadioFilasCompletas().map(f => String(f.anio || '').trim()).filter(Boolean))).sort().reverse();
+  sel.innerHTML = ['<option value="">Todos</option>'].concat(
+    anios.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`)
+  ).join('');
   sel.value = actual;
 }
 
@@ -5150,6 +5194,9 @@ async function estadioGuardarCambio(id, modulo, nuevoValor) {
 }
 
 function estadioColHtml(f, col) {
+  if (col.key === 'anio') {
+    return `<td class="mono">${escapeHtml(f.anio)}</td>`;
+  }
   if (col.key === 'extracto') {
     return `<td class="td-truncate" title="${escapeHtml(f.extracto)}">${escapeHtml(f.extracto)}</td>`;
   }
@@ -5159,20 +5206,27 @@ function estadioColHtml(f, col) {
   if (col.key === 'estadioActual') {
     const puedeEditar = state.session && state.session.rol !== 'consulta';
     if (!puedeEditar) return `<td>${escapeHtml(f.estadioActual || '—')}</td>`;
+    const opciones = estadioOpcionesDinamicas();
     const opts = ['<option value="">— Elegí —</option>'].concat(
-      (state.estadiosAdministrativos || []).map(e =>
-        `<option value="${escapeHtml(e)}" ${f.estadioActual === e ? 'selected' : ''}>${escapeHtml(e)}</option>`)
-    );
-    // Dos versiones del mismo dato en el mismo <td>: el <select> editable para pantalla, y un
-    // texto plano (.estadio-print-text) para el PDF — ver @media print en style.css. No afecta
-    // la exportación a CSV, que no lee el DOM (ver exportarEstadioCsv más abajo).
-    return `<td><select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}">${opts.join('')}</select>` +
-      `<span class="estadio-print-text">${escapeHtml(f.estadioActual || '—')}</span></td>`;
+      opciones.map(e => `<option value="${escapeHtml(e)}" ${f.estadioActual === e ? 'selected' : ''}>${escapeHtml(e)}</option>`)
+    ).concat([`<option value="${DYNAMIC_SELECT_OTRO}">+ Otra (nueva)...</option>`]);
+    // Tres elementos en el mismo <td>: el <select> editable (con "+ Otra (nueva)..." al final, para
+    // escribir un estadío que todavía no existe), el <input> de texto libre que aparece al elegir
+    // esa opción (oculto hasta entonces), y un texto plano (.estadio-print-text) para el PDF — ver
+    // @media print en style.css. Nada de esto afecta la exportación a CSV, que no lee el DOM
+    // (ver exportarEstadioCsv más abajo).
+    return `<td>` +
+      `<select class="estadio-select" data-id="${f._id}" data-modulo="${f.modulo}">${opts.join('')}</select>` +
+      `<input type="text" class="estadio-otro-input" data-id="${f._id}" data-modulo="${f.modulo}" ` +
+        `placeholder="Escribí el estadío..." hidden />` +
+      `<span class="estadio-print-text">${escapeHtml(f.estadioActual || '—')}</span>` +
+      `</td>`;
   }
   return `<td>${escapeHtml(f[col.key])}</td>`;
 }
 
 function renderEstadioActual() {
+  poblarEstadioFiltroAnio();
   poblarEstadioFiltroSelect();
   let filas = estadioFilasFiltradas();
   filas = sortRows(filas, estadioSort, estadioSortValue);
@@ -5209,19 +5263,43 @@ function renderEstadioActual() {
   setupScrollShadow(table.closest('.table-wrap'), 'estadioScrollTop', 'estadioScrollTopInner');
   wireSortableHeaders(table, estadioSort, renderEstadioActual);
 
-  // Edición inline: cambiar el <select> de una fila guarda solo, sin abrir ningún formulario.
+  // Edición inline — elegir un valor del <select> guarda solo; elegir "+ Otra (nueva)..." abre el
+  // <input> de texto libre de al lado (mismo par select+input que ya usa el resto de la app para
+  // Pospre/Sucursal, ver DYNAMIC_SELECT_OTRO), que guarda al perder el foco o con Enter.
   table.querySelectorAll('select.estadio-select').forEach(sel => {
     sel.addEventListener('click', (e) => e.stopPropagation());
     sel.addEventListener('change', (e) => {
       e.stopPropagation();
+      if (sel.value === DYNAMIC_SELECT_OTRO) {
+        const input = sel.nextElementSibling; // .estadio-otro-input
+        sel.hidden = true;
+        input.hidden = false;
+        input.value = '';
+        input.focus();
+        return;
+      }
       estadioGuardarCambio(sel.dataset.id, sel.dataset.modulo, sel.value);
     });
+  });
+  table.querySelectorAll('input.estadio-otro-input').forEach(input => {
+    input.addEventListener('click', (e) => e.stopPropagation());
+    const confirmar = () => {
+      const valor = input.value.trim();
+      if (!valor) { renderEstadioActual(); return; } // vacío: cancela, vuelve a mostrar el <select>
+      estadioGuardarCambio(input.dataset.id, input.dataset.modulo, valor);
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); confirmar(); }
+      if (e.key === 'Escape') { e.preventDefault(); renderEstadioActual(); }
+    });
+    input.addEventListener('blur', confirmar);
   });
 
   // Click en el resto de la fila: abre el trámite completo en su módulo de origen (Registros o Compras).
   table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
     tr.addEventListener('click', (e) => {
-      if (e.target.closest('select')) return;
+      if (e.target.closest('select') || e.target.closest('input')) return;
       const id = tr.dataset.id, modulo = tr.dataset.modulo;
       if (modulo === 'Compras') {
         showView('compras');
@@ -5239,6 +5317,10 @@ document.getElementById('estadioFiltroModulo').addEventListener('change', (e) =>
   estadioFiltros.modulo = e.target.value;
   renderEstadioActual();
 });
+document.getElementById('estadioFiltroAnio').addEventListener('change', (e) => {
+  estadioFiltros.anio = e.target.value;
+  renderEstadioActual();
+});
 document.getElementById('estadioFiltroEstadio').addEventListener('change', (e) => {
   estadioFiltros.estadio = e.target.value;
   renderEstadioActual();
@@ -5254,8 +5336,9 @@ document.getElementById('estadioRiesgoBtn').addEventListener('click', () => {
   renderEstadioActual();
 });
 document.getElementById('estadioLimpiarBtn').addEventListener('click', () => {
-  estadioFiltros = { modulo: '', estadio: '', texto: '', riesgo: false };
+  estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false };
   document.getElementById('estadioFiltroModulo').value = '';
+  document.getElementById('estadioFiltroAnio').value = '';
   document.getElementById('estadioFiltroEstadio').value = '';
   document.getElementById('estadioFiltroTexto').value = '';
   renderEstadioActual();
