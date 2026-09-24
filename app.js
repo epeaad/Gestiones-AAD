@@ -2949,6 +2949,16 @@ function formatMesCorto(v) {
   return (MESES_CORTOS[idx] || m[2]) + '/' + m[1].slice(2);
 }
 
+// ---- "AAAA-MM-DD" (fechaFinContrato / fechaFinPlazoAmpliada) -> "Marzo 2025", para las columnas
+// fijas de Vencimiento de Seguimiento de Avance ----
+const MESES_LARGOS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function formatMesLargoDesdeFecha(fechaISO) {
+  const m = String(fechaISO || '').match(/^(\d{4})-(\d{2})/);
+  if (!m) return '';
+  const idx = parseInt(m[2], 10) - 1;
+  return (MESES_LARGOS[idx] || m[2]) + ' ' + m[1];
+}
+
 function filteredForSeguimientoBase() {
   return filtrosCompartidosBase();
 }
@@ -3004,9 +3014,17 @@ function renderSeguimiento() {
       montoPorMes[c.mesAnioCertificacion] = (montoPorMes[c.mesAnioCertificacion] || 0) + num(c.montoCertificado);
     });
     const porMes = meses.map(m => adj > 0 ? ((montoPorMes[m] || 0) / adj) * 100 : 0);
+
+    // ---- Vencimiento original vs. ampliado: "ampliado" solo se muestra si el trámite tiene una
+    // Ampliación de Plazo realmente cargada (ampliacionPlazo > 0); si no, fechaFinPlazoAmpliada es
+    // idéntica a fechaFinContrato y mostrarla dos veces solo generaría ruido. ----
+    const tieneAmpliacion = num(r.ampliacionPlazo) > 0 && r.fechaFinPlazoAmpliada && r.fechaFinPlazoAmpliada !== r.fechaFinContrato;
     return {
       id: r._id, pospre: r.pospre, nroPedidoCompras: r.nroPedidoCompras, adjudicatario: r.adjudicatario,
-      sucursal: r.sucursal, adj, porMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0
+      sucursal: r.sucursal, adj, porMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0,
+      fechaFinContrato: r.fechaFinContrato || '', fechaFinPlazoAmpliada: r.fechaFinPlazoAmpliada || '',
+      mesVencOriginal: formatMesLargoDesdeFecha(r.fechaFinContrato),
+      mesVencAmpliado: tieneAmpliacion ? formatMesLargoDesdeFecha(r.fechaFinPlazoAmpliada) : ''
     };
   });
 
@@ -3017,6 +3035,8 @@ function renderSeguimiento() {
     if (key === 'nroPedidoCompras') return fila.nroPedidoCompras || '';
     if (key === 'adjudicatario') return fila.adjudicatario || '';
     if (key === 'sucursal') return fila.sucursal || '';
+    if (key === 'vencOriginal') return fila.fechaFinContrato || '';
+    if (key === 'vencAmpliado') return fila.fechaFinPlazoAmpliada || '';
     if (key === 'pctActual') return fila.pctActual;
     const idx = meses.indexOf(key); // key es un mes ("AAAA-MM") cuando no es ninguno de los anteriores
     return idx === -1 ? 0 : fila.porMes[idx];
@@ -3040,11 +3060,21 @@ function renderSeguimiento() {
     return `<th class="sortable${claseExtra ? ' ' + claseExtra : ''}" data-sort-key="${key}">${label}${flecha}</th>`;
   };
   const theadMeses = meses.map(m => thSort(m, escapeHtml(formatMesCorto(m)), 'mono')).join('');
+
+  // ---- Celdas de las 2 columnas fijas de Vencimiento: color propio (azul = original, violeta =
+  // ampliado) para diferenciarlas del semáforo verde/ámbar/rojo del % de avance. Si no hay fecha
+  // cargada (o no hay ampliación real), se muestra "-" con estilo atenuado. ----
+  const celdaVencimiento = (mesTexto, claseColor) => mesTexto
+    ? `<td class="${claseColor}" title="${escapeHtml(mesTexto)}">${escapeHtml(mesTexto)}</td>`
+    : `<td class="segu-venc-vacio">-</td>`;
+
   table.innerHTML = `<thead><tr>
       ${thSort('pospre', 'Pospre', 'segu-col-1')}
       ${thSort('nroPedidoCompras', 'N° PC', 'segu-col-2')}
       ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
       ${thSort('sucursal', 'Sucursal', 'segu-col-4')}
+      ${thSort('vencOriginal', 'Vencimiento')}
+      ${thSort('vencAmpliado', 'Vencimiento Ampliado')}
       ${theadMeses}
       ${thSort('pctActual', '% Acumulado total', 'mono')}
     </tr></thead><tbody>` +
@@ -3053,6 +3083,8 @@ function renderSeguimiento() {
       <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
       <td class="segu-col-4" title="${escapeHtml(f.sucursal || '')}">${escapeHtml(f.sucursal || '')}</td>
+      ${celdaVencimiento(f.mesVencOriginal, 'segu-venc-original')}
+      ${celdaVencimiento(f.mesVencAmpliado, 'segu-venc-ampliado')}
       ${f.porMes.map(celdaSemaforo).join('')}
       ${celdaSemaforo(f.pctActual)}
     </tr>`).join('') +

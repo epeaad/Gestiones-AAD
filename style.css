@@ -452,7 +452,18 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
    3 tonos que las pastillas de Estado), para leer de un vistazo sin gráfico ni animaciones. ---- */
 .data-table-heatmap td.segu-celda{ font-weight:600; text-align:right; min-width:56px; }
 .data-table-heatmap th.mono{ text-align:right; font-family:var(--font-mono); }
-.segu-leyenda{ display:flex; gap:14px; font-size:12px; color:var(--text-soft); }
+
+/* ---- Columnas fijas "Vencimiento" (plazo original) y "Vencimiento Ampliado" (plazo con
+   ampliación): van siempre, a diferencia de las columnas de mes/año que solo aparecen si hay
+   certificaciones cargadas. Colores propios (azul/violeta) para no confundirse con el semáforo
+   verde/ámbar/rojo del % de avance. ---- */
+.data-table-heatmap td.segu-venc-original{ background:#DBEAFE; color:#1E3A8A; font-weight:600; white-space:nowrap; min-width:90px; }
+.data-table-heatmap td.segu-venc-ampliado{ background:#EDE9FE; color:#5B21B6; font-weight:600; white-space:nowrap; min-width:90px; }
+.data-table-heatmap td.segu-venc-vacio{ background:var(--surface); color:var(--text-soft); font-weight:400; }
+.data-table-heatmap tbody tr.row-sin-certificaciones td.segu-venc-original,
+.data-table-heatmap tbody tr.row-sin-certificaciones td.segu-venc-ampliado{ opacity:0.75; }
+
+.segu-leyenda{ display:flex; gap:14px; font-size:12px; color:var(--text-soft); flex-wrap:wrap; }
 .segu-leyenda span{ display:flex; align-items:center; gap:5px; }
 .segu-dot{ display:inline-block; width:10px; height:10px; border-radius:3px; border:1px solid; }
 
