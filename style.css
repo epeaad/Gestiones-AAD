@@ -457,9 +457,9 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
    ampliación): van siempre, a diferencia de las columnas de mes/año que solo aparecen si hay
    certificaciones cargadas. Colores propios (azul/violeta) para no confundirse con el semáforo
    verde/ámbar/rojo del % de avance. ---- */
-.data-table-heatmap td.segu-venc-original{ background:#DBEAFE; color:#1E3A8A; font-weight:600; white-space:nowrap; min-width:90px; }
-.data-table-heatmap td.segu-venc-ampliado{ background:#EDE9FE; color:#5B21B6; font-weight:600; white-space:nowrap; min-width:90px; }
-.data-table-heatmap td.segu-venc-vacio{ background:var(--surface); color:var(--text-soft); font-weight:400; }
+.data-table-heatmap td.segu-venc-original{ background:#DBEAFE; color:#1E3A8A; font-weight:600; white-space:nowrap; min-width:56px; text-align:right; font-family:var(--font-mono); }
+.data-table-heatmap td.segu-venc-ampliado{ background:#EDE9FE; color:#5B21B6; font-weight:600; white-space:nowrap; min-width:56px; text-align:right; font-family:var(--font-mono); }
+.data-table-heatmap td.segu-venc-vacio{ background:var(--surface); color:var(--text-soft); font-weight:400; text-align:right; font-family:var(--font-mono); }
 .data-table-heatmap tbody tr.row-sin-certificaciones td.segu-venc-original,
 .data-table-heatmap tbody tr.row-sin-certificaciones td.segu-venc-ampliado{ opacity:0.75; }
 

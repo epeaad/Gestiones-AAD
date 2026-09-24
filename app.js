@@ -2949,14 +2949,12 @@ function formatMesCorto(v) {
   return (MESES_CORTOS[idx] || m[2]) + '/' + m[1].slice(2);
 }
 
-// ---- "AAAA-MM-DD" (fechaFinContrato / fechaFinPlazoAmpliada) -> "Marzo 2025", para las columnas
-// fijas de Vencimiento de Seguimiento de Avance ----
-const MESES_LARGOS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-function formatMesLargoDesdeFecha(fechaISO) {
+// ---- "AAAA-MM-DD" (fechaFinContrato / fechaFinPlazoAmpliada) -> "03/25", para las columnas fijas
+// de Vencimiento de Seguimiento de Avance (formato compacto: mismo ancho que las de mes) ----
+function formatMesVencimiento(fechaISO) {
   const m = String(fechaISO || '').match(/^(\d{4})-(\d{2})/);
   if (!m) return '';
-  const idx = parseInt(m[2], 10) - 1;
-  return (MESES_LARGOS[idx] || m[2]) + ' ' + m[1];
+  return m[2] + '/' + m[1].slice(2);
 }
 
 function filteredForSeguimientoBase() {
@@ -3023,8 +3021,8 @@ function renderSeguimiento() {
       id: r._id, pospre: r.pospre, nroPedidoCompras: r.nroPedidoCompras, adjudicatario: r.adjudicatario,
       sucursal: r.sucursal, adj, porMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0,
       fechaFinContrato: r.fechaFinContrato || '', fechaFinPlazoAmpliada: r.fechaFinPlazoAmpliada || '',
-      mesVencOriginal: formatMesLargoDesdeFecha(r.fechaFinContrato),
-      mesVencAmpliado: tieneAmpliacion ? formatMesLargoDesdeFecha(r.fechaFinPlazoAmpliada) : ''
+      mesVencOriginal: formatMesVencimiento(r.fechaFinContrato),
+      mesVencAmpliado: tieneAmpliacion ? formatMesVencimiento(r.fechaFinPlazoAmpliada) : ''
     };
   });
 
@@ -3073,9 +3071,9 @@ function renderSeguimiento() {
       ${thSort('nroPedidoCompras', 'N° PC', 'segu-col-2')}
       ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
       ${thSort('sucursal', 'Sucursal', 'segu-col-4')}
-      ${thSort('vencOriginal', 'Vencimiento')}
-      ${thSort('vencAmpliado', 'Vencimiento Ampliado')}
       ${theadMeses}
+      ${thSort('vencOriginal', 'Vencimiento', 'mono')}
+      ${thSort('vencAmpliado', 'Vencimiento Ampliado', 'mono')}
       ${thSort('pctActual', '% Acumulado total', 'mono')}
     </tr></thead><tbody>` +
     filasOrdenadas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
@@ -3083,9 +3081,9 @@ function renderSeguimiento() {
       <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
       <td class="segu-col-4" title="${escapeHtml(f.sucursal || '')}">${escapeHtml(f.sucursal || '')}</td>
+      ${f.porMes.map(celdaSemaforo).join('')}
       ${celdaVencimiento(f.mesVencOriginal, 'segu-venc-original')}
       ${celdaVencimiento(f.mesVencAmpliado, 'segu-venc-ampliado')}
-      ${f.porMes.map(celdaSemaforo).join('')}
       ${celdaSemaforo(f.pctActual)}
     </tr>`).join('') +
     '</tbody>';
