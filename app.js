@@ -3057,6 +3057,12 @@ function renderSeguimiento() {
     const flecha = activo ? (state.seguSort.dir === 1 ? ' ▲' : ' ▼') : '';
     return `<th class="sortable${claseExtra ? ' ' + claseExtra : ''}" data-sort-key="${key}">${label}${flecha}</th>`;
   };
+  // Igual que thSort, pero con "title" (tooltip) para las abreviaturas Vmto / Vmto Amp.
+  const thSortTitle = (key, label, tituloCompleto, claseExtra) => {
+    const activo = state.seguSort.key === key;
+    const flecha = activo ? (state.seguSort.dir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable${claseExtra ? ' ' + claseExtra : ''}" data-sort-key="${key}" title="${escapeHtml(tituloCompleto)}">${label}${flecha}</th>`;
+  };
   const theadMeses = meses.map(m => thSort(m, escapeHtml(formatMesCorto(m)), 'mono')).join('');
 
   // ---- Celdas de las 2 columnas fijas de Vencimiento: color propio (azul = original, violeta =
@@ -3072,8 +3078,8 @@ function renderSeguimiento() {
       ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
       ${thSort('sucursal', 'Sucursal', 'segu-col-4')}
       ${theadMeses}
-      ${thSort('vencOriginal', 'Vencimiento', 'mono')}
-      ${thSort('vencAmpliado', 'Vencimiento Ampliado', 'mono')}
+      ${thSortTitle('vencOriginal', 'Vmto', 'Vencimiento (plazo original)', 'mono')}
+      ${thSortTitle('vencAmpliado', 'Vmto Amp', 'Vencimiento Ampliado (con ampliación de plazo)', 'mono')}
       ${thSort('pctActual', '% Acumulado total', 'mono')}
     </tr></thead><tbody>` +
     filasOrdenadas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
