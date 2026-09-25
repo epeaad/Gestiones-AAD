@@ -346,15 +346,29 @@
       <div class="panel">
         <div class="view-header" style="margin-bottom:10px;">
           <h3 style="margin:0;">% de Avance acumulado por mes/año</h3>
+        </div>
+        <div class="segu-leyenda-grupo">
           <div class="segu-leyenda">
+            <strong>Columnas de mes (% certificado ese mes):</strong>
+            <span><i class="segu-dot" style="background:#DCFCE7; border-color:#166534;"></i>&gt;25%</span>
+            <span><i class="segu-dot" style="background:#FEF3C7; border-color:#92400E;"></i>15-24%</span>
+            <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>≤14%</span>
+            <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>"-" = expediente cargado con monto 0/vacío</span>
+            <span><i class="segu-dot" style="background:#fff; border-color:var(--border);"></i>en blanco = sin expediente ese mes</span>
+          </div>
+          <div class="segu-leyenda">
+            <strong>% Acumulado total:</strong>
             <span><i class="segu-dot" style="background:#DCFCE7; border-color:#166534;"></i>≥75%</span>
-            <span><i class="segu-dot" style="background:#FEF3C7; border-color:#92400E;"></i>40-74%</span>
-            <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>&lt;40%</span>
+            <span><i class="segu-dot" style="background:#FEF3C7; border-color:#92400E;"></i>50-74%</span>
+            <span><i class="segu-dot" style="background:#FFEDD5; border-color:#9A3412;"></i>33-49%</span>
+            <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>&lt;33%</span>
+          </div>
+          <div class="segu-leyenda">
             <span><i class="segu-dot" style="background:#DBEAFE; border-color:#1E3A8A;"></i>Vmto (vencimiento original)</span>
             <span><i class="segu-dot" style="background:#EDE9FE; border-color:#5B21B6;"></i>Vmto Amp (vencimiento ampliado)</span>
           </div>
         </div>
-        <p class="table-note">Cada fila es un contrato (Pospre / N° PC / Contratista / Sucursal siempre visibles). Cada columna de mes de certificación es lo certificado <strong>ese mes en particular</strong> (no acumulado). Las columnas "Vmto" y "Vmto Amp" (formato MM/AA), justo antes del acumulado, muestran el mes/año en que vence el plazo original y el plazo con ampliación de ese contrato (esta última solo si el trámite tiene ampliación de plazo cargada). La última columna, "% Acumulado total", suma todo lo certificado hasta la fecha. Coloreado con el mismo semáforo que el resto de la app.</p>
+        <p class="table-note">Cada fila es un contrato (Pospre / N° PC / Contratista / Sucursal siempre visibles). Cada columna de mes muestra lo certificado <strong>ese mes en particular</strong> (no acumulado): en blanco si no hay ningún expediente/certificado cargado ese mes, en rojo con "-" si hay expediente cargado pero con monto 0 o vacío, y con semáforo propio (verde/amarillo/rojo) si certificó algún monto. Las columnas "Vmto" y "Vmto Amp" (formato MM/AA), justo antes del acumulado, muestran el mes/año en que vence el plazo original y el plazo con ampliación de ese contrato (esta última solo si el trámite tiene ampliación de plazo cargada). La última columna, "% Acumulado total", suma todo lo certificado hasta la fecha y usa su propio semáforo de 4 bandas.</p>
         <div class="scroll-top-bar" id="seguimientoScrollTop"><div class="scroll-top-inner" id="seguimientoScrollTopInner"></div></div>
         <div class="table-wrap table-wrap-seguimiento">
           <table id="seguimientoTable" class="data-table data-table-heatmap"></table>

@@ -2965,11 +2965,22 @@ function filteredForSeguimiento() {
   return state.riesgoPlazoActivoCompartido ? rows.filter(esRiesgoPorPlazo) : rows;
 }
 
-// ---- Tinte de fondo para el heatmap de % de avance (mismos 3 colores que las pastillas de
-// Estado en el resto de la app, para no inventar una paleta nueva) ----
-function semTinte(pct) {
+// ---- Tinte de fondo para las celdas de % CERTIFICADO POR MES (no acumulado): verde si certificó
+// más de 25% de ese mes, amarillo entre 15% y 24%, rojo con 14% o menos. Solo se aplica cuando el
+// mes tiene un expediente/certificado cargado con monto > 0 — ver celdaMes() para los otros 2
+// estados posibles (sin expediente ese mes / expediente con monto cero). ----
+function mesTinte(pct) {
+  if (pct >= 25) return { bg: '#DCFCE7', color: '#166534' };
+  if (pct >= 15) return { bg: '#FEF3C7', color: '#92400E' };
+  return { bg: '#FEE2E2', color: '#991B1B' };
+}
+
+// ---- Tinte de fondo para la celda de "% Acumulado total": 4 bandas (más exigentes que las de
+// cada mes individual, porque acá lo que importa es cuánto falta certificar del contrato entero) ----
+function acumTinte(pct) {
   if (pct >= 75) return { bg: '#DCFCE7', color: '#166534' };
-  if (pct >= 40) return { bg: '#FEF3C7', color: '#92400E' };
+  if (pct >= 50) return { bg: '#FEF3C7', color: '#92400E' };
+  if (pct >= 33) return { bg: '#FFEDD5', color: '#9A3412' };
   return { bg: '#FEE2E2', color: '#991B1B' };
 }
 
@@ -3008,10 +3019,21 @@ function renderSeguimiento() {
     const certs = certsPorTramite[r._id] || [];
     const adj = num(r.totalAdjudicado);
     const montoPorMes = {};
+    const mesesConExpediente = new Set(); // meses en que este trámite tiene AL MENOS UN certificado cargado (aunque sea con monto 0/vacío)
     certs.forEach(c => {
+      mesesConExpediente.add(c.mesAnioCertificacion);
       montoPorMes[c.mesAnioCertificacion] = (montoPorMes[c.mesAnioCertificacion] || 0) + num(c.montoCertificado);
     });
-    const porMes = meses.map(m => adj > 0 ? ((montoPorMes[m] || 0) / adj) * 100 : 0);
+    // ---- Por cada columna de mes, 3 estados posibles (ver celdaMes() para cómo se pintan):
+    //  - 'sin-expediente': no hay ningún certificado cargado ese mes para este trámite -> celda en blanco, sin texto.
+    //  - 'monto-cero': hay certificado(s) cargado(s) ese mes pero el monto certificado total es 0 o vacío -> fondo rojo con "-".
+    //  - 'valor': hay certificado con monto > 0 ese mes -> semáforo por % certificado ese mes (mesTinte). ----
+    const celdasMes = meses.map(m => {
+      if (!mesesConExpediente.has(m)) return { estado: 'sin-expediente', pct: 0 };
+      const monto = montoPorMes[m] || 0;
+      if (monto <= 0) return { estado: 'monto-cero', pct: 0 };
+      return { estado: 'valor', pct: adj > 0 ? (monto / adj) * 100 : 0 };
+    });
 
     // ---- Vencimiento original vs. ampliado: "ampliado" solo se muestra si el trámite tiene una
     // Ampliación de Plazo realmente cargada (ampliacionPlazo > 0); si no, fechaFinPlazoAmpliada es
@@ -3019,7 +3041,7 @@ function renderSeguimiento() {
     const tieneAmpliacion = num(r.ampliacionPlazo) > 0 && r.fechaFinPlazoAmpliada && r.fechaFinPlazoAmpliada !== r.fechaFinContrato;
     return {
       id: r._id, pospre: r.pospre, nroPedidoCompras: r.nroPedidoCompras, adjudicatario: r.adjudicatario,
-      sucursal: r.sucursal, adj, porMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0,
+      sucursal: r.sucursal, adj, celdasMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0,
       fechaFinContrato: r.fechaFinContrato || '', fechaFinPlazoAmpliada: r.fechaFinPlazoAmpliada || '',
       mesVencOriginal: formatMesVencimiento(r.fechaFinContrato),
       mesVencAmpliado: tieneAmpliacion ? formatMesVencimiento(r.fechaFinPlazoAmpliada) : ''
@@ -3037,15 +3059,24 @@ function renderSeguimiento() {
     if (key === 'vencAmpliado') return fila.fechaFinPlazoAmpliada || '';
     if (key === 'pctActual') return fila.pctActual;
     const idx = meses.indexOf(key); // key es un mes ("AAAA-MM") cuando no es ninguno de los anteriores
-    return idx === -1 ? 0 : fila.porMes[idx];
+    return idx === -1 ? 0 : fila.celdasMes[idx].pct;
   };
   const filasOrdenadas = sortRows(filas, state.seguSort, seguSortValue);
 
-  const celdaSemaforo = (pct) => {
-    const t = semTinte(pct);
+  const celdaMes = (celda) => {
+    // 'sin-expediente': ningún certificado cargado ese mes para este trámite -> celda vacía, sin texto ni color.
+    if (celda.estado === 'sin-expediente') return `<td class="segu-celda"></td>`;
+    // 'monto-cero': hay certificado(s) cargado(s) ese mes pero con monto 0/vacío -> fondo rojo fijo con "-".
+    if (celda.estado === 'monto-cero') return `<td class="mono segu-celda" style="background:#FEE2E2; color:#991B1B;">-</td>`;
+    // 'valor': hay certificado con monto > 0 -> semáforo por % certificado ESE mes (mesTinte: 25/15).
+    const t = mesTinte(celda.pct);
+    const redondeado = celda.pct.toFixed(0);
+    const texto = redondeado === '0' ? '-' : redondeado + '%'; // monto>0 pero redondea a 0%: "-" para no confundir con "sin avance"
+    return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${texto}</td>`;
+  };
+  const celdaAcumulado = (pct) => {
+    const t = acumTinte(pct);
     const redondeado = pct.toFixed(0);
-    // "0%" confunde (¿no certificó nada, o certificó poquito y redondeó a 0?): se muestra "-" en
-    // su lugar. El fondo rojo se mantiene igual, porque sigue siendo una señal de "sin avance".
     const texto = redondeado === '0' ? '-' : redondeado + '%';
     return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${texto}</td>`;
   };
@@ -3087,10 +3118,10 @@ function renderSeguimiento() {
       <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
       <td class="segu-col-4" title="${escapeHtml(f.sucursal || '')}">${escapeHtml(f.sucursal || '')}</td>
-      ${f.porMes.map(celdaSemaforo).join('')}
+      ${f.celdasMes.map(celdaMes).join('')}
       ${celdaVencimiento(f.mesVencOriginal, 'segu-venc-original')}
       ${celdaVencimiento(f.mesVencAmpliado, 'segu-venc-ampliado')}
-      ${celdaSemaforo(f.pctActual)}
+      ${celdaAcumulado(f.pctActual)}
     </tr>`).join('') +
     '</tbody>';
   setupScrollShadow(table.closest('.table-wrap'), 'seguimientoScrollTop', 'seguimientoScrollTopInner');
@@ -4230,8 +4261,8 @@ function proySortValue(p, key) {
   return String(p[key] != null ? p[key] : '').toLowerCase();
 }
 
-// ---- Semáforo por % del techo de $ Km de LAMT del contrato (al revés que semTinte(): acá más
-// alto es PEOR, porque significa que el proyecto se acerca o supera el techo del contrato) ----
+// ---- Semáforo por % del techo de $ Km de LAMT del contrato (al revés que mesTinte()/acumTinte():
+// acá más alto es PEOR, porque significa que el proyecto se acerca o supera el techo del contrato) ----
 function semTintePorTecho(pct) {
   if (pct > 100) return { bg: '#FEE2E2', color: '#991B1B' }; // superó el techo del contrato
   if (pct >= 70) return { bg: '#FEF3C7', color: '#92400E' }; // cerca del techo
