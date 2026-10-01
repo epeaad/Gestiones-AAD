@@ -436,9 +436,21 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 }
 
 /* ---- Filtros avanzados: colapsados por defecto para no abrumar con 13 controles a la vista;
-   el botón alterna una segunda fila con los filtros más específicos/analíticos. ---- */
-.filtros-avanzados-toggle{ align-self:flex-end; }
+   el botón alterna una segunda fila con los filtros más específicos/analíticos. Antes era un
+   btn-ghost más, igual a "Limpiar filtros" — pasaba desapercibido y nadie encontraba estos filtros
+   extra. Fondo sólido color ámbar (--stage-3, el mismo tono "mecanismo especial" que ya usa el
+   cartel de Ampliación de contrato) para que se note de entrada en las 5 pantallas donde aparece
+   (Dashboard, Seguimiento, Registros, Certificaciones, Proyectos). ---- */
+.filtros-avanzados-toggle{
+  align-self:flex-end;
+  background:var(--stage-3); color:#fff; border:1px solid var(--stage-3);
+  font-weight:700;
+}
+.filtros-avanzados-toggle:hover{ background:#B45309; border-color:#B45309; }
 .filtros-avanzados-toggle .chevron{ display:inline-block; transition:transform .15s ease; margin-left:2px; }
+/* Con el panel ya abierto, el botón pasa a un tono más oscuro y con un borde interno marcado: deja
+   de "invitar a abrir" (ese es el estado por defecto) y pasa a leerse como "activo/abierto". */
+.filtros-avanzados-toggle.is-open{ background:#9A3412; border-color:#9A3412; box-shadow:inset 0 0 0 2px rgba(255,255,255,0.35); }
 .filtros-avanzados-toggle.is-open .chevron{ transform:rotate(180deg); }
 .filters-bar-avanzados{ margin-top:-6px; padding-top:14px; border-top:1px dashed var(--border); }
 
