@@ -5216,10 +5216,7 @@ function normalizarParaEstadio(item, modulo) {
     sucursal: item.sucursal || '',
     estadioActual: item.estadioActual || '',
     estadioDesde: item.estadioDesde || '',
-    diasEnEstadio: diasDesde(item.estadioDesde),
-    // Presupuesto Oficial (sin IVA): Contrataciones lo guarda en presupuestoOficialRubro; Compras en
-    // montoSubtotalOficial. Se usa solo en la exportación a CSV (no es columna de la tabla en pantalla).
-    presupuestoOficial: num(modulo === 'Compras' ? item.montoSubtotalOficial : item.presupuestoOficialRubro)
+    diasEnEstadio: diasDesde(item.estadioDesde)
   };
 }
 
@@ -5578,17 +5575,13 @@ document.getElementById('estadioLimpiarBtn').addEventListener('click', () => {
 // su textContent traería las opciones del combo entero, no el valor elegido — ver csvEscape.
 function exportarEstadioCsv() {
   const filas = sortRows(estadioFilasFiltradas(), estadioSort, estadioSortValue);
-  const encabezado = ESTADIO_TABLE_COLS.map(c => c.label).concat('Presupuesto Oficial (sin IVA)');
+  const encabezado = ESTADIO_TABLE_COLS.map(c => c.label);
   const cuerpo = filas.map(f => ESTADIO_TABLE_COLS.map(col => {
     if (col.key === 'diasEnEstadio') return f.diasEnEstadio == null ? 'Sin estadío cargado' : (f.diasEnEstadio + ' día(s)');
     if (col.key === 'estadioActual') return f.estadioActual || '—';
     return f[col.key];
-  }).concat(f.presupuestoOficial.toFixed(2).replace('.', ',')));
-  // Fila final con el total del presupuesto de lo exportado (respeta filtros, p. ej. "En riesgo"),
-  // para saber de un vistazo cuánta plata representan los trámites detenidos.
-  const total = filas.reduce((acc, f) => acc + f.presupuestoOficial, 0);
-  const filaTotal = ESTADIO_TABLE_COLS.map((c, i) => i === 0 ? 'TOTAL' : '').concat(total.toFixed(2).replace('.', ','));
-  descargarCsv([encabezado].concat(cuerpo, filas.length ? [filaTotal] : []), 'estadio_tramites.csv');
+  }));
+  descargarCsv([encabezado].concat(cuerpo), 'estadio_tramites.csv');
 }
 document.getElementById('estadioExportBtn').addEventListener('click', exportarEstadioCsv);
 document.getElementById('estadioPrintBtn').addEventListener('click', () => {
