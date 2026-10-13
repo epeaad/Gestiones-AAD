@@ -2294,16 +2294,16 @@ function renderDashboard() {
     && !state.filtrosCompartidos.fechaPCDesde && !state.filtrosCompartidos.fechaPCHasta
     && !state.filtrosCompartidos.pctAvanceDesde && !state.filtrosCompartidos.pctAvanceHasta
     && !state.filtrosCompartidos.texto && !state.riesgoPlazoActivoCompartido;
-  let subMultas = 'sin IVA';
+  let subMultas = 'Millones de $ · sin IVA';
   if (dashSinFiltrosActivos) {
     const previo = snapshotAnteriorAHoy();
     if (previo) {
       const deltaMultas = totalMultas - num(previo.totalMultas);
       const deltaPct = num(previo.totalMultas) > 0 ? (deltaMultas / num(previo.totalMultas)) * 100 : null;
-      subMultas = (deltaMultas >= 0 ? '+' : '') + formatMillions(deltaMultas) + ' vs. ' + previo.fecha
+      subMultas = 'Millones de $ · sin IVA<br>' + (deltaMultas >= 0 ? '▲ +' : '▼ ') + formatMillions(deltaMultas) + ' vs. ' + formatFechaCorta(previo.fecha)
         + (deltaPct != null ? ' (' + (deltaPct >= 0 ? '+' : '') + deltaPct.toFixed(1) + '%)' : '');
     } else {
-      subMultas = 'sin IVA · sin snapshot anterior para comparar todavía';
+      subMultas = 'Millones de $ · sin IVA<br>Sin corte anterior para comparar';
     }
   }
 
@@ -2320,16 +2320,16 @@ function renderDashboard() {
 
   const kpiRow = document.getElementById('kpiRow');
   kpiRow.innerHTML = [
-    kpiCard('Presupuesto oficial total', formatMillions(totalPresOficial), 'sin IVA'),
-    kpiCard('Total adjudicado', formatMillions(totalAdjudicado), 'sin IVA'),
-    kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', desvioPresupuestario >= 0 ? 'por encima del oficial' : 'por debajo del oficial', colorDesvio),
-    kpiCard('IIBB Proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), rowsObraMenor.length + ' trámite(s) de Obra Menor en este filtro'),
-    kpiCard('% IIBB Proyectados / Gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'sobre ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)', colorPctIIBB),
-    kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'sin IVA'),
-    kpiCard('% Ejecución', pctEjecucion.toFixed(1) + '%', 'certificado / adjudicado', colorPctEjecucion),
-    kpiCard('$ Reconocimiento acumulado', formatMillions(totalReconocimiento), 'suma de certificaciones cargadas'),
-    kpiCard('Multas acumuladas', formatMillions(totalMultas), subMultas),
-    kpiCard('Contratistas en semáforo rojo', contratistaStats.rojo + ' / ' + contratistaStats.total, contratistaStats.total ? '<40% de avance · ' + ((contratistaStats.rojo / contratistaStats.total) * 100).toFixed(1) + '% del total' : 'sin contratistas en este filtro'),
+    kpiCard('Presupuesto oficial total', formatMillions(totalPresOficial), 'Millones de $ · sin IVA', null, formatMoney(totalPresOficial)),
+    kpiCard('Total adjudicado', formatMillions(totalAdjudicado), 'Millones de $ · sin IVA', null, formatMoney(totalAdjudicado)),
+    kpiCard('Desvío presupuestario', (desvioPresupuestario >= 0 ? '+' : '') + desvioPresupuestario.toFixed(1) + '%', 'Adjudicado ' + (desvioPresupuestario >= 0 ? 'por encima' : 'por debajo') + ' del presupuesto oficial', colorDesvio),
+    kpiCard('IIBB proyectados (Obra Menor)', sumaIIBBProyectados.toLocaleString('es-AR', { maximumFractionDigits: 2 }), 'Cantidad de IIBB · ' + rowsObraMenor.length + ' trámite(s) de Obra Menor'),
+    kpiCard('% IIBB proyectados sobre gestionados', pctIIBBProyectadoGeneral.toFixed(1) + '%', 'Proyectados ÷ ' + sumaIIBBGestionadosOM.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' IIBB gestionados (Obra Menor)', colorPctIIBB),
+    kpiCard('Certificado por AAD', formatMillions(totalCertificado), 'Millones de $ · sin IVA', null, formatMoney(totalCertificado)),
+    kpiCard('% de ejecución', pctEjecucion.toFixed(1) + '%', 'Certificado ÷ adjudicado', colorPctEjecucion),
+    kpiCard('Reconocimiento acumulado', formatMillions(totalReconocimiento), 'Millones de $ · suma de certificaciones cargadas', null, formatMoney(totalReconocimiento)),
+    kpiCard('Multas acumuladas', formatMillions(totalMultas), subMultas, null, formatMoney(totalMultas)),
+    kpiCard('Contratistas en semáforo rojo', contratistaStats.rojo + ' de ' + contratistaStats.total, contratistaStats.total ? 'Con avance menor a 40% · ' + ((contratistaStats.rojo / contratistaStats.total) * 100).toFixed(1) + '% del total' : 'Sin contratistas en este filtro'),
   ].join('');
 
 
@@ -2906,10 +2906,14 @@ document.getElementById('histSnapshotBtn').addEventListener('click', async () =>
     btn.disabled = false;
   }
 });
-function kpiCard(label, value, sub, colorSemaforo) {
+function kpiCard(label, value, sub, colorSemaforo, tooltip) {
+  const tt = tooltip ? ` title="${escapeHtml(tooltip)}"` : '';
+  // Montos en millones: el número no se corta y la "M" queda como unidad chica
+  const mm = typeof value === 'string' && value.match(/^(\$ )(-?[\d.,]+) M$/);
+  if (mm) value = '<span class="kpi-num">$&nbsp;' + mm[2] + '</span><span class="kpi-unit">&nbsp;M</span>';
   const dot = colorSemaforo ? `<span class="kpi-dot" style="background:${colorSemaforo}"></span>` : '';
   const accentStyle = colorSemaforo ? ` style="--kpi-accent:${colorSemaforo}"` : '';
-  return `<div class="kpi-card"${accentStyle}><div class="kpi-label">${label}</div><div class="kpi-value">${dot}${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  return `<div class="kpi-card"${accentStyle}${tt}><div class="kpi-label">${label}</div><div class="kpi-value">${dot}${value}</div><div class="kpi-sub">${sub}</div></div>`;
 }
 function sumField(rows, key) { return rows.reduce((acc, r) => acc + num(r[key]), 0); }
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
@@ -3007,24 +3011,25 @@ function renderComparativa() {
   const kA = computeKpis(rowsA);
   const kB = computeKpis(rowsB);
 
-  const kpiCompHtml = (label, valA, valB, delta, unidad) => {
+  const kpiCompHtml = (label, valA, valB, delta, unidad, unidadTxt) => {
     const claseColor = delta == null ? '' : (delta > 0 ? 'text-success' : (delta < 0 ? 'text-danger' : ''));
-    const deltaTxt = delta == null ? 's/d' : (delta >= 0 ? '+' : '') + delta.toFixed(1) + unidad;
-    return `<div class="kpi-card">
+    const deltaTxt = delta == null ? 'Variación: sin dato' : 'Variación: ' + (delta >= 0 ? '+' : '') + delta.toFixed(1) + unidad;
+    return `<div class="kpi-card kpi-comp">
       <div class="kpi-label">${escapeHtml(label)}</div>
-      <div class="kpi-value">${valA} &rarr; ${valB}</div>
-      <div class="kpi-sub ${claseColor}">${deltaTxt}</div>
+      <div class="kpi-pair"><span>${escapeHtml(state.comp.anioA || 'Año A')}</span><b>${valA}</b></div>
+      <div class="kpi-pair"><span>${escapeHtml(state.comp.anioB || 'Año B')}</span><b>${valB}</b></div>
+      <div class="kpi-sub ${claseColor}">${deltaTxt}${unidadTxt ? ' · ' + unidadTxt : ''}</div>
     </div>`;
   };
   const deltaPct = (a, b) => (a > 0 ? ((b - a) / a) * 100 : (b > 0 ? null : 0));
 
   document.getElementById('compKpiRow').innerHTML = [
-    kpiCompHtml('Trámites', kA.n, kB.n, deltaPct(kA.n, kB.n), '%'),
-    kpiCompHtml('% Ejecución', kA.pctEjecucion.toFixed(1) + '%', kB.pctEjecucion.toFixed(1) + '%', kB.pctEjecucion - kA.pctEjecucion, ' p.p.'),
-    kpiCompHtml('Total Adjudicado', formatMillions(kA.totalAdjudicado), formatMillions(kB.totalAdjudicado), deltaPct(kA.totalAdjudicado, kB.totalAdjudicado), '%'),
-    kpiCompHtml('Certificado AAD', formatMillions(kA.totalCertificado), formatMillions(kB.totalCertificado), deltaPct(kA.totalCertificado, kB.totalCertificado), '%'),
-    kpiCompHtml('Multas', formatMillions(kA.totalMultas), formatMillions(kB.totalMultas), deltaPct(kA.totalMultas, kB.totalMultas), '%'),
-    kpiCompHtml('Desiertos', kA.cantDesiertos, kB.cantDesiertos, deltaPct(kA.cantDesiertos, kB.cantDesiertos), '%')
+    kpiCompHtml('Cantidad de trámites', kA.n, kB.n, deltaPct(kA.n, kB.n), '%'),
+    kpiCompHtml('% de ejecución', kA.pctEjecucion.toFixed(1) + '%', kB.pctEjecucion.toFixed(1) + '%', kB.pctEjecucion - kA.pctEjecucion, ' p.p.'),
+    kpiCompHtml('Total adjudicado', formatMillions(kA.totalAdjudicado), formatMillions(kB.totalAdjudicado), deltaPct(kA.totalAdjudicado, kB.totalAdjudicado), '%', 'millones de $'),
+    kpiCompHtml('Certificado por AAD', formatMillions(kA.totalCertificado), formatMillions(kB.totalCertificado), deltaPct(kA.totalCertificado, kB.totalCertificado), '%', 'millones de $'),
+    kpiCompHtml('Multas acumuladas', formatMillions(kA.totalMultas), formatMillions(kB.totalMultas), deltaPct(kA.totalMultas, kB.totalMultas), '%', 'millones de $'),
+    kpiCompHtml('Trámites desiertos', kA.cantDesiertos, kB.cantDesiertos, deltaPct(kA.cantDesiertos, kB.cantDesiertos), '%')
   ].join('');
 
   const statsA = computeGroupStats(rowsA, groupKey);
