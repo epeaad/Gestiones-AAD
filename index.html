@@ -56,46 +56,45 @@
 <div id="app" class="app" hidden>
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <img src="logo-epe.png" alt="EPE Santa Fe" class="brand-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-      <div class="brand-mark" style="display:none;"></div>
+      <div class="brand-aad">AAD</div>
       <span>Gestiones AAD</span>
     </div>
     <nav class="sidenav" id="sidenav">
       <button class="nav-btn active" data-view="dashboard">
-        <span class="nav-icon">◆</span> Dashboard
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3 3 10.5V21h6v-6h6v6h6V10.5z"/></svg></span> Dashboard
       </button>
       <button class="nav-btn" data-view="seguimiento">
-        <span class="nav-icon">◔</span> Seguimiento de Avance
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 20V10h4v10zm6 0V4h4v16zm6 0v-7h4v7z"/></svg></span> Seguimiento de Avance
       </button>
       <button class="nav-btn" data-view="estadio">
-        <span class="nav-icon">⏱</span> Estadío de los Trámites
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 5v5l4 2-1 1.7-5-2.7V7z"/></svg></span> Estadío de los Trámites
       </button>
       <button class="nav-btn" data-view="comparativa">
-        <span class="nav-icon">⇄</span> Comparativa
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3zm4 4h10v2H7zm0 4h10v2H7zm0 4h6v2H7z"/></svg></span> Comparativa
       </button>
       <button class="nav-btn" data-view="registros">
-        <span class="nav-icon">▤</span> Registros
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg></span> Registros
       </button>
       <button class="nav-btn" data-view="formulario">
-        <span class="nav-icon">＋</span> Nueva Contratación
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></span> Nueva Contratación
       </button>
       <button class="nav-btn" data-view="proyectos">
-        <span class="nav-icon">◫</span> Proyectos
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5h8v6H3zm10 0h8v6h-8zM3 13h8v6H3zm10 0h8v6h-8z"/></svg></span> Proyectos
       </button>
       <button class="nav-btn" data-view="certificaciones">
-        <span class="nav-icon">✓</span> Certificaciones
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span> Certificaciones
       </button>
       <button class="nav-btn" data-view="compras" id="navCompras">
-        <span class="nav-icon">📦</span> Compras
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM1 2v2h2l3.6 7.6-1.4 2.4A2 2 0 0 0 7 17h12v-2H7.4l1.1-2h7.5a2 2 0 0 0 1.7-1l3.6-6.5L20.5 4l-3.5 6H8.5L4.3 2z"/></svg></span> Compras
       </button>
       <button class="nav-btn" data-view="aperturas">
-        <span class="nav-icon">▧</span> Aperturas
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16v16H4zm2 4v10h12V8z"/></svg></span> Aperturas
       </button>
       <button class="nav-btn" data-view="vencimientos">
-        <span class="nav-icon">▦</span> Vencimientos
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3zm-1 8v10h12V10z"/></svg></span> Vencimientos
       </button>
       <button class="nav-btn" data-view="usuarios" id="navUsuarios" hidden>
-        <span class="nav-icon">◍</span> Usuarios
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3 0-8 1.5-8 4.5V20h16v-1.5c0-3-5-4.5-8-4.5z"/></svg></span> Usuarios
       </button>
     </nav>
     <div class="sidebar-user">
@@ -511,14 +510,22 @@
 
     <!-- ---------- REGISTROS ---------- -->
     <section id="view-registros" class="view" hidden>
-      <div class="view-header">
-        <h2>Trámites cargados</h2>
-        <div class="control-inline">
-          <div class="seg-toggle" role="group" aria-label="Vista de trámites">
-            <button type="button" id="regVistaCards" class="seg-btn is-on">Tarjetas</button>
-            <button type="button" id="regVistaTabla" class="seg-btn">Tabla</button>
+      <div class="reg-toprow">
+        <div class="reg-tabs" id="regTabs" role="tablist">
+          <button type="button" class="reg-tab is-on" data-tab="todos" role="tab">Todos</button>
+          <button type="button" class="reg-tab" data-tab="contratacion" role="tab">Contratación</button>
+          <button type="button" class="reg-tab" data-tab="ejecucion" role="tab">Ejecución</button>
+        </div>
+        <div class="reg-acciones">
+          <div class="acciones-wrap" id="accionesWrap">
+            <button type="button" class="acciones-btn" id="accionesBtn" aria-haspopup="true">Acciones <span>▾</span></button>
+            <div class="acciones-menu" id="accionesMenu" hidden>
+              <button type="button" id="exportBtn">Exportar vida completa (Excel)</button>
+              <button type="button" id="regVistaCards">Ver como tarjetas</button>
+              <button type="button" id="regVistaTabla">Ver como tabla</button>
+            </div>
           </div>
-          <button id="exportBtn" class="btn btn-text-accent">Exportar vida completa (Excel) ▾</button>
+          <div class="sync-info" id="syncInfo"></div>
         </div>
       </div>
 
@@ -531,7 +538,7 @@
         </div>
         <div class="filter-field">
           <label>Expediente</label>
-          <input type="text" data-filter="expediente" placeholder="Buscar..." />
+          <input type="text" data-filter="expediente" placeholder="Buscar expediente" />
         </div>
         <div class="filter-field">
           <label>Año</label>

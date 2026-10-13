@@ -151,6 +151,7 @@ async function apiCall(action, payload) {
     if (!res.ok) throw new Error('Error de red (' + res.status + ')');
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Error desconocido');
+    if (action === 'listar') state.lastSync = new Date();
     return data;
   } finally {
     ocultarCargandoGlobal();
@@ -1089,6 +1090,17 @@ function closeAllMultiselects(except) {
 }
 document.addEventListener('click', () => closeAllMultiselects());
 
+function msNombreCampo(el) {
+  const lab = el && el.closest && el.closest('.filter-field') ? el.closest('.filter-field').querySelector('label') : null;
+  return lab ? lab.textContent.trim() : '';
+}
+function msLabelEn(el, selected, total) {
+  const nombre = msNombreCampo(el);
+  if (!nombre) return msLabel(selected, total);
+  if (!selected || selected.length === 0) return nombre;
+  if (selected.length === 1) return selected[0];
+  return nombre + ': ' + selected.length;
+}
 function msLabel(selected, total) {
   if (!selected || selected.length === 0) return 'Todos';
   if (total && selected.length === total) return 'Todos (' + total + ')';
@@ -1104,7 +1116,7 @@ function renderMultiselect(el, options, selected, onChange) {
   const sel = new Set(selected || []);
   el._msTotalOptions = options.length; // se actualiza en cada render, para que los listeners (registrados una sola vez) sepan el total vigente
   el.innerHTML =
-    '<button type="button" class="ms-toggle"><span class="ms-toggle-label">' + escapeHtml(msLabel(selected, options.length)) + '</span><span class="ms-caret">▾</span></button>' +
+    '<button type="button" class="ms-toggle"><span class="ms-toggle-label">' + escapeHtml(msLabelEn(el, selected, options.length)) + '</span><span class="ms-caret">▾</span></button>' +
     '<div class="ms-panel">' +
       (options.length > 6 ? '<input type="text" class="ms-search" placeholder="Buscar..." />' : '') +
       '<div class="ms-actions">' +
@@ -1135,13 +1147,13 @@ function renderMultiselect(el, options, selected, onChange) {
       } else if (e.target.closest('.ms-clear')) {
         el.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
         const label = el.querySelector('.ms-toggle-label');
-        if (label) label.textContent = 'Todos';
+        if (label) label.textContent = msLabelEn(el, [], el._msTotalOptions);
         el._msOnChange && el._msOnChange([]);
       } else if (e.target.closest('.ms-selectall')) {
         el.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true); // tilda TODAS las opciones, aunque el buscador esté filtrando la vista
         const checked = getCheckedValues(el);
         const label = el.querySelector('.ms-toggle-label');
-        if (label) label.textContent = msLabel(checked, el._msTotalOptions);
+        if (label) label.textContent = msLabelEn(el, checked, el._msTotalOptions);
         el._msOnChange && el._msOnChange(checked);
       }
     });
@@ -1154,7 +1166,7 @@ function renderMultiselect(el, options, selected, onChange) {
       if (e.target.matches('input[type=checkbox]')) {
         const checked = getCheckedValues(el);
         const label = el.querySelector('.ms-toggle-label');
-        if (label) label.textContent = msLabel(checked, el._msTotalOptions);
+        if (label) label.textContent = msLabelEn(el, checked, el._msTotalOptions);
         el._msOnChange && el._msOnChange(checked);
       }
     });
@@ -1877,7 +1889,10 @@ function renderRegistros() {
   populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados de las 3 barras compartidas
 
   let rows = filteredRecords();
+  rows = filtrarPorPestanaRegistros(rows);
   rows = sortRows(rows, state.registrosSort, registroSortValue);
+  const syncEl = document.getElementById('syncInfo');
+  if (syncEl) syncEl.textContent = state.lastSync ? 'Última sincronización: ' + state.lastSync.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
   document.getElementById('resultsCount').textContent = rows.length + ' trámite(s) encontrados de ' + state.registros.length + ' totales.';
   const table = document.getElementById('recordsTable');
   const isAdmin = state.session && state.session.rol === 'admin';
@@ -1921,6 +1936,33 @@ function renderRegistros() {
   });
 }
 
+// ---- Pestañas de Registros: Todos / Contratación (aún sin adjudicar, relanzados o desiertos) / Ejecución (adjudicados y finalizados) ----
+state.regTab = state.regTab || 'todos';
+function filtrarPorPestanaRegistros(rows) {
+  if (state.regTab === 'contratacion') return rows.filter(r => r.estado !== 'Adjudicado' && r.estado !== 'Finalizado');
+  if (state.regTab === 'ejecucion') return rows.filter(r => r.estado === 'Adjudicado' || r.estado === 'Finalizado');
+  return rows;
+}
+document.getElementById('regTabs').addEventListener('click', (e) => {
+  const b = e.target.closest('.reg-tab');
+  if (!b) return;
+  state.regTab = b.dataset.tab;
+  document.querySelectorAll('#regTabs .reg-tab').forEach(t => t.classList.toggle('is-on', t === b));
+  renderRegistros();
+});
+// Menú "Acciones"
+(function () {
+  const btn = document.getElementById('accionesBtn'), menu = document.getElementById('accionesMenu');
+  btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  menu.addEventListener('click', () => { menu.hidden = true; });
+  document.addEventListener('click', () => { menu.hidden = true; });
+})();
+// Placeholders de los filtros de texto = nombre del campo
+document.querySelectorAll('.filters-bar:not(.filters-bar-avanzados) .filter-field').forEach(f => {
+  const inp = f.querySelector('input[type=text]'), lab = f.querySelector('label');
+  if (inp && lab && inp.dataset.filter) inp.placeholder = 'Buscar ' + lab.textContent.trim().toLowerCase();
+});
+
 // ---- Vista de tarjetas de Registros (alternativa a la tabla; la tabla sigue disponible) ----
 function setRegistrosVista(vista) {
   const sec = document.getElementById('view-registros');
@@ -1954,7 +1996,7 @@ function renderRegistrosKpis(rows) {
     ['Otros estados', c.otros, 'var(--accent)']
   ];
   document.getElementById('regKpis').innerHTML = k.map(x =>
-    `<div class="reg-kpi" style="--kpi-accent:${x[2]}"><small>${x[0]}</small><b>${x[1]}</b></div>`).join('');
+    `<div class="reg-kpi"><small>${x[0]}</small><b>${x[1]}</b><i style="background:${x[2]}"></i></div>`).join('');
 }
 
 function renderRegistrosCards(rows, puedeEditar, isAdmin) {
@@ -1963,32 +2005,30 @@ function renderRegistrosCards(rows, puedeEditar, isAdmin) {
   cont.innerHTML = rows.map(r => {
     const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
     const estado = r.estado ? r.estado : ESTADO_VACIO_LABEL;
-    const pct = pctAvanceTramite(r);
-    const titulo = [r.expediente, r.pospre].filter(Boolean).map(escapeHtml).join(' · ') || 'Sin expediente';
-    const sub = [r.rubro, r.sucursal, r.anio].filter(x => x != null && x !== '').map(escapeHtml).join(' · ');
+    const exp = escapeHtml(r.expediente || r.pospre || 'Sin expediente');
+    const rubro = r.rubro ? ' || ' + escapeHtml(r.rubro) : '';
+    const extra = [r.pospre && r.expediente ? 'Pospre ' + r.pospre : '', r.anio].filter(x => x != null && x !== '').map(escapeHtml).join(' · ');
     const dato = (lbl, val) => `<span><b>${lbl}</b>${escapeHtml(val != null && val !== '' ? val : '—')}</span>`;
     return `<article class="rcard" data-id="${r._id}">
       <div class="rcard-head">
-        <div class="rcard-title"><span class="rcard-exp">${titulo}</span><span class="rcard-sub">${sub}</span></div>
+        <div class="rcard-title"><b>${exp}</b>${rubro}${extra ? '<span class="rcard-extra"> · ' + extra + '</span>' : ''}</div>
         <div class="rcard-side">
           <span class="state-pill ${cls}">${escapeHtml(estado)}</span>
           <span class="rcard-actions">
-            <button class="icon-btn" data-action="copiar" title="Copiar datos">📋</button>
-            ${puedeEditar ? '<button class="icon-btn" data-action="clonar" title="Clonar trámite">🧬</button>' : ''}
-            ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" title="Eliminar trámite">🗑️</button>' : ''}
+            <button type="button" class="rcard-kebab" aria-label="Más acciones" aria-haspopup="true">⋮</button>
+            <span class="rcard-menu" hidden>
+              <button type="button" data-action="copiar">📋 Copiar datos</button>
+              ${puedeEditar ? '<button type="button" data-action="clonar">🧬 Clonar trámite</button>' : ''}
+              ${isAdmin ? '<button type="button" data-action="eliminar" class="danger">🗑️ Eliminar trámite</button>' : ''}
+            </span>
           </span>
         </div>
       </div>
       <div class="rcard-meta">
-        ${dato('Contratista', r.adjudicatario)}
-        ${dato('Pedido de compras', r.nroPedidoCompras)}
+        ${dato('Sucursal', r.sucursal)}
+        ${dato('Contratista / Proveedor', r.adjudicatario)}
         ${dato('Seguimiento', r.seguimiento)}
-      </div>
-      <div class="rcard-money">
-        <span><b>Pres. oficial</b>${formatMoney(r.presupuestoOficialRubro)}</span>
-        <span><b>Adjudicado</b>${formatMoney(r.totalAdjudicado)}</span>
-        <span><b>Certificado</b>${formatMoney(r.certificadosAAD)}</span>
-        <span class="rcard-pct"><b>Avance ${pct.toFixed(1)}%</b><i class="rcard-bar"><em style="width:${Math.min(100, Math.max(0, pct))}%;background:${semColor(pct)}"></em></i></span>
+        <span class="rcard-link">Ver trámite</span>
       </div>
     </article>`;
   }).join('');
@@ -2001,6 +2041,18 @@ function renderRegistrosCards(rows, puedeEditar, isAdmin) {
       if (rec) abrirRegistroOCompras(rec);
     });
   });
+  cont.querySelectorAll('.rcard-kebab').forEach(k => {
+    k.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = k.nextElementSibling, abrir = menu.hidden;
+      cont.querySelectorAll('.rcard-menu').forEach(m => { m.hidden = true; });
+      menu.hidden = !abrir;
+    });
+  });
+  if (!document.body.dataset.rcardMenuWired) {
+    document.body.dataset.rcardMenuWired = '1';
+    document.addEventListener('click', () => document.querySelectorAll('.rcard-menu').forEach(m => { m.hidden = true; }));
+  }
   cont.querySelectorAll('.rcard-actions [data-action]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
