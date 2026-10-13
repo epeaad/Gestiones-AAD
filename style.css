@@ -4,12 +4,13 @@
   --text: #0F1B2D;
   --text-soft: #5A6779;
   --border: #DDE4EF;
-  --brand: #0F3D91;        /* azul marino */
-  --brand-dark: #0A2A66;
-  --brand-soft: #E6EDFA;
-  --accent: #FF6B1A;       /* naranja */
-  --accent-dark: #E5560A;
-  --accent-soft: #FFF0E6;
+  --brand: #FF6B1A;        /* naranja */
+  --brand-dark: #E5560A;
+  --brand-soft: #FFF0E6;
+  --accent: #0F3D91;       /* azul marino */
+  --accent-dark: #0A2A66;
+  --accent-soft: #E6EDFA;
+  --navy: #0F3D91;         /* azul para textos/títulos (legibilidad) */
   --teal: #0E9384;
 
   --stage-1: #2563EB; /* Lanzamiento */
@@ -395,7 +396,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
    de gris) para que, ahora que las tarjetas de abajo pesan más, el separador siga leyéndose como
    una división real entre bloques y no se lo lleve puesto el contraste nuevo. ---- */
 .section-label{
-  font-size:11px; font-weight:700; color:var(--brand); text-transform:uppercase;
+  font-size:11px; font-weight:700; color:var(--navy); text-transform:uppercase;
   letter-spacing:0.06em; margin:26px 0 12px; display:flex; align-items:center; gap:8px;
 }
 .section-label:first-child{ margin-top:0; }
@@ -580,7 +581,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 }
 .ms-selectall{ color:var(--stage-4); }
 .ms-selectall:hover{ background:#E6F5F3; border-radius:6px 0 0 0; }
-.ms-clear{ color:var(--brand); }
+.ms-clear{ color:var(--navy); }
 .ms-clear:hover{ background:var(--brand-soft); border-radius:0 6px 0 0; }
 .ms-options{ overflow-y:auto; }
 .ms-option{
@@ -900,7 +901,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 }
 .calc-badge{
   display:inline-block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;
-  color:var(--brand); background:var(--brand-soft); padding:1px 6px; border-radius:99px; margin-left:4px;
+  color:var(--navy); background:var(--brand-soft); padding:1px 6px; border-radius:99px; margin-left:4px;
   cursor:help;
 }
 .calc-badge.sum-badge{ color:var(--stage-4); background:#E6F5F3; }
@@ -922,7 +923,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   flex-shrink:0; background:none; border:none; color:var(--text-soft); font-size:11px; cursor:pointer;
   text-decoration:underline; white-space:nowrap;
 }
-.dyn-otro-volver:hover{ color:var(--brand); }
+.dyn-otro-volver:hover{ color:var(--navy); }
 .form-actions{ display:flex; align-items:center; gap:16px; justify-content:flex-end; }
 .cert-nota{
   margin-top:16px; padding:14px 16px; background:var(--brand-soft);
@@ -997,7 +998,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .compras-tramo b{ color:var(--text); font-weight:500; }
 
 .btn-link{
-  background:none; border:none; color:var(--brand); cursor:pointer; font-size:.85rem;
+  background:none; border:none; color:var(--navy); cursor:pointer; font-size:.85rem;
   padding:2px 4px; text-decoration:underline;
 }
 .btn-link.danger{ color:var(--danger); }
@@ -1008,7 +1009,7 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   display:inline-block; vertical-align:middle;
 }
 .cal-tag-compra{ background:#EDE9FE; color:var(--stage-2); }
-.cal-tag-contratacion{ background:var(--brand-soft); color:var(--brand); }
+.cal-tag-contratacion{ background:var(--brand-soft); color:var(--navy); }
 
 /* ============================================================
    TEMA "DIVERTIDO": naranja + azul marino, píldoras, tarjetas con
@@ -1023,9 +1024,9 @@ body{ font-size:14.5px; background:var(--bg); }
 .panel-primary h3, .modal-box h3{
   font-family:var(--font-display); letter-spacing:0; font-weight:700;
 }
-.view-header h2{ font-size:26px; color:var(--brand); text-transform:none; }
-.panel h3{ font-family:var(--font-display); font-size:17px; font-weight:700; color:var(--brand); letter-spacing:0.01em; }
-.panel-primary h3{ font-size:20px; color:var(--brand); }
+.view-header h2{ font-size:26px; color:var(--navy); text-transform:none; }
+.panel h3{ font-family:var(--font-display); font-size:17px; font-weight:700; color:var(--navy); letter-spacing:0.01em; }
+.panel-primary h3{ font-size:20px; color:var(--navy); }
 .kpi-card .kpi-value{ font-family:var(--font-display); font-size:25px; font-weight:800; letter-spacing:0; }
 .kpi-card .kpi-label{ font-family:var(--font-display); font-size:12.5px; font-weight:600; letter-spacing:0.04em; }
 .section-label{
@@ -1035,8 +1036,8 @@ body{ font-size:14.5px; background:var(--bg); }
 
 /* ---- Barra lateral naranja (como la cabecera del ejemplo) ---- */
 .sidebar{
-  background:linear-gradient(180deg, #FF7A2E 0%, var(--accent) 45%, #F25A0C 100%);
-  box-shadow:4px 0 18px rgba(255,107,26,0.25);
+  background:linear-gradient(180deg, #1A55C2 0%, var(--accent) 45%, #0A2A66 100%);
+  box-shadow:4px 0 18px rgba(15,61,145,0.28);
   padding:18px 14px;
 }
 .sidebar-brand{ font-family:var(--font-display); font-size:21px; font-weight:800; letter-spacing:0.02em; padding-bottom:20px; }
@@ -1048,17 +1049,17 @@ body{ font-size:14.5px; background:var(--bg); }
 }
 .nav-icon{ opacity:1; }
 .nav-btn:hover{ background:rgba(255,255,255,0.22); transform:translateX(3px); }
-.nav-btn.active{ background:var(--brand); color:#fff; box-shadow:0 4px 12px rgba(10,42,102,0.35); }
+.nav-btn.active{ background:var(--brand); color:#fff; box-shadow:0 4px 12px rgba(180,60,0,0.4); }
 .sidebar-user{ border-top-color:rgba(255,255,255,0.35); }
 .sidebar-user-name{ color:#fff; font-weight:500; }
-.sidebar .btn-ghost{ border-radius:99px; border-color:#fff; color:#fff; font-weight:700; }
+.sidebar .btn-ghost, .sidebar .btn-ghost:focus, .sidebar .btn-ghost:active{ border-radius:99px; border-color:#fff; color:#fff; background:rgba(255,255,255,0.14); font-weight:700; }
 .sidebar .btn-ghost:hover{ background:#fff; color:var(--accent-dark); }
 
 /* ---- Login ---- */
-.login-left{ background:linear-gradient(180deg, #FF7A2E, var(--accent) 60%, #F25A0C); }
+.login-left{ background:linear-gradient(180deg, #1A55C2, var(--accent) 60%, #0A2A66); }
 .login-right{ background:linear-gradient(150deg, var(--brand) 0%, var(--brand-dark) 100%); }
 .login-right-title{ font-size:36px; line-height:1.15; font-weight:800; }
-.login-right-eyebrow{ color:#FFB98A; font-family:var(--font-display); font-size:14px; }
+.login-right-eyebrow{ color:#FFE3D0; font-family:var(--font-display); font-size:14px; }
 .login-form-wrap h1{ font-size:34px; font-weight:800; }
 .login-sub{ color:rgba(255,255,255,0.9); }
 #loginForm label{ color:#fff; font-weight:600; }
@@ -1066,9 +1067,9 @@ body{ font-size:14.5px; background:var(--bg); }
 #loginForm input:focus{ outline:none; border-color:var(--brand); }
 .password-field input{ padding-right:46px; }
 .toggle-pass{ color:var(--text-soft); }
-.toggle-pass:hover{ color:var(--brand); background:var(--brand-soft); }
-.login-form-wrap .btn-primary{ background:var(--brand); }
-.login-form-wrap .btn-primary:hover{ background:var(--brand-dark); }
+.toggle-pass:hover{ color:var(--navy); background:var(--brand-soft); }
+.login-form-wrap .btn-primary{ background:var(--accent); box-shadow:0 3px 0 var(--accent-dark); }
+.login-form-wrap .btn-primary:hover{ background:var(--accent-dark); }
 
 /* ---- Botones: píldoras ---- */
 .btn{
@@ -1078,10 +1079,10 @@ body{ font-size:14.5px; background:var(--bg); }
 .btn:hover{ transform:translateY(-1px); }
 .btn:active{ transform:translateY(0); }
 .btn-primary{ background:var(--accent); color:#fff; box-shadow:0 3px 0 var(--accent-dark); }
-.btn-primary:hover{ background:var(--accent-dark); box-shadow:0 4px 0 #BF4706; }
-.btn-secondary{ background:#fff; color:var(--brand); border:2px solid var(--brand); padding:7px 18px; }
+.btn-primary:hover{ background:var(--accent-dark); box-shadow:0 4px 0 #061C4A; }
+.btn-secondary{ background:#fff; color:var(--navy); border:2px solid var(--brand); padding:7px 18px; }
 .btn-secondary:hover{ background:var(--brand); color:#fff; }
-.btn-ghost{ border:2px solid var(--border); color:var(--brand); background:#fff; padding:7px 16px; }
+.btn-ghost{ border:2px solid var(--border); color:var(--navy); background:#fff; padding:7px 16px; }
 .btn-ghost:hover{ border-color:var(--brand); background:var(--brand-soft); }
 .btn-toggle-active, .btn-ghost.btn-toggle-active{ background:var(--brand); color:#fff; border-color:var(--brand); }
 .filtros-avanzados-toggle{ background:var(--brand); border-color:var(--brand); color:#fff; }
@@ -1118,7 +1119,7 @@ body{ font-size:14.5px; background:var(--bg); }
   background:#fff; box-shadow:0 3px 12px rgba(15,61,145,0.08);
   border-top:4px solid var(--accent);
 }
-.filter-field label{ font-family:var(--font-display); font-size:12.5px; color:var(--brand); letter-spacing:0.05em; }
+.filter-field label{ font-family:var(--font-display); font-size:12.5px; color:var(--navy); letter-spacing:0.05em; }
 .filter-field select, .filter-field input, .filter-field input[type="date"], .ms-toggle,
 .control-inline select, .modal-field input, .ms-search{
   border-radius:99px; border:2px solid var(--border); padding:7px 14px;
@@ -1133,7 +1134,7 @@ body{ font-size:14.5px; background:var(--bg); }
 .ms-selectall{ color:var(--teal); }
 .group-by-highlight{ border-radius:99px; background:var(--accent-soft); border-color:var(--accent); }
 .group-by-highlight .group-by-text{ color:var(--accent-dark); font-family:var(--font-display); font-size:13px; }
-.group-by-highlight select{ border-radius:99px; border-color:var(--accent); color:var(--brand); }
+.group-by-highlight select{ border-radius:99px; border-color:var(--accent); color:var(--navy); }
 .filters-bar-avanzados{ border-top:2px dashed var(--accent); }
 
 /* ---- Formularios ---- */
@@ -1146,18 +1147,18 @@ body{ font-size:14.5px; background:var(--bg); }
 /* ---- Tablas ---- */
 .table-wrap{ border-radius:var(--radius); border:2px solid var(--border); box-shadow:0 2px 8px rgba(15,61,145,0.05); }
 .data-table th{
-  background:var(--brand-soft); color:var(--brand); font-family:var(--font-display);
+  background:var(--brand-soft); color:var(--navy); font-family:var(--font-display);
   font-size:13px; font-weight:700; letter-spacing:0.05em; border-bottom:3px solid var(--accent);
 }
 .data-table th.sortable:hover{ background:var(--accent-soft); color:var(--accent-dark); }
 .data-table tbody tr:hover{ background:var(--accent-soft); }
-.data-table tr.dash-table-total{ background:var(--brand-soft); color:var(--brand); }
+.data-table tr.dash-table-total{ background:var(--brand-soft); color:var(--navy); }
 .data-table-heatmap thead th{ background:var(--brand-soft); }
 .data-table tbody tr:hover .col-sticky{ background:var(--accent-soft); }
 .state-pill{ font-family:var(--font-display); font-size:13px; padding:2px 12px; letter-spacing:0.02em; }
 
 /* ---- Calendarios ---- */
-.cal-month-label{ font-family:var(--font-display); font-size:20px; color:var(--brand); font-weight:700; }
+.cal-month-label{ font-family:var(--font-display); font-size:20px; color:var(--navy); font-weight:700; }
 .calendar-weekdays{ font-family:var(--font-display); font-size:13px; color:var(--accent-dark); }
 .cal-day{ border-radius:12px; border:2px solid var(--border); }
 .cal-day.cal-today{ border-color:var(--accent); background:var(--accent-soft); }
@@ -1166,7 +1167,7 @@ body{ font-size:14.5px; background:var(--bg); }
 /* ---- Carga ---- */
 .top-loading-bar.is-active::before{ background:linear-gradient(90deg, var(--accent), var(--brand)); height:4px; }
 .boot-loading-spinner{ border-color:var(--accent-soft); border-top-color:var(--accent); }
-.boot-loading-overlay p{ font-family:var(--font-display); font-size:18px; color:var(--brand); }
+.boot-loading-overlay p{ font-family:var(--font-display); font-size:18px; color:var(--navy); }
 
 /* ---- Microanimación de entrada de cada pantalla ---- */
 .view:not([hidden]){ animation:viewPop .28s ease both; }
