@@ -274,6 +274,10 @@ function showView(name) {
   const navActivo = document.querySelector('.nav-btn[data-view="' + name + '"]');
   const topTitle = document.getElementById('topTitle');
   if (navActivo && topTitle) topTitle.textContent = navActivo.textContent.replace(/^[^A-Za-zÁÉÍÓÚÑáéíóúñ]+/, '').trim();
+  // El título ya figura en la barra superior: se oculta el h2 de la vista si repite lo mismo
+  const normT = s => (s || '').trim().toLowerCase();
+  const h2v = document.querySelector('#view-' + name + ' .view-header h2');
+  if (h2v && topTitle) h2v.classList.toggle('is-dup', normT(h2v.textContent) === normT(topTitle.textContent));
   document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-' + name));
   // Recordamos en qué pantalla está el usuario (igual que la sesión) para que, si el navegador
   // recarga la página sola después de un rato inactivo (algo normal en celulares), la app vuelva
@@ -1959,8 +1963,11 @@ document.getElementById('regTabs').addEventListener('click', (e) => {
 })();
 // Placeholders de los filtros de texto = nombre del campo
 document.querySelectorAll('.filters-bar:not(.filters-bar-avanzados) .filter-field').forEach(f => {
-  const inp = f.querySelector('input[type=text]'), lab = f.querySelector('label');
-  if (inp && lab && inp.dataset.filter) inp.placeholder = 'Buscar ' + lab.textContent.trim().toLowerCase();
+  const inp = f.querySelector(':scope > input[type=text]'), lab = f.querySelector(':scope > label');
+  if (inp && lab) {
+    const t = lab.textContent.trim();
+    inp.placeholder = /^buscar/i.test(t) ? t : 'Buscar ' + t.toLowerCase();
+  }
 });
 
 // ---- Vista de tarjetas de Registros (alternativa a la tabla; la tabla sigue disponible) ----
@@ -1993,7 +2000,7 @@ function renderRegistrosKpis(rows) {
     ['Adjudicados', c.Adjudicado, '#16A34A'],
     ['Desiertos', c.Desierto, '#DC2626'],
     ['Relanzados', c.Relanzado, '#D97706'],
-    ['Otros estados', c.otros, 'var(--accent)']
+    ['Otros estados', c.otros, 'var(--brand)']
   ];
   document.getElementById('regKpis').innerHTML = k.map(x =>
     `<div class="reg-kpi"><small>${x[0]}</small><b>${x[1]}</b><i style="background:${x[2]}"></i></div>`).join('');
@@ -2206,7 +2213,7 @@ const pointLabelPlugin = {
         const sospechoso = value > 110;
         ctx.save();
         ctx.fillStyle = sospechoso ? '#7C3AED' : '#16202A';
-        ctx.font = '600 11px "IBM Plex Sans", sans-serif';
+        ctx.font = '600 11px Roboto, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText((sospechoso ? '⚠ ' : '') + value.toFixed(1) + '%', point.x, point.y - 12);
         ctx.restore();
@@ -2229,7 +2236,7 @@ const barEndLabelPlugin = {
         const sospechoso = value > 110;
         ctx.save();
         ctx.fillStyle = sospechoso ? '#7C3AED' : '#16202A';
-        ctx.font = '600 11px "IBM Plex Sans", sans-serif';
+        ctx.font = '600 11px Roboto, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText((sospechoso ? '⚠ ' : '') + value.toFixed(1) + '%', bar.x + 6, bar.y);
