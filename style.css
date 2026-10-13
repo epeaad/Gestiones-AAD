@@ -1056,20 +1056,26 @@ body{ font-size:14.5px; background:var(--bg); }
 .sidebar .btn-ghost:hover{ background:#fff; color:var(--accent-dark); }
 
 /* ---- Login ---- */
-.login-left{ background:linear-gradient(180deg, #0F3D91, var(--accent) 60%, #061C4A); }
-.login-right{ background:linear-gradient(150deg, var(--brand) 0%, var(--brand-dark) 100%); }
+.login-left{ background:linear-gradient(180deg, #0A2A66 0%, #061C4A 100%); }
+.login-right{
+  background:
+    radial-gradient(circle at 85% 12%, rgba(255,255,255,0.10) 0, transparent 38%),
+    linear-gradient(150deg, #14459F 0%, #0F3D91 55%, #0A2A66 100%);
+  border-left:6px solid var(--brand);
+}
+.login-right-title::after{ content:''; display:block; width:64px; height:5px; border-radius:3px; background:var(--brand); margin-top:18px; }
 .login-right-title{ font-size:36px; line-height:1.15; font-weight:800; }
-.login-right-eyebrow{ color:#FFE3D0; font-family:var(--font-display); font-size:14px; }
+.login-right-eyebrow{ color:#FF9A57; font-family:var(--font-display); font-size:14px; }
 .login-form-wrap h1{ font-size:34px; font-weight:800; }
 .login-sub{ color:rgba(255,255,255,0.9); }
 #loginForm label{ color:#fff; font-weight:600; }
 #loginForm input{ border-radius:99px; padding:11px 16px; background:#fff; color:var(--text); border:2px solid transparent; }
-#loginForm input:focus{ outline:none; border-color:var(--brand); }
+#loginForm input:focus{ outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(229,86,10,0.35); }
 .password-field input{ padding-right:46px; }
 .toggle-pass{ color:var(--text-soft); }
 .toggle-pass:hover{ color:var(--navy); background:var(--brand-soft); }
-.login-form-wrap .btn-primary{ background:var(--accent); box-shadow:0 3px 0 var(--accent-dark); }
-.login-form-wrap .btn-primary:hover{ background:var(--accent-dark); }
+.login-form-wrap .btn-primary{ background:var(--brand); box-shadow:0 3px 0 var(--brand-dark); }
+.login-form-wrap .btn-primary:hover{ background:var(--brand-dark); }
 
 /* ---- Botones: píldoras ---- */
 .btn{
