@@ -99,7 +99,6 @@
       </button>
     </nav>
     <div class="sidebar-user">
-      <div class="sidebar-user-name" id="userName"></div>
       <button id="logoutBtn" class="btn btn-ghost btn-block">Salir</button>
     </div>
   </aside>
@@ -111,6 +110,10 @@
     </div>
     <div id="topLoadingBar" class="top-loading-bar"></div>
     <div id="appError" class="app-error" hidden></div>
+    <header class="app-topbar">
+      <h2 id="topTitle">Dashboard</h2>
+      <div class="user-pill" title="Usuario conectado"><i class="user-dot"></i><span id="userName"></span></div>
+    </header>
     <main class="content">
 
     <!-- ---------- DASHBOARD ---------- -->
@@ -511,9 +514,15 @@
       <div class="view-header">
         <h2>Trámites cargados</h2>
         <div class="control-inline">
-          <button id="exportBtn" class="btn btn-secondary">Exportar vida completa (Excel)</button>
+          <div class="seg-toggle" role="group" aria-label="Vista de trámites">
+            <button type="button" id="regVistaCards" class="seg-btn is-on">Tarjetas</button>
+            <button type="button" id="regVistaTabla" class="seg-btn">Tabla</button>
+          </div>
+          <button id="exportBtn" class="btn btn-text-accent">Exportar vida completa (Excel) ▾</button>
         </div>
       </div>
+
+      <div class="reg-kpis" id="regKpis"></div>
 
       <div class="filters-bar" id="filtersBar">
         <div class="filter-field">
@@ -586,8 +595,10 @@
 
       <p class="results-count" id="resultsCount"></p>
 
+      <div class="records-cards" id="recordsCards"></div>
+
       <div class="scroll-top-bar" id="recordsScrollTop"><div class="scroll-top-inner" id="recordsScrollTopInner"></div></div>
-      <div class="table-wrap">
+      <div class="table-wrap" id="recordsTableWrap">
         <table id="recordsTable" class="data-table"></table>
       </div>
     </section>

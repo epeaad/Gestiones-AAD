@@ -1268,3 +1268,64 @@ body{ background:var(--bg); }
 .data-table tbody tr:hover{ background:#F1F5FC; }
 .data-table tbody tr:hover .col-sticky{ background:#F1F5FC; }
 .data-table tr.dash-table-total{ background:#EEF2F9; color:var(--text); }
+
+/* ============================================================
+   VISTA COMO LA PREVIA: barra superior, tarjetas de trámites, totales y filtros livianos
+   ============================================================ */
+.app-topbar{
+  position:sticky; top:0; z-index:30; flex:none; height:58px; background:#fff;
+  display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 26px;
+  box-shadow:0 1px 6px rgba(20,35,70,0.08);
+}
+.app-topbar h2{ margin:0; font-family:var(--font-ui); font-size:17px; font-weight:500; color:var(--text); }
+.user-pill{ display:flex; align-items:center; gap:8px; border:1px solid var(--border); border-radius:99px; padding:5px 14px 5px 6px; font-weight:500; font-size:13px; max-width:60%; }
+.user-pill span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-dot{ width:22px; height:22px; border-radius:50%; background:var(--brand); display:block; flex:none; }
+.content{ padding-top:18px; }
+
+/* Botón de texto naranja (como "Acciones") */
+.btn-text-accent{ background:transparent; border:0; color:var(--brand); font-weight:500; padding:8px 6px; box-shadow:none; }
+.btn-text-accent:hover{ background:var(--brand-soft); color:var(--brand-dark); }
+
+/* Selector Tarjetas / Tabla */
+.seg-toggle{ display:inline-flex; background:#E6EBF4; border-radius:99px; padding:3px; }
+.seg-btn{ border:0; background:transparent; color:var(--text-soft); font-weight:500; font-size:13px; padding:6px 14px; border-radius:99px; cursor:pointer; }
+.seg-btn.is-on{ background:#fff; color:var(--text); box-shadow:0 1px 3px rgba(20,35,70,0.18); }
+
+/* Totales por estado */
+.reg-kpis{ display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:14px; }
+.reg-kpi{ background:#fff; border:1px solid var(--border); border-bottom:3px solid var(--kpi-accent); border-radius:12px; padding:10px 14px; display:flex; flex-direction:column; gap:2px; }
+.reg-kpi small{ color:var(--text-soft); font-size:11.5px; }
+.reg-kpi b{ font-family:var(--font-mono); font-weight:500; font-size:22px; letter-spacing:-0.02em; }
+@media (max-width:760px){ .reg-kpis{ grid-template-columns:repeat(2, 1fr); } }
+
+/* Filtros: grilla de cajas con borde fino, sin tarjeta contenedora */
+#filtersBar, #filtersBarAvanzados{ background:transparent; border:0; padding:0; box-shadow:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; align-items:end; margin-bottom:12px; }
+#filtersBar .filter-field, #filtersBarAvanzados .filter-field{ min-width:0; }
+#filtersBar .filter-field label, #filtersBarAvanzados .filter-field label{ display:block; margin-bottom:4px; color:var(--text-soft); font-size:11.5px; font-weight:500; letter-spacing:0.02em; text-transform:none; }
+#filtersBar input, #filtersBar select, #filtersBar .ms-toggle, #filtersBarAvanzados input, #filtersBarAvanzados select{ width:100%; background:#fff; border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+#filtersBarAvanzados .filter-field-wide{ grid-column:span 2; }
+
+/* Tarjetas de trámites */
+.records-cards{ display:flex; flex-direction:column; gap:10px; }
+.vista-tabla .records-cards{ display:none; }
+.vista-cards .table-wrap, .vista-cards .scroll-top-bar{ display:none; }
+.rcard{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:box-shadow .15s ease, border-color .15s ease; }
+.rcard:hover{ border-color:#BFCBE0; box-shadow:0 3px 12px rgba(20,35,70,0.08); }
+.rcard-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; }
+.rcard-title{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.rcard-exp{ font-size:15px; font-weight:500; color:var(--text); overflow-wrap:anywhere; }
+.rcard-sub{ font-size:12.5px; color:var(--text-soft); }
+.rcard-side{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex:none; }
+.rcard-actions{ display:flex; gap:2px; }
+.rcard-actions .icon-btn{ border:0; background:transparent; width:30px; height:30px; }
+.rcard-actions .icon-btn:hover{ background:var(--accent-soft); }
+.rcard-meta, .rcard-money{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px 22px; font-size:13px; color:var(--text); }
+.rcard-meta span, .rcard-money span{ min-width:0; overflow-wrap:anywhere; }
+.rcard-meta b, .rcard-money b{ display:block; font-size:11.5px; font-weight:500; color:var(--text-soft); margin-bottom:1px; }
+.rcard-money{ padding-top:10px; border-top:1px solid var(--border); font-family:var(--font-mono); font-size:12.5px; }
+.rcard-money b{ font-family:var(--font-ui); }
+.rcard-bar{ display:block; height:6px; border-radius:3px; background:#E6EBF4; margin-top:6px; overflow:hidden; }
+.rcard-bar em{ display:block; height:100%; border-radius:3px; }
+.rcard-empty{ color:var(--text-soft); text-align:center; padding:30px 0; }
+@media print{ .app-topbar{ display:none; } }

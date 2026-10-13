@@ -269,6 +269,10 @@ document.getElementById('sidenav').addEventListener('click', (e) => {
 
 function showView(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  // Título de la barra superior = nombre de la pestaña activa
+  const navActivo = document.querySelector('.nav-btn[data-view="' + name + '"]');
+  const topTitle = document.getElementById('topTitle');
+  if (navActivo && topTitle) topTitle.textContent = navActivo.textContent.replace(/^[^A-Za-zÁÉÍÓÚÑáéíóúñ]+/, '').trim();
   document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-' + name));
   // Recordamos en qué pantalla está el usuario (igual que la sesión) para que, si el navegador
   // recarga la página sola después de un rato inactivo (algo normal en celulares), la app vuelva
@@ -1892,6 +1896,8 @@ function renderRegistros() {
   table.classList.toggle('solo-consulta', !puedeEditar);
   setupScrollShadow(table.closest('.table-wrap'), 'recordsScrollTop', 'recordsScrollTopInner');
   wireSortableHeaders(table, state.registrosSort, renderRegistros);
+  renderRegistrosKpis(rows);
+  renderRegistrosCards(rows, puedeEditar, isAdmin);
 
   table.querySelectorAll('tbody tr').forEach(tr => {
     tr.addEventListener('click', (e) => {
@@ -1907,6 +1913,98 @@ function renderRegistros() {
       e.stopPropagation();
       const tr = btn.closest('tr');
       const rec = state.registros.find(r => r._id === tr.dataset.id);
+      if (!rec) return;
+      if (btn.dataset.action === 'copiar') copiarTramite(rec, btn);
+      if (btn.dataset.action === 'clonar') clonarTramite(rec);
+      if (btn.dataset.action === 'eliminar') eliminarTramite(rec);
+    });
+  });
+}
+
+// ---- Vista de tarjetas de Registros (alternativa a la tabla; la tabla sigue disponible) ----
+function setRegistrosVista(vista) {
+  const sec = document.getElementById('view-registros');
+  sec.classList.toggle('vista-cards', vista === 'cards');
+  sec.classList.toggle('vista-tabla', vista === 'tabla');
+  document.getElementById('regVistaCards').classList.toggle('is-on', vista === 'cards');
+  document.getElementById('regVistaTabla').classList.toggle('is-on', vista === 'tabla');
+  try { sessionStorage.setItem('aad_reg_vista', vista); } catch (e) { /* sin sessionStorage no pasa nada */ }
+  if (vista === 'tabla') renderRegistros();
+}
+document.getElementById('regVistaCards').addEventListener('click', () => setRegistrosVista('cards'));
+document.getElementById('regVistaTabla').addEventListener('click', () => setRegistrosVista('tabla'));
+(function () {
+  let v = 'cards';
+  try { v = sessionStorage.getItem('aad_reg_vista') || 'cards'; } catch (e) { /* idem */ }
+  const sec = document.getElementById('view-registros');
+  sec.classList.toggle('vista-cards', v !== 'tabla');
+  sec.classList.toggle('vista-tabla', v === 'tabla');
+  document.getElementById('regVistaCards').classList.toggle('is-on', v !== 'tabla');
+  document.getElementById('regVistaTabla').classList.toggle('is-on', v === 'tabla');
+})();
+
+// Totales por estado (semáforo) sobre los trámites filtrados
+function renderRegistrosKpis(rows) {
+  const c = { Adjudicado: 0, Desierto: 0, Relanzado: 0, otros: 0 };
+  rows.forEach(r => { if (c[r.estado] != null) c[r.estado]++; else c.otros++; });
+  const k = [
+    ['Adjudicados', c.Adjudicado, '#16A34A'],
+    ['Desiertos', c.Desierto, '#DC2626'],
+    ['Relanzados', c.Relanzado, '#D97706'],
+    ['Otros estados', c.otros, 'var(--accent)']
+  ];
+  document.getElementById('regKpis').innerHTML = k.map(x =>
+    `<div class="reg-kpi" style="--kpi-accent:${x[2]}"><small>${x[0]}</small><b>${x[1]}</b></div>`).join('');
+}
+
+function renderRegistrosCards(rows, puedeEditar, isAdmin) {
+  const cont = document.getElementById('recordsCards');
+  if (!rows.length) { cont.innerHTML = '<p class="rcard-empty">No hay trámites con los filtros actuales.</p>'; return; }
+  cont.innerHTML = rows.map(r => {
+    const cls = r.estado && ['Adjudicado','Desierto','Relanzado','Finalizado'].includes(r.estado) ? 'state-' + r.estado : 'state-default';
+    const estado = r.estado ? r.estado : ESTADO_VACIO_LABEL;
+    const pct = pctAvanceTramite(r);
+    const titulo = [r.expediente, r.pospre].filter(Boolean).map(escapeHtml).join(' · ') || 'Sin expediente';
+    const sub = [r.rubro, r.sucursal, r.anio].filter(x => x != null && x !== '').map(escapeHtml).join(' · ');
+    const dato = (lbl, val) => `<span><b>${lbl}</b>${escapeHtml(val != null && val !== '' ? val : '—')}</span>`;
+    return `<article class="rcard" data-id="${r._id}">
+      <div class="rcard-head">
+        <div class="rcard-title"><span class="rcard-exp">${titulo}</span><span class="rcard-sub">${sub}</span></div>
+        <div class="rcard-side">
+          <span class="state-pill ${cls}">${escapeHtml(estado)}</span>
+          <span class="rcard-actions">
+            <button class="icon-btn" data-action="copiar" title="Copiar datos">📋</button>
+            ${puedeEditar ? '<button class="icon-btn" data-action="clonar" title="Clonar trámite">🧬</button>' : ''}
+            ${isAdmin ? '<button class="icon-btn danger" data-action="eliminar" title="Eliminar trámite">🗑️</button>' : ''}
+          </span>
+        </div>
+      </div>
+      <div class="rcard-meta">
+        ${dato('Contratista', r.adjudicatario)}
+        ${dato('Pedido de compras', r.nroPedidoCompras)}
+        ${dato('Seguimiento', r.seguimiento)}
+      </div>
+      <div class="rcard-money">
+        <span><b>Pres. oficial</b>${formatMoney(r.presupuestoOficialRubro)}</span>
+        <span><b>Adjudicado</b>${formatMoney(r.totalAdjudicado)}</span>
+        <span><b>Certificado</b>${formatMoney(r.certificadosAAD)}</span>
+        <span class="rcard-pct"><b>Avance ${pct.toFixed(1)}%</b><i class="rcard-bar"><em style="width:${Math.min(100, Math.max(0, pct))}%;background:${semColor(pct)}"></em></i></span>
+      </div>
+    </article>`;
+  }).join('');
+
+  cont.querySelectorAll('.rcard').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.rcard-actions')) return;
+      if (!puedeEditar) return;
+      const rec = state.registros.find(r => r._id === card.dataset.id);
+      if (rec) abrirRegistroOCompras(rec);
+    });
+  });
+  cont.querySelectorAll('.rcard-actions [data-action]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rec = state.registros.find(r => r._id === btn.closest('.rcard').dataset.id);
       if (!rec) return;
       if (btn.dataset.action === 'copiar') copiarTramite(rec, btn);
       if (btn.dataset.action === 'clonar') clonarTramite(rec);
