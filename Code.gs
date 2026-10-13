@@ -146,15 +146,21 @@ const FIELDS = [
   // `_verificarColumnasSinColision()` (ver más abajo) para confirmar que el número elegido no está
   // en uso por ningún otro lado.
   { key: 'estadioActual', col: 41, label: 'Estadío Administrativo Actual' },
-  { key: 'estadioDesde', col: 42, label: 'En este Estadío desde' }
+  { key: 'estadioDesde', col: 42, label: 'En este Estadío desde' },
+  // Marca de AMPLIACIÓN DE CONTRATO (columna 43): queda con el N° del Pedido de Compras del que se
+  // amplió ("PC 123") o "Sí" si ese trámite no tenía número. Vacía = trámite original. La carga el
+  // frontend al iniciar una gestión por el flujo "Ampliación de contrato" y se muestra como badge
+  // en Registros y Dashboard. NO confundir con 'ampliacionPlazo' (col 24), que es otra cosa
+  // (ampliación de plazo en días).
+  { key: 'ampliacionDe', col: 43, label: 'Ampliación de contrato (origen)' }
 ];
 // Ancho total a leer/escribir de una sola vez en "Gestiones Plan": cubre FIELDS (1-36), la columna
 // técnica de ID (37), la de vínculo con Compras — modelo viejo (38), Seguimiento (39), la de
 // vínculo con Compras — modelo nuevo (40, ver COMPRAS_TRAMITE_LINK_COLUMN) y el Estadío
-// Administrativo (41-42). Como FIELDS ya no termina justo en LAST_COLUMN, cualquier lectura/
+// Administrativo (41-42) y la marca de Ampliación de contrato (43). Como FIELDS ya no termina justo en LAST_COLUMN, cualquier lectura/
 // escritura masiva de la fila completa tiene que usar este ancho (42), no LAST_COLUMN (36, que
 // sigue siendo el límite de los datos "de negocio" originales).
-const SHEET_TOTAL_COLUMNS = 42;
+const SHEET_TOTAL_COLUMNS = 43;
 
 /**
  * Verificación de seguridad: confirma que ninguna columna de "Gestiones Plan" esté siendo usada
@@ -191,7 +197,7 @@ const STAGES = [
   { id: 'lanzamiento', label: 'Lanzamiento del Trámite', ranges: [[1, 13]] },
   // 39-42 (Seguimiento + Estadío Administrativo) quedan en Adjudicación junto al resto de esa
   // etapa, no en un lugar aparte: es donde ya vivía "Seguimiento" antes de este cambio.
-  { id: 'adjudicacion', label: 'Adjudicación', ranges: [[14, 20], [39, 42]] },
+  { id: 'adjudicacion', label: 'Adjudicación', ranges: [[14, 20], [39, 43]] },
   { id: 'proyectos', label: 'Proyectos (solo Obra Menor)', ranges: [[26, 31]] },
   { id: 'certificacion', label: 'Certificación', ranges: [[21, 25], [32, 36]] }
 ];
@@ -336,7 +342,7 @@ function setup() {
   }
   // Encabezados de Estadío Administrativo (columnas nuevas 40/41) — mismo criterio que ID_Interno:
   // solo se completan si están vacíos, para no pisar nada que ya tengas tipeado ahí.
-  FIELDS.filter(f => f.key === 'estadioActual' || f.key === 'estadioDesde').forEach(f => {
+  FIELDS.filter(f => f.key === 'estadioActual' || f.key === 'estadioDesde' || f.key === 'ampliacionDe').forEach(f => {
     if (data.getRange(HEADER_ROW, f.col).getValue() === '') {
       data.getRange(HEADER_ROW, f.col).setValue(f.label);
     }
@@ -2812,7 +2818,7 @@ function _repararColisionColumna40() {
   // Trae TODA la hoja de una sola vez, con un ancho igual o mayor a SHEET_TOTAL_COLUMNS, para no
   // perder nada por si algo quedó escrito en la columna 41 vieja (posición anterior de "En este
   // Estadío desde", ahora columna 42).
-  const anchoLectura = Math.max(SHEET_TOTAL_COLUMNS, 42);
+  const anchoLectura = Math.max(SHEET_TOTAL_COLUMNS, 43);
   const rango = sh.getRange(FIRST_DATA_ROW, 1, n, anchoLectura).getValues();
 
   let migradas = 0, borradas = 0;

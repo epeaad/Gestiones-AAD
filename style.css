@@ -1275,3 +1275,20 @@ input[readonly], input:disabled, select:disabled{ background:#F1F4F9; color:var(
 .ms-actions button{ padding:8px 10px; font-weight:500; }
 /* Ningún contenedor de la app debe forzar scroll horizontal en la página */
 .main-area, .content, .view{ overflow-x:clip; }
+
+/* Marca de trámite que es AMPLIACIÓN de contrato (Registros y Dashboard) */
+.badge-ampliacion {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid #D97706;
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}

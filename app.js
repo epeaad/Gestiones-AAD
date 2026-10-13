@@ -470,6 +470,8 @@ function iniciarAmpliacionContrato(base, pct) {
   });
   const nota = `Ampliación de contrato del Pedido de Compras Nº ${base.nroPedidoCompras || '(sin número)'} — se solicita un ${pct}% de las cantidades y plazos originales.`;
   draft.observaciones = draft.observaciones ? (nota + '\n' + draft.observaciones) : nota;
+  // Marca persistente: queda guardada en el trámite y se ve como badge en Registros y Dashboard.
+  draft.ampliacionDe = base.nroPedidoCompras ? 'PC ' + base.nroPedidoCompras : 'Sí';
   // draft._id se deja sin definir a propósito: es un trámite NUEVO, no una edición del original.
 
   state.editingId = null;
@@ -942,7 +944,7 @@ function buildFieldInput(f, record) {
   if (LONG_FIELDS.has(f.key)) label.classList.add('span-2');
   const value = record[f.key] != null ? record[f.key] : '';
   const isDerived = DERIVED_FIELDS.has(f.key);
-  const readonlyAttr = isDerived ? 'readonly tabindex="-1"' : '';
+  const readonlyAttr = (isDerived || f.key === 'ampliacionDe') ? 'readonly tabindex="-1"' : '';
 
   let inputHtml;
   if (f.key === 'estadioActual' && esFilaEspejoDeCompras(record)) {
@@ -1851,6 +1853,13 @@ function formatFechaCorta(v) {
   return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '-';
 }
 
+// Badge que distingue los trámites que son AMPLIACIÓN de contrato de los originales.
+function ampliacionBadgeHtml(r) {
+  if (!r || !r.ampliacionDe) return '';
+  const t = 'Ampliación de contrato' + (r.ampliacionDe !== 'Sí' ? ' — origen: ' + r.ampliacionDe : '');
+  return `<span class="badge-ampliacion" title="${escapeHtml(t)}">AMPLIACIÓN</span>`;
+}
+
 function registroTdsHtml(r, cols) {
   return (cols || REGISTROS_COLS).map(c => {
     if (c.key === 'estado') {
@@ -1861,6 +1870,7 @@ function registroTdsHtml(r, cols) {
     if (DATE_FIELDS.has(c.key)) return `<td class="mono">${escapeHtml(formatFechaCorta(r[c.key]))}</td>`;
     if (MONEY_COL_KEYS.has(c.key)) return `<td class="mono">${formatMoney(r[c.key])}</td>`;
     if (c.key === 'pctAvance') return `<td class="mono">${pctAvanceTramite(r).toFixed(1)}%</td>`;
+    if (c.key === 'pospre' && r.ampliacionDe) return `<td>${escapeHtml(r.pospre != null ? r.pospre : '')} ${ampliacionBadgeHtml(r)}</td>`;
     if (c.key === 'anio') return `<td class="mono">${escapeHtml(r.anio != null ? r.anio : '')}</td>`;
     if (c.key === 'cantidadProyectos') return `<td class="mono">${num(r.cantidadProyectos) || 0}</td>`;
     if (c.key === 'pctPresupuestoProyectado') return `<td class="mono">${pctPresupuestoProyectado(r).toFixed(1)}%</td>`;
@@ -2018,7 +2028,7 @@ function renderRegistrosCards(rows, puedeEditar, isAdmin) {
     const dato = (lbl, val) => `<span><b>${lbl}</b>${escapeHtml(val != null && val !== '' ? val : '—')}</span>`;
     return `<article class="rcard" data-id="${r._id}">
       <div class="rcard-head">
-        <div class="rcard-title"><b>${exp}</b>${rubro}${extra ? '<span class="rcard-extra"> · ' + extra + '</span>' : ''}</div>
+        <div class="rcard-title"><b>${exp}</b> ${ampliacionBadgeHtml(r)}${rubro}${extra ? '<span class="rcard-extra"> · ' + extra + '</span>' : ''}</div>
         <div class="rcard-side">
           <span class="state-pill ${cls}">${escapeHtml(estado)}</span>
           <span class="rcard-actions">
