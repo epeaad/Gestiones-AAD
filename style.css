@@ -1264,3 +1264,14 @@ input[readonly], input:disabled, select:disabled{ background:#F1F4F9; color:var(
 #compKpiRow{ grid-template-columns:repeat(6, minmax(0,1fr)); }
 @media (max-width:1100px){ .kpi-row, #compKpiRow{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
 @media (max-width:700px){ .kpi-row, #compKpiRow{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+
+/* ---------- Desplegables de selección múltiple: sin scroll horizontal ---------- */
+.ms-panel{ min-width:max(100%, 260px); width:max-content; max-width:min(420px, 90vw); overflow:hidden; padding:6px; }
+.ms-options{ overflow-y:auto; overflow-x:hidden; }
+.ms-option{ white-space:normal; overflow-wrap:anywhere; align-items:flex-start; line-height:1.35; padding:7px 8px; }
+.ms-option span{ min-width:0; }
+.ms-option input[type=checkbox], .filter-field .ms-option input, .ms-panel input[type=checkbox]{ width:16px; height:16px; padding:0; margin:2px 0 0; flex:none; accent-color:var(--brand); }
+.ms-search{ width:100%; padding:8px 10px; margin-bottom:6px; }
+.ms-actions button{ padding:8px 10px; font-weight:500; }
+/* Ningún contenedor de la app debe forzar scroll horizontal en la página */
+.main-area, .content, .view{ overflow-x:clip; }
