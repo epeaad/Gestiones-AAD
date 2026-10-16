@@ -2561,10 +2561,8 @@ function renderDashboard() {
   filas = sortRows(filas, state.dashSort, dashValueFn);
 
   const allEntries = filas;
-  // En pantalla se recortan a los 12 grupos principales por prolijidad, pero un reporte impreso
-  // necesita el detalle completo: en modo impresión (ver dashPrintMode más abajo) no se recorta.
-  const entries = dashPrintMode ? allEntries : allEntries.slice(0, 12);
-  const hayMasGrupos = !dashPrintMode && allEntries.length > entries.length;
+  // Se muestran todos los grupos (sin recorte), para que el detalle coincida con la fila TOTAL.
+  const entries = allEntries;
 
   // Totales sobre TODOS los grupos (no solo los 12 que se muestran), para que coincida con los KPIs de arriba
   const totalGeneral = allEntries.reduce((acc, f) => {
@@ -2597,18 +2595,14 @@ function renderDashboard() {
       const tdsExtra = mostrarSucursalContratista ? `<td>${escapeHtml(f.sucursales)}</td><td>${escapeHtml(f.contratistas)}</td><td class="mono">${escapeHtml(f.fechasFinContrato)}</td>` : '';
       return `<tr><td>${escapeHtml(f.grupo)}</td><td>${f.n}</td><td>${formatMillions(f.presOficial)}</td><td>${formatMillions(f.adjudicado)}</td><td>${formatMillions(f.certificado)}</td><td>${f.avance.toFixed(1)}%</td><td>${f.certProcesados}</td><td>${f.proyectos}</td><td>${f.pctPresupuestoProyectado.toFixed(1)}%</td><td>${f.pctIIBB.toFixed(1)}%</td>${tdsExtra}</tr>`;
     }).join('') +
-    `<tr class="dash-table-total"><td>TOTAL${hayMasGrupos ? ' (' + allEntries.length + ' grupos)' : ''}</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${pctPresupuestoProyectadoGeneral.toFixed(1)}%</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td><td></td>' : ''}</tr>` +
+    `<tr class="dash-table-total"><td>TOTAL (${allEntries.length} grupos)</td><td>${totalGeneral.n}</td><td>${formatMillions(totalGeneral.presOficial)}</td><td>${formatMillions(totalGeneral.adjudicado)}</td><td>${formatMillions(totalGeneral.certificado)}</td><td>${avanceGeneral.toFixed(1)}%</td><td>${totalGeneral.certProcesados}</td><td>${totalGeneral.proyectos}</td><td>${pctPresupuestoProyectadoGeneral.toFixed(1)}%</td><td>${promedioPctIIBBGeneral.toFixed(1)}%</td>${mostrarSucursalContratista ? '<td></td><td></td><td></td>' : ''}</tr>` +
     '</tbody>';
   wireSortableHeaders(table, state.dashSort, renderDashboard);
   setupScrollShadow(table.closest('.table-wrap'));
 
   const nota = document.getElementById('dashTableNota');
   if (nota) {
-    nota.textContent = dashPrintMode
-      ? `Detalle completo: ${allEntries.length} grupo(s).`
-      : hayMasGrupos
-        ? `Se muestran los 12 grupos principales según el orden actual, de ${allEntries.length} en total. La fila TOTAL suma los ${allEntries.length}, no solo los 12 visibles. Hacé click en un encabezado para cambiar el orden.`
-        : 'Hacé click en un encabezado de la tabla para ordenar por esa columna.';
+    nota.textContent = `Se muestran los ${allEntries.length} grupos en total. La fila TOTAL suma todos los grupos. Hacé click en un encabezado para cambiar el orden.`;
     nota.hidden = false;
   }
 }

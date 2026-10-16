@@ -192,6 +192,49 @@ function _verificarColumnasSinColision() {
   Logger.log('Verificación de columnas de "Gestiones Plan": sin colisiones. OK.');
 }
 
+/**
+ * MIGRACIÓN ÚNICA — marca como "Ampliación de contrato" (columna 43) los trámites cargados ANTES de
+ * existir esa marca. Criterio: el flujo "Ampliación de contrato" siempre antepone a Observaciones
+ * una nota que empieza con "Ampliación de contrato del Pedido de Compras Nº <N>"; si la fila la
+ * tiene y la columna 43 está vacía, se completa con "PC <N>" (o "Sí" si no tenía número).
+ * No pisa marcas existentes ni toca ninguna otra columna. Es idempotente (se puede correr de nuevo).
+ *
+ * USO: 1) ejecutar `marcarAmpliacionesExistentes_SIMULACRO` y revisar el Registro de ejecución
+ *      (Ver > Registros) para ver QUÉ filas se marcarían; 2) si está bien, ejecutar
+ *      `marcarAmpliacionesExistentes`. Las ampliaciones cuya nota se borró a mano de Observaciones
+ *      no se pueden detectar: esas se marcan escribiendo "Sí" en la columna 43.
+ */
+function marcarAmpliacionesExistentes_SIMULACRO() { return _marcarAmpliacionesExistentes(false); }
+function marcarAmpliacionesExistentes() { return _marcarAmpliacionesExistentes(true); }
+
+function _marcarAmpliacionesExistentes(aplicar) {
+  _verificarColumnasSinColision();
+  const sh = _sheetData();
+  const lastRow = sh.getLastRow();
+  if (lastRow < FIRST_DATA_ROW) { Logger.log('No hay trámites.'); return 0; }
+  const colObs = _colDeCampo(FIELDS, 'observaciones');
+  const colAmp = _colDeCampo(FIELDS, 'ampliacionDe');
+  const colExp = _colDeCampo(FIELDS, 'expediente');
+  const n = lastRow - FIRST_DATA_ROW + 1;
+  const obs = sh.getRange(FIRST_DATA_ROW, colObs, n, 1).getValues();
+  const amp = sh.getRange(FIRST_DATA_ROW, colAmp, n, 1).getValues();
+  const exp = sh.getRange(FIRST_DATA_ROW, colExp, n, 1).getValues();
+  const re = /^\s*Ampliaci[oó]n de contrato del Pedido de Compras N[º°o]?\s*(.*?)\s*[—–-]\s*se solicita/i;
+  let marcadas = 0;
+  for (let i = 0; i < n; i++) {
+    if (amp[i][0] !== '' && amp[i][0] !== null) continue; // ya tiene marca
+    const m = re.exec(String(obs[i][0] || ''));
+    if (!m) continue;
+    const nro = (m[1] || '').replace(/^\(sin número\)$/i, '').trim();
+    const valor = nro ? 'PC ' + nro : 'Sí';
+    Logger.log((aplicar ? 'MARCA' : 'MARCARÍA') + ' fila ' + (FIRST_DATA_ROW + i) + ' (expediente ' + exp[i][0] + ') -> ' + valor);
+    if (aplicar) sh.getRange(FIRST_DATA_ROW + i, colAmp).setValue(valor);
+    marcadas++;
+  }
+  Logger.log((aplicar ? 'Filas marcadas: ' : 'Filas que se marcarían: ') + marcadas);
+  return marcadas;
+}
+
 // Etapas de la "vida del trámite"
 const STAGES = [
   { id: 'lanzamiento', label: 'Lanzamiento del Trámite', ranges: [[1, 13]] },
