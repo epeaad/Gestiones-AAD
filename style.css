@@ -511,11 +511,11 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
 .data-table-heatmap thead .segu-col-3, .data-table-heatmap thead .segu-col-4{
   position:sticky; z-index:4; background:#F8FAFB;
 }
-.data-table-heatmap .segu-col-0{ left:0; width:90px; min-width:90px; max-width:90px; text-align:right; white-space:normal; font-weight:600; color:var(--text-soft); }
+.data-table-heatmap .segu-col-0{ left:540px; width:90px; min-width:90px; max-width:90px; box-shadow:4px 0 6px -4px rgba(15,25,35,0.18); text-align:right; white-space:normal; font-weight:600; color:var(--text-soft); }
 .data-table-heatmap thead .segu-col-0{ white-space:normal; line-height:1.15; }
-.data-table-heatmap .segu-col-1{ left:90px; width:130px; min-width:130px; max-width:130px; }
+.data-table-heatmap .segu-col-1{ left:0; width:130px; min-width:130px; max-width:130px; }
 .data-table-heatmap .segu-col-2{
-  left:220px; width:100px; min-width:100px; max-width:100px;
+  left:130px; width:100px; min-width:100px; max-width:100px;
   /* El N° de Pedido de Compras siempre tiene que verse completo: acá anulamos el truncado con
      "..." que sí aplica al resto de las columnas fijas. Ancho angosto (100px) ajustado al
      contenido real (códigos SAP de pocos dígitos); si alguno es más largo, se pasa a una segunda
@@ -523,8 +523,8 @@ button, input, select, textarea{ font-family:inherit; font-size:inherit; }
   white-space:normal; overflow:visible; text-overflow:unset; word-break:break-word;
 }
 .data-table-heatmap thead .segu-col-2{ white-space:nowrap; } /* en el encabezado "N° PC" sí entra en una línea */
-.data-table-heatmap .segu-col-3{ left:320px; width:190px; min-width:190px; max-width:190px; }
-.data-table-heatmap .segu-col-4{ left:510px; width:120px; min-width:120px; max-width:120px; box-shadow:4px 0 6px -4px rgba(15,25,35,0.18); }
+.data-table-heatmap .segu-col-3{ left:230px; width:190px; min-width:190px; max-width:190px; }
+.data-table-heatmap .segu-col-4{ left:420px; width:120px; min-width:120px; max-width:120px; }
 .data-table-heatmap tbody tr:hover .segu-col-0, .data-table-heatmap tbody tr:hover .segu-col-1, .data-table-heatmap tbody tr:hover .segu-col-2,
 .data-table-heatmap tbody tr:hover .segu-col-3, .data-table-heatmap tbody tr:hover .segu-col-4{ background:var(--brand-soft); }
 .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-0, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-1, .data-table-heatmap tbody tr.row-sin-certificaciones .segu-col-2,

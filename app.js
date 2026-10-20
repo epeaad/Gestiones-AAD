@@ -3278,22 +3278,22 @@ function renderSeguimiento() {
     : `<td class="segu-venc-vacio">-</td>`;
 
   table.innerHTML = `<thead><tr>
-      ${thSortTitle('pctMensual', '% Mensual sugerido', '100% ÷ cantidad de meses de plazo (plazo original ÷ 30 días). Avance mensual teórico requerido.', 'segu-col-0 mono')}
       ${thSort('pospre', 'Pospre', 'segu-col-1')}
       ${thSort('nroPedidoCompras', 'N° PC', 'segu-col-2')}
       ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
       ${thSort('sucursal', 'Sucursal', 'segu-col-4')}
+      ${thSortTitle('pctMensual', '% Mensual sugerido', '100% ÷ cantidad de meses de plazo (plazo original ÷ 30 días). Avance mensual teórico requerido.', 'segu-col-0 mono')}
       ${theadMeses}
       ${thSortTitle('vencOriginal', 'Vmto', 'Vencimiento (plazo original)', 'mono')}
       ${thSortTitle('vencAmpliado', 'Vmto Amp', 'Vencimiento Ampliado (con ampliación de plazo)', 'mono')}
       ${thSort('pctActual', '% Acumulado total', 'mono')}
     </tr></thead><tbody>` +
     filasOrdenadas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
-      <td class="segu-col-0 mono" title="${f.mesesPlazo ? escapeHtml(f.mesesPlazo + (f.mesesPlazo === 1 ? ' mes' : ' meses') + ' de plazo') : 'Sin plazo cargado'}">${f.pctMensual == null ? '-' : f.pctMensual.toFixed(1) + '%'}</td>
       <td class="segu-col-1" title="${escapeHtml(f.pospre || '')}">${escapeHtml(f.pospre || '')}</td>
       <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
       <td class="segu-col-4" title="${escapeHtml(f.sucursal || '')}">${escapeHtml(f.sucursal || '')}</td>
+      <td class="segu-col-0 mono" title="${f.mesesPlazo ? escapeHtml(f.mesesPlazo + (f.mesesPlazo === 1 ? ' mes' : ' meses') + ' de plazo') : 'Sin plazo cargado'}">${f.pctMensual == null ? '-' : f.pctMensual.toFixed(1) + '%'}</td>
       ${f.celdasMes.map(celdaMes).join('')}
       ${celdaVencimiento(f.mesVencOriginal, 'segu-venc-original')}
       ${celdaVencimiento(f.mesVencAmpliado, 'segu-venc-ampliado')}
