@@ -3205,7 +3205,14 @@ function renderSeguimiento() {
     // Ampliación de Plazo realmente cargada (ampliacionPlazo > 0); si no, fechaFinPlazoAmpliada es
     // idéntica a fechaFinContrato y mostrarla dos veces solo generaría ruido. ----
     const tieneAmpliacion = num(r.ampliacionPlazo) > 0 && r.fechaFinPlazoAmpliada && r.fechaFinPlazoAmpliada !== r.fechaFinContrato;
+    // ---- % mensual sugerido = 100% / cantidad de meses de plazo (plazo original en días / 30,
+    // redondeado, mínimo 1 mes). Es el avance mensual teórico requerido: comparado con las celdas
+    // de mes y el % acumulado permite inferir el desvío respecto de lo contratado. ----
+    const plazoDias = num(r.plazoEntrega);
+    const mesesPlazo = plazoDias > 0 ? Math.max(1, Math.round(plazoDias / 30)) : 0;
+    const pctMensual = mesesPlazo > 0 ? 100 / mesesPlazo : null;
     return {
+      pctMensual, mesesPlazo,
       id: r._id, pospre: r.pospre, nroPedidoCompras: r.nroPedidoCompras, adjudicatario: r.adjudicatario,
       sucursal: r.sucursal, adj, celdasMes, pctActual: pctAvanceTramite(r), tieneCerts: certs.length > 0,
       fechaFinContrato: r.fechaFinContrato || '', fechaFinPlazoAmpliada: r.fechaFinPlazoAmpliada || '',
@@ -3217,6 +3224,7 @@ function renderSeguimiento() {
   // ---- Orden: por defecto, peor % acumulado primero (para detectar rápido lo atrasado), pero
   // se puede ordenar por cualquier columna con un clic en su encabezado — incluidas las de mes. ----
   const seguSortValue = (fila, key) => {
+    if (key === 'pctMensual') return fila.pctMensual == null ? -1 : fila.pctMensual;
     if (key === 'pospre') return fila.pospre || '';
     if (key === 'nroPedidoCompras') return fila.nroPedidoCompras || '';
     if (key === 'adjudicatario') return fila.adjudicatario || '';
@@ -3270,6 +3278,7 @@ function renderSeguimiento() {
     : `<td class="segu-venc-vacio">-</td>`;
 
   table.innerHTML = `<thead><tr>
+      ${thSortTitle('pctMensual', '% Mensual sugerido', '100% ÷ cantidad de meses de plazo (plazo original ÷ 30 días). Avance mensual teórico requerido.', 'segu-col-0 mono')}
       ${thSort('pospre', 'Pospre', 'segu-col-1')}
       ${thSort('nroPedidoCompras', 'N° PC', 'segu-col-2')}
       ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
@@ -3280,6 +3289,7 @@ function renderSeguimiento() {
       ${thSort('pctActual', '% Acumulado total', 'mono')}
     </tr></thead><tbody>` +
     filasOrdenadas.map(f => `<tr${f.tieneCerts ? '' : ' class="row-sin-certificaciones"'}>
+      <td class="segu-col-0 mono" title="${f.mesesPlazo ? escapeHtml(f.mesesPlazo + (f.mesesPlazo === 1 ? ' mes' : ' meses') + ' de plazo') : 'Sin plazo cargado'}">${f.pctMensual == null ? '-' : f.pctMensual.toFixed(1) + '%'}</td>
       <td class="segu-col-1" title="${escapeHtml(f.pospre || '')}">${escapeHtml(f.pospre || '')}</td>
       <td class="segu-col-2 mono">${escapeHtml(f.nroPedidoCompras || '')}</td>
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
@@ -5389,7 +5399,12 @@ function normalizarParaEstadio(item, modulo) {
   };
 }
 
+let _estadioFilasMemo = null; // se llena solo dentro de un render, para no normalizar todo N veces
 function estadioFilasCompletas() {
+  return _estadioFilasMemo || estadioFilasCompletasSinMemo();
+}
+
+function estadioFilasCompletasSinMemo() {
   // Las filas espejo de Compras (rubro:'Compras', generadas automáticamente en "Gestiones Plan" —
   // ver esFilaEspejoDeCompras) NO se muestran en este módulo: cada trámite de Compras ya aparece
   // acá una vez, con Módulo "Compras" y su Estadío editable. Mostrar también su copia espejo
@@ -5489,21 +5504,47 @@ function poblarEstadioFiltroAnio() {
 // vacía, autoestampa hoy; si viene cargada, la respeta tal cual — ver _aplicarCambioEstadio en
 // Code.gs, para cuando el trámite ya lleva unos días en ese estadío al momento de anotarlo).
 async function estadioGuardarCambio(id, modulo, nuevoValor, fecha) {
-  const datos = { estadioActual: nuevoValor };
-  if (fecha) datos.estadioDesde = fecha;
-  try {
-    if (modulo === 'Compras') {
-      await apiCall('compras_tramite_actualizar', { id, datos });
-      await cargarComprasTramites();
-    } else {
-      await apiCall('actualizar', { id, datos });
-      const data = await apiCall('listar');
-      state.registros = data.registros || [];
-    }
-  } catch (err) {
-    alert('No se pudo guardar el cambio de estadío: ' + err.message);
+  // Edición OPTIMISTA: la tabla se actualiza al instante y el guardado va en segundo plano. Si el
+  // servidor falla, se revierte el valor y se avisa. (Antes se esperaban 2 llamadas seguidas a
+  // Apps Script —guardar y recargar todo— y recién después se repintaba.)
+  const lista = modulo === 'Compras' ? comprasTramitesCache : state.registros;
+  const item = (lista || []).find(x => (x._id || x.id) === id);
+  const previo = item ? { estadioActual: item.estadioActual, estadioDesde: item.estadioDesde } : null;
+  const cambio = !item || String(item.estadioActual || '') !== String(nuevoValor || '');
+  const desde = fecha || (cambio ? new Date().toLocaleDateString('en-CA') : (item && item.estadioDesde) || '');
+  if (item) {
+    item.estadioActual = nuevoValor;
+    if (desde) item.estadioDesde = desde;
   }
-  renderEstadioActual(); // repone la tabla con el dato real del servidor, haya salido bien o mal
+  renderEstadioActual();
+  try {
+    const res = await apiCall('estadio_actualizar', { modulo, id, estadioActual: nuevoValor, estadioDesde: fecha || '' });
+    if (item && res && res.estadioDesde) item.estadioDesde = res.estadioDesde;
+  } catch (err) {
+    const msg = String((err && err.message) || err);
+    if (msg.indexOf('Acción desconocida') !== -1) {
+      // Code.gs todavía sin redeployar: camino viejo (más lento) para no perder el cambio.
+      try {
+        const datos = { estadioActual: nuevoValor };
+        if (fecha) datos.estadioDesde = fecha;
+        if (modulo === 'Compras') {
+          await apiCall('compras_tramite_actualizar', { id, datos });
+          await cargarComprasTramites();
+        } else {
+          await apiCall('actualizar', { id, datos });
+          const data = await apiCall('listar');
+          state.registros = data.registros || [];
+        }
+      } catch (err2) {
+        if (item && previo) { item.estadioActual = previo.estadioActual; item.estadioDesde = previo.estadioDesde; }
+        alert('No se pudo guardar el cambio de estadío: ' + err2.message);
+      }
+    } else {
+      if (item && previo) { item.estadioActual = previo.estadioActual; item.estadioDesde = previo.estadioDesde; }
+      alert('No se pudo guardar el cambio de estadío: ' + msg);
+    }
+    renderEstadioActual();
+  }
 }
 
 // Elimina un trámite directamente desde este panel (solo admin, lo valida también el backend) —
@@ -5582,6 +5623,12 @@ function estadioColHtml(f, col) {
 }
 
 function renderEstadioActual() {
+  _estadioFilasMemo = null;
+  _estadioFilasMemo = estadioFilasCompletasSinMemo();
+  try { _renderEstadioActualInterno(); } finally { _estadioFilasMemo = null; }
+}
+
+function _renderEstadioActualInterno() {
   poblarEstadioFiltroAnio();
   poblarEstadioFiltroSelect();
   const isAdmin = state.session && state.session.rol === 'admin';

@@ -276,6 +276,31 @@ function _aplicarCambioEstadio(datos, estadioActualPrevio) {
   return datos;
 }
 
+/**
+ * Cambio de estadío RÁPIDO (edición inline del módulo "Estadío de los Trámites"): escribe SOLO las
+ * 2 celdas (Estadío Actual y Estadío Desde). No recalcula rollups de Certificaciones/Proyectos ni
+ * sincroniza la fila espejo de Compras, porque el estadío no interviene en ninguno de esos cálculos
+ * (ver _sincronizarRegistroTramiteCompra: sus "valores" no incluyen campos de estadío).
+ * Devuelve la fecha final de "Estadío Desde" (yyyy-MM-dd).
+ */
+function _actualizarEstadioRapido(modulo, id, estadioActual, estadioDesde) {
+  const esCompras = modulo === 'Compras';
+  const row = esCompras ? _findComprasTramiteRowById(id) : _findRowById(id);
+  if (row === -1) throw new Error(esCompras ? 'Trámite de Compras no encontrado.' : 'Registro no encontrado.');
+  const sh = esCompras ? _sheetComprasTramites() : _sheetData();
+  const fields = esCompras ? COMPRAS_TRAMITES_FIELDS : FIELDS;
+  const colActual = _colDeCampo(fields, 'estadioActual');
+  const colDesde = _colDeCampo(fields, 'estadioDesde');
+  if (colActual < 1 || colDesde < 1) throw new Error('No se encontraron las columnas de estadío.');
+  const previo = sh.getRange(row, colActual).getValue();
+  const datos = { estadioActual: estadioActual == null ? '' : estadioActual };
+  if (estadioDesde) datos.estadioDesde = estadioDesde;
+  _aplicarCambioEstadio(datos, previo);
+  sh.getRange(row, colActual).setValue(datos.estadioActual);
+  if (datos.estadioDesde) sh.getRange(row, colDesde).setValue(_numOrRaw('estadioDesde', datos.estadioDesde));
+  return datos.estadioDesde || '';
+}
+
 /** Busca en una lista de campos (FIELDS o COMPRAS_TRAMITES_FIELDS) la columna de una clave dada. */
 function _colDeCampo(fields, key) {
   const f = fields.find(x => x.key === key);
@@ -485,7 +510,7 @@ function _diagnostico() {
     const info = {
       ok: true,
       VERSION_DE_CODIGO: 'v2026-09-08-cero-recalcula-y-leyenda', // <- cambia cada vez que se publica una actualización; compará este valor con lo que Claude te diga que espera
-      accionesDisponibles: ['listar','crear','actualizar','eliminar','usuarios_listar','usuarios_crear','recalcular_todos','completar_valores_iniciales','corregir_iva','unificar_valores','certificaciones_listar','certificaciones_crear','certificaciones_actualizar','certificaciones_eliminar','proyectos_listar','proyectos_crear','proyectos_actualizar','proyectos_eliminar','compras_listar','compras_exp_crear','compras_exp_actualizar','compras_exp_eliminar','compras_pc_crear','compras_pc_actualizar','compras_pc_eliminar','compras_pos_crear','compras_pos_actualizar','compras_pos_eliminar','compras_importar','compras_tramites_listar','compras_tramite_crear','compras_tramite_actualizar','compras_tramite_eliminar','compras_tramite_clonar','compras_entrega_crear','compras_entrega_actualizar','compras_entrega_eliminar','compras_migrar_a_tramites','historial_kpis_listar','historial_kpis_guardar'],
+      accionesDisponibles: ['listar','crear','actualizar','eliminar','usuarios_listar','usuarios_crear','recalcular_todos','completar_valores_iniciales','corregir_iva','unificar_valores','certificaciones_listar','certificaciones_crear','certificaciones_actualizar','certificaciones_eliminar','proyectos_listar','proyectos_crear','proyectos_actualizar','proyectos_eliminar','compras_listar','compras_exp_crear','compras_exp_actualizar','compras_exp_eliminar','compras_pc_crear','compras_pc_actualizar','compras_pc_eliminar','compras_pos_crear','compras_pos_actualizar','compras_pos_eliminar','compras_importar','compras_tramites_listar','compras_tramite_crear','compras_tramite_actualizar','compras_tramite_eliminar','compras_tramite_clonar','compras_entrega_crear','compras_entrega_actualizar','compras_entrega_eliminar','compras_migrar_a_tramites','historial_kpis_listar','historial_kpis_guardar','estadio_actualizar'],
       pestaniasEsperadas: [SHEET_DATA, SHEET_USERS, SHEET_CERT, SHEET_PROY, SHEET_COMPRAS_EXP, SHEET_COMPRAS_PC, SHEET_COMPRAS_POS, SHEET_COMPRAS_TRAMITES, SHEET_COMPRAS_ENTREGAS, SHEET_HISTORIAL],
       spreadsheetName: ss.getName(),
       spreadsheetUrl: ss.getUrl(),
@@ -565,6 +590,9 @@ function doPost(e) {
         if (user.rol === 'consulta') return _json({ ok: false, error: 'Tu usuario es de solo consulta y no puede editar trámites.' });
         _actualizarRegistro(body.id, body.datos, user);
         return _json({ ok: true });
+      case 'estadio_actualizar':
+        if (user.rol === 'consulta') return _json({ ok: false, error: 'Tu usuario es de solo consulta y no puede cambiar el estadío.' });
+        return _json({ ok: true, estadioDesde: _actualizarEstadioRapido(body.modulo, body.id, body.estadioActual, body.estadioDesde) });
       case 'eliminar':
         if (user.rol !== 'admin') return _json({ ok: false, error: 'Solo un administrador puede eliminar.' });
         _eliminarRegistro(body.id);
