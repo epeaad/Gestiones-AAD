@@ -3135,13 +3135,14 @@ function filteredForSeguimiento() {
 // más de 25% de ese mes, amarillo entre 15% y 24%, rojo con 14% o menos. Solo se aplica cuando el
 // mes tiene un expediente/certificado cargado con monto > 0 — ver celdaMes() para los otros 2
 // estados posibles (sin expediente ese mes / expediente con monto cero). ----
-// ---- Semáforo mensual por DESVÍO respecto del % Mensual teórico del contrato (en puntos
-// porcentuales): desvío = teórico - certificado ese mes. <5 p.p. verde, 5 a 10 amarillo, >10 rojo.
-// Certificar igual o más que lo teórico es desvío 0 (verde). ----
+// ---- Semáforo mensual por DESVÍO RELATIVO respecto del % Mensual teórico del contrato:
+// desvío = (teórico - certificado) / teórico. <5% verde, 5% a 10% amarillo, >10% rojo.
+// Ej. teórico 14,3%: verde si certificó >= 13,59%; amarillo entre 12,87% y 13,59%; rojo por debajo
+// de 12,87%. Certificar igual o más que lo teórico es desvío 0 (verde). ----
 function desvioTinte(pctCertificado, pctTeorico) {
-  const desvio = Math.max(0, pctTeorico - pctCertificado);
-  if (desvio < 5) return { bg: '#DCFCE7', color: '#166534' };
-  if (desvio <= 10) return { bg: '#FEF3C7', color: '#92400E' };
+  const desvio = Math.max(0, (pctTeorico - pctCertificado) / pctTeorico);
+  if (desvio < 0.05) return { bg: '#DCFCE7', color: '#166534' };
+  if (desvio <= 0.10) return { bg: '#FEF3C7', color: '#92400E' };
   return { bg: '#FEE2E2', color: '#991B1B' };
 }
 
