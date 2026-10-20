@@ -3135,6 +3135,16 @@ function filteredForSeguimiento() {
 // más de 25% de ese mes, amarillo entre 15% y 24%, rojo con 14% o menos. Solo se aplica cuando el
 // mes tiene un expediente/certificado cargado con monto > 0 — ver celdaMes() para los otros 2
 // estados posibles (sin expediente ese mes / expediente con monto cero). ----
+// ---- Semáforo mensual por DESVÍO respecto del % Mensual teórico del contrato (en puntos
+// porcentuales): desvío = teórico - certificado ese mes. <5 p.p. verde, 5 a 10 amarillo, >10 rojo.
+// Certificar igual o más que lo teórico es desvío 0 (verde). ----
+function desvioTinte(pctCertificado, pctTeorico) {
+  const desvio = Math.max(0, pctTeorico - pctCertificado);
+  if (desvio < 5) return { bg: '#DCFCE7', color: '#166534' };
+  if (desvio <= 10) return { bg: '#FEF3C7', color: '#92400E' };
+  return { bg: '#FEE2E2', color: '#991B1B' };
+}
+
 function mesTinte(pct) {
   if (pct >= 25) return { bg: '#DCFCE7', color: '#166534' };
   if (pct >= 15) return { bg: '#FEF3C7', color: '#92400E' };
@@ -3237,13 +3247,14 @@ function renderSeguimiento() {
   };
   const filasOrdenadas = sortRows(filas, state.seguSort, seguSortValue);
 
-  const celdaMes = (celda) => {
+  const celdaMes = (celda, pctTeorico) => {
     // 'sin-expediente': ningún certificado cargado ese mes para este trámite -> celda vacía, sin texto ni color.
     if (celda.estado === 'sin-expediente') return `<td class="segu-celda"></td>`;
     // 'monto-cero': hay certificado(s) cargado(s) ese mes pero con monto 0/vacío -> fondo rojo fijo con "-".
     if (celda.estado === 'monto-cero') return `<td class="mono segu-celda" style="background:#FEE2E2; color:#991B1B;">-</td>`;
     // 'valor': hay certificado con monto > 0 -> semáforo por % certificado ESE mes (mesTinte: 25/15).
-    const t = mesTinte(celda.pct);
+    // Con plazo cargado: semáforo por desvío vs. % Mensual teórico. Sin plazo: semáforo absoluto anterior (25/15).
+    const t = pctTeorico != null ? desvioTinte(celda.pct, pctTeorico) : mesTinte(celda.pct);
     const redondeado = celda.pct.toFixed(0);
     const texto = redondeado === '0' ? '-' : redondeado + '%'; // monto>0 pero redondea a 0%: "-" para no confundir con "sin avance"
     return `<td class="mono segu-celda" style="background:${t.bg}; color:${t.color};">${texto}</td>`;
@@ -3294,7 +3305,7 @@ function renderSeguimiento() {
       <td class="segu-col-3" title="${escapeHtml(f.adjudicatario || '')}">${escapeHtml(f.adjudicatario || '(sin contratista)')}</td>
       <td class="segu-col-4" title="${escapeHtml(f.sucursal || '')}">${escapeHtml(f.sucursal || '')}</td>
       <td class="segu-col-0 mono" title="${f.mesesPlazo ? escapeHtml(f.mesesPlazo + (f.mesesPlazo === 1 ? ' mes' : ' meses') + ' de plazo') : 'Sin plazo cargado'}">${f.pctMensual == null ? '-' : f.pctMensual.toFixed(1) + '%'}</td>
-      ${f.celdasMes.map(celdaMes).join('')}
+      ${f.celdasMes.map(c => celdaMes(c, f.pctMensual)).join('')}
       ${celdaVencimiento(f.mesVencOriginal, 'segu-venc-original')}
       ${celdaVencimiento(f.mesVencAmpliado, 'segu-venc-ampliado')}
       ${celdaAcumulado(f.pctActual)}

@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261022" />
+<link rel="stylesheet" href="style.css?v=20261023" />
 </head>
 <body>
 
@@ -350,10 +350,10 @@
         </div>
         <div class="segu-leyenda-grupo">
           <div class="segu-leyenda">
-            <strong>Columnas de mes (% certificado ese mes):</strong>
-            <span><i class="segu-dot" style="background:#DCFCE7; border-color:#166534;"></i>&gt;25%</span>
-            <span><i class="segu-dot" style="background:#FEF3C7; border-color:#92400E;"></i>15-24%</span>
-            <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>≤14%</span>
+            <strong>Columnas de mes (% certificado ese mes, desvío vs. % Mensual teórico):</strong>
+            <span><i class="segu-dot" style="background:#DCFCE7; border-color:#166534;"></i>desvío &lt;5 p.p.</span>
+            <span><i class="segu-dot" style="background:#FEF3C7; border-color:#92400E;"></i>5-10 p.p.</span>
+            <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>&gt;10 p.p.</span>
             <span><i class="segu-dot" style="background:#FEE2E2; border-color:#991B1B;"></i>"-" = expediente cargado con monto 0/vacío</span>
             <span><i class="segu-dot" style="background:#fff; border-color:var(--border);"></i>en blanco = sin expediente ese mes</span>
           </div>
@@ -369,7 +369,7 @@
             <span><i class="segu-dot" style="background:#EDE9FE; border-color:#5B21B6;"></i>Vmto Amp (vencimiento ampliado)</span>
           </div>
         </div>
-        <p class="table-note">Después de Sucursal, la columna "% Mensual teórico", es el avance mensual teórico requerido: 100% ÷ meses de plazo del contrato (plazo original ÷ 30 días). Sirve de referencia para detectar desvíos contra lo certificado cada mes y el acumulado. Cada fila es un contrato (Pospre / N° PC / Contratista / Sucursal / % Mensual teórico siempre visibles). Cada columna de mes muestra lo certificado <strong>ese mes en particular</strong> (no acumulado): en blanco si no hay ningún expediente/certificado cargado ese mes, en rojo con "-" si hay expediente cargado pero con monto 0 o vacío, y con semáforo propio (verde/amarillo/rojo) si certificó algún monto. Las columnas "Vmto" y "Vmto Amp" (formato MM/AA), justo antes del acumulado, muestran el mes/año en que vence el plazo original y el plazo con ampliación de ese contrato (esta última solo si el trámite tiene ampliación de plazo cargada). La última columna, "% Acumulado total", suma todo lo certificado hasta la fecha y usa su propio semáforo de 4 bandas.</p>
+        <p class="table-note">Después de Sucursal, la columna "% Mensual teórico", es el avance mensual teórico requerido: 100% ÷ meses de plazo del contrato (plazo original ÷ 30 días). Sirve de referencia para detectar desvíos contra lo certificado cada mes y el acumulado. Cada fila es un contrato (Pospre / N° PC / Contratista / Sucursal / % Mensual teórico siempre visibles). Cada columna de mes muestra lo certificado <strong>ese mes en particular</strong> (no acumulado): en blanco si no hay ningún expediente/certificado cargado ese mes, en rojo con "-" si hay expediente cargado pero con monto 0 o vacío, y con semáforo si certificó algún monto: según el desvío respecto del % Mensual teórico del contrato (desvío = teórico − certificado ese mes, en puntos porcentuales; menos de 5 verde, de 5 a 10 amarillo, más de 10 rojo; certificar igual o más que lo teórico es verde). Si el contrato no tiene plazo cargado, se usa el semáforo absoluto anterior (25%/15%). Las columnas "Vmto" y "Vmto Amp" (formato MM/AA), justo antes del acumulado, muestran el mes/año en que vence el plazo original y el plazo con ampliación de ese contrato (esta última solo si el trámite tiene ampliación de plazo cargada). La última columna, "% Acumulado total", suma todo lo certificado hasta la fecha y usa su propio semáforo de 4 bandas.</p>
         <div class="scroll-top-bar" id="seguimientoScrollTop"><div class="scroll-top-inner" id="seguimientoScrollTopInner"></div></div>
         <div class="table-wrap table-wrap-seguimiento">
           <table id="seguimientoTable" class="data-table data-table-heatmap"></table>
@@ -1218,7 +1218,7 @@
   </div>
 </div>
 
-<script src="config.js?v=20261022"></script>
-<script src="app.js?v=20261022"></script>
+<script src="config.js?v=20261023"></script>
+<script src="app.js?v=20261023"></script>
 </body>
 </html>
