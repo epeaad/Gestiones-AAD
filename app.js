@@ -3282,7 +3282,7 @@ function renderSeguimiento() {
       ${thSort('nroPedidoCompras', 'N° PC', 'segu-col-2')}
       ${thSort('adjudicatario', 'Contratista', 'segu-col-3')}
       ${thSort('sucursal', 'Sucursal', 'segu-col-4')}
-      ${thSortTitle('pctMensual', '% Mensual sugerido', '100% ÷ cantidad de meses de plazo (plazo original ÷ 30 días). Avance mensual teórico requerido.', 'segu-col-0 mono')}
+      ${thSortTitle('pctMensual', '% Mensual teórico', '100% ÷ cantidad de meses de plazo (plazo original ÷ 30 días). Avance mensual teórico requerido.', 'segu-col-0 mono')}
       ${theadMeses}
       ${thSortTitle('vencOriginal', 'Vmto', 'Vencimiento (plazo original)', 'mono')}
       ${thSortTitle('vencAmpliado', 'Vmto Amp', 'Vencimiento Ampliado (con ampliación de plazo)', 'mono')}
