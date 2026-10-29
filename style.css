@@ -1547,17 +1547,3 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
   .table-wrap{ border-radius:0 !important; box-shadow:none !important; }
   #view-certificaciones .data-table th{ background:#EEF2F7 !important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
 }
-
-/* ---- Filtro "Área de Distribución" (tildes que agrupan Sucursales) ---- */
-.filter-field-area { grid-column: span 2; }
-.filter-field-area > label { display: none; }
-.area-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 42px; padding: 5px 8px 5px 12px; background: #fff; border: 1px solid var(--border); border-radius: 10px; }
-.area-filter::before { content: "Áreas Distribución GE"; font-size: 12px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
-.area-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: 99px; font-size: 13px; font-weight: 600; color: var(--blue); background: #fff; cursor: pointer; user-select: none; }
-.area-chip input { width: 15px; height: 15px; margin: 0; accent-color: var(--blue); }
-.area-chip:hover { background: var(--blue-soft); }
-.area-chip.is-on { background: var(--blue); border-color: var(--blue); color: #fff; }
-.area-chip.is-on input { accent-color: var(--gold); }
-.area-chip.is-part { background: var(--gold-soft); border-color: #EBCB7B; color: #7a5a00; }
-.area-chip.is-off { opacity: .55; }
-@media (max-width: 700px) { .filter-field-area { grid-column: 1 / -1; } }

@@ -1200,7 +1200,7 @@ function filtrarOpcionesMultiselect(el, query) {
 // sucursales disponibles del área están seleccionadas; indeterminado = solo algunas; deshabilitado =
 // el área no tiene sucursales con los filtros actuales (se ve atenuado pero sigue habilitado). ----
 function normSucursal(s) {
-  return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[.\s]+/g, '');
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[.\s\-_]+/g, '').replace(/^areas?distribucion/, 'ad');
 }
 const AREAS_NORM = (typeof AREAS_DISTRIBUCION !== 'undefined' ? AREAS_DISTRIBUCION : []).map(a => ({
   id: a.id, corto: a.corto, nombre: a.nombre, set: new Set(a.sucursales.map(normSucursal))
@@ -1215,42 +1215,19 @@ function opcionesDeArea(area, opciones) {
 }
 function renderAreaFilter(el, opciones, seleccion, onChange) {
   if (!el) return;
-  el._areaCtx = { opciones: opciones || [], seleccion: seleccion || [], onChange };
-  el.innerHTML = AREAS_NORM.map(a => {
-    const disp = opcionesDeArea(a, opciones);
-    const sel = disp.filter(o => (seleccion || []).includes(o)).length;
-    const todo = disp.length > 0 && sel === disp.length;
-    const parte = sel > 0 && !todo;
-    const cls = 'area-chip' + (todo ? ' is-on' : '') + (parte ? ' is-part' : '') + (disp.length === 0 ? ' is-off' : '');
-    const tip = a.nombre + (disp.length ? ' — ' + disp.join(', ') : ' — sin sucursales con los filtros actuales');
-    return '<label class="' + cls + '" title="' + escapeHtml(tip) + '">' +
-      '<input type="checkbox" data-area="' + a.id + '"' + (todo ? ' checked' : '') + '/>' +
-      '<span>' + escapeHtml(a.corto) + '</span></label>';
-  }).join('');
-  el.querySelectorAll('input[data-area]').forEach(cb => {
-    const a = AREAS_NORM.find(x => x.id === cb.dataset.area);
-    const disp = opcionesDeArea(a, opciones);
-    const sel = disp.filter(o => (seleccion || []).includes(o)).length;
-    if (sel > 0 && sel < disp.length) cb.indeterminate = true;
-  });
-  if (!el.dataset.areaWired) {
-    el.dataset.areaWired = '1';
-    el.addEventListener('change', (e) => {
-      const cb = e.target.closest ? e.target.closest('input[data-area]') : null;
-      if (!cb) return;
-      const ctx = el._areaCtx;
-      const a = AREAS_NORM.find(x => x.id === cb.dataset.area);
-      const disp = opcionesDeArea(a, ctx.opciones);
-      let nueva;
-      if (cb.checked) {
-        nueva = ctx.seleccion.slice();
-        disp.forEach(o => { if (!nueva.includes(o)) nueva.push(o); });
-      } else {
-        nueva = ctx.seleccion.filter(o => !disp.includes(o));
-      }
-      ctx.onChange(nueva);
+  seleccion = seleccion || [];
+  const estaActiva = (a) => { const d = opcionesDeArea(a, opciones); return d.length > 0 && d.every(o => seleccion.includes(o)); };
+  const activas = AREAS_NORM.filter(estaActiva).map(a => a.corto);
+  renderMultiselect(el, AREAS_NORM.map(a => a.corto), activas, (vals) => {
+    let nueva = seleccion.slice();
+    AREAS_NORM.forEach(a => {
+      const d = opcionesDeArea(a, opciones);
+      const antes = estaActiva(a), ahora = vals.includes(a.corto);
+      if (ahora && !antes) d.forEach(o => { if (!nueva.includes(o)) nueva.push(o); });
+      else if (!ahora && antes) nueva = nueva.filter(o => !d.includes(o));
     });
-  }
+    onChange(nueva);
+  });
 }
 function renderAreaFilterEn(selector, opciones, seleccion, onChange) {
   renderAreaFilter(document.querySelector(selector), opciones, seleccion, onChange);

@@ -18,9 +18,9 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDJcAW2icihVgU
 // ============================================================
 const AREAS_DISTRIBUCION = [
   { id: 'adsf', corto: 'A.D. Santa Fe', nombre: 'Área Distribución Santa Fe',
-    sucursales: ['A.D. Santa Fe'] },
+    sucursales: ['A.D. Santa Fe', 'AD Santa Fe', 'ADSF', 'Área Distribución Santa Fe', 'Area Distribucion Santa Fe'] },
   { id: 'adr', corto: 'A.D. Rosario', nombre: 'Área Distribución Rosario',
-    sucursales: ['A.D. Rosario'] },
+    sucursales: ['A.D. Rosario', 'AD Rosario', 'ADR', 'Área Distribución Rosario', 'Area Distribucion Rosario'] },
   { id: 'adtn', corto: 'A.D.T. Norte', nombre: 'Área Distribución Territorial Norte',
     sucursales: ['Reconquista', 'Noroeste', 'Santa Fe Norte', 'Rafaela', 'Centro', 'Oeste', 'Santa Fe Sur'] },
   { id: 'adts', corto: 'A.D.T. Sur', nombre: 'Área Distribución Territorial Sur',

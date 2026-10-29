@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261029c" />
+<link rel="stylesheet" href="style.css?v=20261029d" />
 </head>
 <body>
 
@@ -157,9 +157,9 @@
           <label>Sucursal</label>
           <div class="multiselect" data-dashfilter="sucursal"></div>
         </div>
-        <div class="filter-field filter-field-area">
+        <div class="filter-field">
           <label>Áreas Distribución GE</label>
-          <div class="area-filter"></div>
+          <div class="multiselect area-filter"></div>
         </div>
         <div class="filter-field">
           <label>Rubro</label>
@@ -307,9 +307,9 @@
           <label>Sucursal</label>
           <div class="multiselect" data-segufilter="sucursal"></div>
         </div>
-        <div class="filter-field filter-field-area">
+        <div class="filter-field">
           <label>Áreas Distribución GE</label>
-          <div class="area-filter"></div>
+          <div class="multiselect area-filter"></div>
         </div>
         <div class="filter-field">
           <label>Rubro</label>
@@ -442,7 +442,7 @@
           <label>Pospre / Expediente / PC / Extracto</label>
           <input type="text" id="estadioFiltroTexto" placeholder="Buscar..." />
         </div>
-        <div class="filter-field filter-field-area"><label>Áreas Distribución GE</label><div class="area-filter"></div></div>
+        <div class="filter-field"><label>Áreas Distribución GE</label><div class="multiselect area-filter"></div></div>
         <button id="estadioRiesgoBtn" class="btn risk-toggle-btn">⚠ Con demora <span class="risk-badge" id="estadioRiesgoBadge">0</span></button>
         <button id="estadioLimpiarBtn" class="btn btn-ghost">Limpiar filtros</button>
       </div>
@@ -494,9 +494,9 @@
           <label>Sucursal</label>
           <div class="multiselect" data-compfilter="sucursal"></div>
         </div>
-        <div class="filter-field filter-field-area">
+        <div class="filter-field">
           <label>Áreas Distribución GE</label>
-          <div class="area-filter"></div>
+          <div class="multiselect area-filter"></div>
         </div>
         <div class="filter-field">
           <label>Rubro</label>
@@ -576,9 +576,9 @@
           <label>Sucursal</label>
           <div class="multiselect" data-filter="sucursal"></div>
         </div>
-        <div class="filter-field filter-field-area">
+        <div class="filter-field">
           <label>Áreas Distribución GE</label>
-          <div class="area-filter"></div>
+          <div class="multiselect area-filter"></div>
         </div>
         <div class="filter-field">
           <label>Rubro</label>
@@ -792,9 +792,9 @@
             <label>Sucursal</label>
             <div class="multiselect" data-certfilter="sucursal"></div>
           </div>
-          <div class="filter-field filter-field-area">
+          <div class="filter-field">
             <label>Áreas Distribución GE</label>
-            <div class="area-filter"></div>
+            <div class="multiselect area-filter"></div>
           </div>
           <div class="filter-field">
             <label>Rubro</label>
@@ -952,9 +952,9 @@
             <label>Sucursal</label>
             <div class="multiselect" data-proyfilter="sucursal"></div>
           </div>
-          <div class="filter-field filter-field-area">
+          <div class="filter-field">
             <label>Áreas Distribución GE</label>
-            <div class="area-filter"></div>
+            <div class="multiselect area-filter"></div>
           </div>
           <div class="filter-field">
             <label>Rubro</label>
@@ -1100,9 +1100,9 @@
               <label>Sucursal</label>
               <div class="multiselect" data-tfilter="sucursal"></div>
             </div>
-            <div class="filter-field filter-field-area">
+            <div class="filter-field">
               <label>Áreas Distribución GE</label>
-              <div class="area-filter"></div>
+              <div class="multiselect area-filter"></div>
             </div>
             <div class="filter-field">
               <label>Estado</label>
@@ -1318,7 +1318,7 @@
   } catch(e) {}
 })();
 </script>
-<script src="config.js?v=20261029c"></script>
-<script src="app.js?v=20261029c"></script>
+<script src="config.js?v=20261029d"></script>
+<script src="app.js?v=20261029d"></script>
 </body>
 </html>
