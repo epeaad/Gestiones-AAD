@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0A3A82" />
 <title>Gestiones AAD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261024" />
+<link rel="stylesheet" href="style.css?v=20261029" />
 </head>
 <body>
 
@@ -47,6 +48,12 @@
     <div class="login-right-inner">
       <p class="login-right-eyebrow">Gestiones AAD</p>
       <p class="login-right-title">La vida completa de cada trámite,<br/>en un solo lugar.</p>
+      <ol class="login-stages" aria-hidden="true">
+        <li style="--c:var(--stage-1)"><i>1</i><b>Lanzamiento</b></li>
+        <li style="--c:var(--stage-2)"><i>2</i><b>Adjudicación</b></li>
+        <li style="--c:var(--stage-3)"><i>3</i><b>Ejecución</b></li>
+        <li style="--c:var(--stage-5)"><i>4</i><b>Certificación</b></li>
+      </ol>
     </div>
   </div>
 </div>
@@ -109,8 +116,14 @@
     <div id="topLoadingBar" class="top-loading-bar"></div>
     <div id="appError" class="app-error" hidden></div>
     <header class="app-topbar">
-      <h2 id="topTitle">Dashboard</h2>
-      <div class="user-pill" title="Usuario conectado"><i class="user-dot"></i><span id="userName"></span></div>
+      <div class="top-left">
+        <span class="top-eyebrow">Gestiones AAD · Seguimiento de trámites</span>
+        <h2 id="topTitle">Dashboard</h2>
+      </div>
+      <div class="top-right">
+        <div class="top-date" id="topDate" aria-hidden="true"><b></b><span></span></div>
+        <div class="user-pill" title="Usuario conectado"><i class="user-dot"></i><span id="userName"></span></div>
+      </div>
     </header>
     <main class="content">
 
@@ -1164,6 +1177,7 @@
     </section>
 
   </main>
+  <footer class="app-footer">Gestiones AAD · La vida completa de cada trámite, en un solo lugar.</footer>
   </div>
 </div>
 
@@ -1218,7 +1232,18 @@
   </div>
 </div>
 
-<script src="config.js?v=20261024"></script>
-<script src="app.js?v=20261024"></script>
+<script>
+// Fecha del día en la barra superior (solo decorativo; no interviene en la lógica de la app)
+(function(){
+  try {
+    var d = new Date(), el = document.getElementById('topDate');
+    if (!el) return;
+    el.querySelector('b').textContent = d.getDate();
+    el.querySelector('span').textContent = d.toLocaleDateString('es-AR', { weekday:'long' }) + ' · ' + d.toLocaleDateString('es-AR', { month:'short' }).replace('.', '');
+  } catch(e) {}
+})();
+</script>
+<script src="config.js?v=20261029"></script>
+<script src="app.js?v=20261029"></script>
 </body>
 </html>

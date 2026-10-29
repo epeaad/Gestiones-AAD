@@ -7,6 +7,12 @@
 function setRealViewportHeight() {
   document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
 }
+// ---- Estilo base de los gráficos (tipografía y color alineados con el diseño) ----
+if (window.Chart) {
+  Chart.defaults.font.family = "'Barlow', 'Segoe UI', Arial, sans-serif";
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = '#5B6C7C';
+}
 setRealViewportHeight();
 window.addEventListener('resize', setRealViewportHeight);
 window.addEventListener('orientationchange', setRealViewportHeight);
@@ -2223,7 +2229,7 @@ const pointLabelPlugin = {
         const sospechoso = value > 110;
         ctx.save();
         ctx.fillStyle = sospechoso ? '#7C3AED' : '#16202A';
-        ctx.font = '600 11px Roboto, sans-serif';
+        ctx.font = '600 12px Barlow, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText((sospechoso ? '⚠ ' : '') + value.toFixed(1) + '%', point.x, point.y - 12);
         ctx.restore();
@@ -2246,7 +2252,7 @@ const barEndLabelPlugin = {
         const sospechoso = value > 110;
         ctx.save();
         ctx.fillStyle = sospechoso ? '#7C3AED' : '#16202A';
-        ctx.font = '600 11px Roboto, sans-serif';
+        ctx.font = '600 12px Barlow, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText((sospechoso ? '⚠ ' : '') + value.toFixed(1) + '%', bar.x + 6, bar.y);
@@ -2395,13 +2401,13 @@ function renderDashboard() {
     data: {
       labels: chartLabels,
       datasets: [
-        { type:'bar', label:'Presupuesto Oficial', data: sucursalEntries.map(e => num(e[1].presOficial) / 1000000), backgroundColor:'#CBD5E1', order:2 },
-        { type:'bar', label:'Adjudicado', data: sucursalEntries.map(e => e[1].adjudicado / 1000000), backgroundColor:'#93C5FD', order:2 },
-        { type:'bar', label:'Certificado', data: sucursalEntries.map(e => e[1].certificado / 1000000), backgroundColor:'#6EE7B7', order:2 },
+        { type:'bar', label:'Presupuesto Oficial', data: sucursalEntries.map(e => num(e[1].presOficial) / 1000000), backgroundColor:'#C5D6EE', order:2 },
+        { type:'bar', label:'Adjudicado', data: sucursalEntries.map(e => e[1].adjudicado / 1000000), backgroundColor:'#3F7BD9', order:2 },
+        { type:'bar', label:'Certificado', data: sucursalEntries.map(e => e[1].certificado / 1000000), backgroundColor:'#F5B82E', order:2 },
         { type:'line', label:'% Avance por Sucursal', data: pctParaGraficar, rawData: pctPorSucursal, yAxisID:'y1', borderColor:'#64748B', tension:0.3,
           pointRadius:5, pointBackgroundColor: colorPorSucursal, pointBorderColor: colorPorSucursal, order:1 },
         { type:'line', label:'Promedio General (' + promedioAvanceSucursal.toFixed(0) + '%)', data: sucursalEntries.map(() => Math.min(promedioAvanceSucursal, EJE_MAX)),
-          yAxisID:'y1', borderColor:'#D97706', borderDash:[6,4], pointRadius:0, order:0 }
+          yAxisID:'y1', borderColor:'#0B1F3F', borderDash:[6,4], pointRadius:0, order:0 }
       ]
     },
     plugins: [pointLabelPlugin],
@@ -3071,7 +3077,7 @@ function renderComparativa() {
       labels: filas.map(f => f.grupo),
       datasets: [
         { label: '% Avance ' + state.comp.anioA, data: filas.map(f => f.avanceA), borderColor: '#94A3B8', backgroundColor: '#94A3B8', pointBackgroundColor: filas.map(f => semColor(f.avanceA)), pointRadius: 5, tension: 0.3 },
-        { label: '% Avance ' + state.comp.anioB, data: filas.map(f => f.avanceB), borderColor: '#0F6E56', backgroundColor: '#0F6E56', pointBackgroundColor: filas.map(f => semColor(f.avanceB)), pointRadius: 5, tension: 0.3 }
+        { label: '% Avance ' + state.comp.anioB, data: filas.map(f => f.avanceB), borderColor: '#0A3A82', backgroundColor: '#0A3A82', pointBackgroundColor: filas.map(f => semColor(f.avanceB)), pointRadius: 5, tension: 0.3 }
       ]
     },
     options: {
