@@ -1198,7 +1198,7 @@ function filtrarOpcionesMultiselect(el, query) {
 // ---- Filtro "Área de Distribución": agrupa Sucursales (ver AREAS_DISTRIBUCION en config.js).
 // No tiene estado propio: es una vista derivada de la selección de "Sucursal". Tildado = todas las
 // sucursales disponibles del área están seleccionadas; indeterminado = solo algunas; deshabilitado =
-// el área no tiene sucursales disponibles con los filtros actuales. ----
+// el área no tiene sucursales con los filtros actuales (se ve atenuado pero sigue habilitado). ----
 function normSucursal(s) {
   return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[.\s]+/g, '');
 }
@@ -1222,9 +1222,9 @@ function renderAreaFilter(el, opciones, seleccion, onChange) {
     const todo = disp.length > 0 && sel === disp.length;
     const parte = sel > 0 && !todo;
     const cls = 'area-chip' + (todo ? ' is-on' : '') + (parte ? ' is-part' : '') + (disp.length === 0 ? ' is-off' : '');
-    const tip = a.nombre + (disp.length ? ' — ' + disp.join(', ') : ' — sin sucursales disponibles');
+    const tip = a.nombre + (disp.length ? ' — ' + disp.join(', ') : ' — sin sucursales con los filtros actuales');
     return '<label class="' + cls + '" title="' + escapeHtml(tip) + '">' +
-      '<input type="checkbox" data-area="' + a.id + '"' + (todo ? ' checked' : '') + (disp.length === 0 ? ' disabled' : '') + '/>' +
+      '<input type="checkbox" data-area="' + a.id + '"' + (todo ? ' checked' : '') + '/>' +
       '<span>' + escapeHtml(a.corto) + '</span></label>';
   }).join('');
   el.querySelectorAll('input[data-area]').forEach(cb => {
