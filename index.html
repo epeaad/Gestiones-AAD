@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#0A3A82" />
+<meta name="theme-color" content="#0A8A6E" />
 <title>Gestiones AAD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -62,6 +62,9 @@
 <div id="app" class="app" hidden>
   <aside class="sidebar">
     <div class="sidebar-brand">
+      <button type="button" class="side-toggle" id="sideToggle" aria-label="Expandir o contraer el menú" aria-expanded="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 6h18v2.2H3zm0 5h18v2.2H3zm0 5h18v2.2H3z"/></svg>
+      </button>
       <div class="brand-aad">AAD</div>
       <span>Gestiones AAD</span>
     </div>
@@ -1232,7 +1235,39 @@
   </div>
 </div>
 
+<div id="navTip" class="nav-tip" role="tooltip" hidden></div>
 <script>
+// Menú lateral compacto: columna de íconos con etiqueta al pasar el mouse; el botón ☰ la expande/contrae.
+(function(){
+  var app = document.getElementById('app'), tog = document.getElementById('sideToggle'), tip = document.getElementById('navTip');
+  if (!app || !tog) return;
+  function setOpen(on){
+    app.classList.toggle('side-open', on);
+    tog.setAttribute('aria-expanded', on ? 'true' : 'false');
+    tip.hidden = true;
+    try { localStorage.setItem('aad_side_open', on ? '1' : '0'); } catch(e) {}
+  }
+  var saved = null; try { saved = localStorage.getItem('aad_side_open'); } catch(e) {}
+  setOpen(saved === '1');
+  tog.addEventListener('click', function(){ setOpen(!app.classList.contains('side-open')); });
+  function label(el){
+    return el.id === 'sideToggle' ? (app.classList.contains('side-open') ? 'Contraer menú' : 'Expandir menú') : el.textContent.replace(/\s+/g,' ').trim();
+  }
+  function show(el){
+    if (app.classList.contains('side-open') && el.id !== 'sideToggle') return;
+    var r = el.getBoundingClientRect();
+    tip.textContent = label(el); tip.hidden = false;
+    tip.style.left = (r.right + 10) + 'px'; tip.style.top = (r.top + r.height / 2) + 'px';
+  }
+  function hide(){ tip.hidden = true; }
+  document.querySelectorAll('.sidebar .nav-btn, .sidebar .side-toggle, .sidebar-user .btn').forEach(function(el){
+    el.addEventListener('mouseenter', function(){ show(el); });
+    el.addEventListener('focus', function(){ show(el); });
+    el.addEventListener('mouseleave', hide); el.addEventListener('blur', hide);
+    el.addEventListener('click', hide);
+  });
+  document.getElementById('sidenav').addEventListener('scroll', hide);
+})();
 // Fecha del día en la barra superior (solo decorativo; no interviene en la lógica de la app)
 (function(){
   try {
