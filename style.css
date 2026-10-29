@@ -1069,7 +1069,7 @@ button, input, select, textarea{ font-family:inherit; }
 .sidebar{
   width:236px; padding:0 0 12px; color:#fff; box-shadow:6px 0 18px rgba(7,21,46,.28); z-index:31;
   background:
-    radial-gradient(120% 50% at 0% 0%, rgba(20,174,130,.20), transparent 60%),
+    radial-gradient(120% 50% at 0% 0%, rgba(30,201,120,.20), transparent 60%),
     linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%);
 }
 .sidebar-brand{
@@ -1111,8 +1111,8 @@ button, input, select, textarea{ font-family:inherit; }
 .app-topbar{
   position:sticky; top:0; z-index:30; flex:none; height:68px; padding:0 26px; overflow:hidden;
   display:flex; align-items:center; justify-content:space-between; gap:16px; color:#fff;
-  background:linear-gradient(105deg, #056B5A 0%, #0A8A6E 45%, #14AE82 100%);
-  box-shadow:0 6px 18px rgba(5,80,66,.28);
+  background:linear-gradient(105deg, #089A5B 0%, #14B068 50%, #30C97D 100%);
+  box-shadow:0 6px 18px rgba(8,120,70,.28);
 }
 .app-topbar::before{
   content:""; position:absolute; inset:0; pointer-events:none;
@@ -1126,9 +1126,9 @@ button, input, select, textarea{ font-family:inherit; }
 }
 .app-topbar > *{ position:relative; z-index:1; }
 .top-left{ display:flex; flex-direction:column; justify-content:center; min-width:0; }
-.top-eyebrow{ font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:#D3F5E6; line-height:1.2; }
+.top-eyebrow{ font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:#EAFFF3; line-height:1.2; text-shadow:0 1px 2px rgba(0,60,30,.35); }
 .app-topbar h2{
-  margin:0; font-family:var(--font-head); font-size:30px; line-height:1.05; font-weight:700; letter-spacing:.2px; color:#fff;
+  margin:0; text-shadow:0 1px 3px rgba(0,60,30,.35); font-family:var(--font-head); font-size:30px; line-height:1.05; font-weight:700; letter-spacing:.2px; color:#fff;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .top-right{ display:flex; align-items:center; gap:12px; min-width:0; }
@@ -1381,7 +1381,7 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 #userForm{ display:flex; flex-direction:column; gap:14px; }
 #userForm label, .control-inline label{ display:flex; flex-direction:column; gap:5px; font-size:12.5px; font-weight:600; color:var(--text-soft); }
 #userForm input, #userForm select{ width:100%; }
-.top-loading-bar.is-active::before{ background:linear-gradient(90deg, var(--gold), #14AE82); }
+.top-loading-bar.is-active::before{ background:linear-gradient(90deg, var(--gold), #14B068); }
 .boot-loading-overlay{ background:var(--bg); }
 .boot-loading-overlay p{ font-family:var(--font-head); font-size:18px; font-weight:600; letter-spacing:.4px; color:var(--blue); }
 .boot-loading-spinner{ border-color:var(--blue-soft); border-top-color:var(--gold); }
@@ -1522,3 +1522,28 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 }
 .nav-tip[hidden]{ display:none; }
 @media print{ .nav-tip{ display:none !important; } }
+
+
+/* ---------- 16. Impresión de Certificaciones ----------
+   Solo sale el reporte (encabezado con los filtros + tabla); se ocultan formularios, importador,
+   barras de filtros, botones y la columna de acciones. */
+.print-filtros-titulo, .print-filtros, .print-resumen{ display:none; }
+@media print{
+  #view-certificaciones .view-header, #view-certificaciones #certFormPanel, #view-certificaciones #certImportPanel,
+  #view-certificaciones .filters-bar, #view-certificaciones .table-note, #view-certificaciones .control-inline,
+  #view-certificaciones .col-acciones, #view-certificaciones .row-actions{ display:none !important; }
+  #view-certificaciones .panel{ padding:0 !important; border:0 !important; margin:0 !important; }
+  #view-certificaciones .panel .view-header{ display:flex !important; margin-bottom:6px !important; }
+  #view-certificaciones .print-header{ border-bottom:2px solid #0A3A82; padding-bottom:8px; margin-bottom:12px; }
+  #view-certificaciones .print-title{ font-family:var(--font-head); font-size:22px; color:#0A3A82; }
+  .print-filtros-titulo{ display:block !important; margin:10px 0 4px; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#0A3A82; }
+  .print-filtros{ display:flex !important; flex-wrap:wrap; gap:4px 6px; }
+  .print-filtro{ font-size:10px; border:1px solid #B8C5D3; border-radius:99px; padding:2px 9px; background:#F6F9FD; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  .print-filtro b{ color:#0A3A82; }
+  .print-filtro-ninguno{ background:#fff; font-style:italic; }
+  .print-resumen{ display:block !important; margin:8px 0 0; font-size:11px; font-weight:700; }
+  .main-area, .content{ background:#fff !important; }
+  .data-table td.mono, .data-table .mono{ font-size:inherit !important; }
+  .table-wrap{ border-radius:0 !important; box-shadow:none !important; }
+  #view-certificaciones .data-table th{ background:#EEF2F7 !important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+}

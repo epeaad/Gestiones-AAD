@@ -530,7 +530,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'certPrintBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -3894,6 +3894,53 @@ function certSortValue(c, key) {
   return String(c[key] != null ? c[key] : '').toLowerCase();
 }
 
+// ---- Impresión a PDF de Certificaciones: el encabezado del reporte (solo visible al imprimir) detalla
+// expresamente los filtros vigentes —los compartidos con Dashboard/Registros/Seguimiento, los
+// avanzados, "Riesgo por Plazo" y el buscador propio de la certificación— más la cantidad de
+// certificaciones y el total certificado del listado. Se regenera con cada render de la tabla, así
+// siempre coincide con lo que se ve en pantalla (también si se imprime con Ctrl+P). ----
+const CERT_PRINT_ETIQUETAS = {
+  pospre: 'Pospre', expediente: 'Expediente', anio: 'Año', sucursal: 'Sucursal', rubro: 'Rubro',
+  nroPedidoCompras: 'N° Pedido de Compras', adjudicatario: 'Contratista/Proveedor', estado: 'Estado'
+};
+function fechaLegible(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : (iso || '');
+}
+function filtrosVigentesCertComoLista(q) {
+  const f = state.filtrosCompartidos;
+  const items = [];
+  SHARED_FILTER_KEYS.forEach(k => {
+    const v = f[k];
+    const txt = Array.isArray(v) ? v.join(', ') : String(v || '').trim();
+    if (txt) items.push([CERT_PRINT_ETIQUETAS[k], txt]);
+  });
+  if (f.fechaPCDesde) items.push(['Fecha P.C. desde', fechaLegible(f.fechaPCDesde)]);
+  if (f.fechaPCHasta) items.push(['Fecha P.C. hasta', fechaLegible(f.fechaPCHasta)]);
+  if (String(f.pctAvanceDesde || '').trim()) items.push(['% de Avance desde', String(f.pctAvanceDesde).trim() + '%']);
+  if (String(f.pctAvanceHasta || '').trim()) items.push(['% de Avance hasta', String(f.pctAvanceHasta).trim() + '%']);
+  if (String(f.texto || '').trim()) items.push(['Palabra en el trámite (' + (f.textoModo === 'no_contiene' ? 'no contiene' : 'contiene') + ')', '"' + String(f.texto).trim() + '"']);
+  if (state.riesgoPlazoActivoCompartido) items.push(['Riesgo por Plazo', 'solo trámites en riesgo']);
+  if (q) items.push(['Búsqueda en la certificación', '"' + q + '"']);
+  return items;
+}
+function actualizarCabeceraImpresionCert(rows, q) {
+  const box = document.getElementById('certPrintFiltros');
+  if (!box) return;
+  const items = filtrosVigentesCertComoLista(q);
+  box.innerHTML = items.length
+    ? items.map(([k, v]) => '<span class="print-filtro"><b>' + escapeHtml(k) + ':</b> ' + escapeHtml(v) + '</span>').join('')
+    : '<span class="print-filtro print-filtro-ninguno">Sin filtros: se muestran todas las certificaciones.</span>';
+  const total = rows.reduce((s, c) => s + num(c.montoCertificado), 0);
+  const res = document.getElementById('certPrintResumen');
+  if (res) res.textContent = rows.length + ' certificación(es) · Total certificado: ' + formatMoney(total);
+}
+document.getElementById('certPrintBtn').addEventListener('click', () => {
+  document.getElementById('certPrintDate').textContent = new Date().toLocaleString('es-AR') +
+    (state.session && state.session.nombre ? ' · ' + state.session.nombre : '');
+  window.print();
+});
+
 function renderCertTable() {
   populateFilterOptions(); // repuebla combos (facetados) y sincroniza inputs avanzados de las 5 barras compartidas
 
@@ -3915,7 +3962,7 @@ function renderCertTable() {
   const isAdmin = state.session && state.session.rol === 'admin';
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   const table = document.getElementById('certTable');
-  const thead = sortableTheadHtml(CERT_TABLE_COLS, certSort, '<th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th>Acciones</th>' : ''));
+  const thead = sortableTheadHtml(CERT_TABLE_COLS, certSort, '<th>Observaciones</th>' + ((puedeEditar || isAdmin) ? '<th class="col-acciones">Acciones</th>' : ''));
   const tbody = '<tbody>' + rows.map(c => {
     const tds = CERT_TABLE_COLS.map(col => {
       if (CERT_MONEY_COLS.has(col.key)) return `<td class="mono">${formatMoney(c[col.key])}</td>`;
@@ -3938,6 +3985,7 @@ function renderCertTable() {
   table.innerHTML = thead + tbody;
   setupScrollShadow(table.closest('.table-wrap'));
   wireSortableHeaders(table, certSort, renderCertTable);
+  actualizarCabeceraImpresionCert(rows, q);
 
   table.querySelectorAll('[data-cert-id]').forEach(btn => {
     btn.addEventListener('click', async () => {

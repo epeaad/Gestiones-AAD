@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#0A8A6E" />
+<meta name="theme-color" content="#14B068" />
 <title>Gestiones AAD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -674,6 +674,14 @@
         <h2>Certificaciones</h2>
       </div>
 
+      <div class="print-header print-header-cert">
+        <p class="print-title">Gestiones AAD — Certificaciones</p>
+        <p class="print-subtitle">Impreso el <span id="certPrintDate"></span></p>
+        <p class="print-filtros-titulo">Filtros aplicados</p>
+        <div class="print-filtros" id="certPrintFiltros"></div>
+        <p class="print-resumen" id="certPrintResumen"></p>
+      </div>
+
       <div class="panel" id="certFormPanel">
         <h3 id="certFormTitle">Cargar certificación</h3>
 
@@ -744,7 +752,10 @@
       <div class="panel">
         <div class="view-header" style="margin-bottom:14px;">
           <h3 style="margin:0;">Certificaciones cargadas</h3>
-          <button id="certExportBtn" class="btn btn-secondary">Exportar a Excel</button>
+          <div class="control-inline">
+            <button id="certPrintBtn" class="btn btn-secondary" title="Imprime el listado tal como se ve en pantalla, con los filtros aplicados en el encabezado">Imprimir a PDF</button>
+            <button id="certExportBtn" class="btn btn-secondary">Exportar a Excel</button>
+          </div>
         </div>
 
         <div class="filters-bar" id="certFiltersBar">
