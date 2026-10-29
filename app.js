@@ -1195,6 +1195,76 @@ function filtrarOpcionesMultiselect(el, query) {
   });
 }
 
+// ---- Filtro "Área de Distribución": agrupa Sucursales (ver AREAS_DISTRIBUCION en config.js).
+// No tiene estado propio: es una vista derivada de la selección de "Sucursal". Tildado = todas las
+// sucursales disponibles del área están seleccionadas; indeterminado = solo algunas; deshabilitado =
+// el área no tiene sucursales disponibles con los filtros actuales. ----
+function normSucursal(s) {
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[.\s]+/g, '');
+}
+const AREAS_NORM = (typeof AREAS_DISTRIBUCION !== 'undefined' ? AREAS_DISTRIBUCION : []).map(a => ({
+  id: a.id, corto: a.corto, nombre: a.nombre, set: new Set(a.sucursales.map(normSucursal))
+}));
+// Opciones (valores de sucursal) que pertenecen al área. Soporta valores unidos por coma
+// ("Rosario Norte, Rosario Oeste"): pertenece si TODAS sus partes son del área.
+function opcionesDeArea(area, opciones) {
+  return (opciones || []).filter(o => {
+    const partes = String(o).split(',').map(normSucursal).filter(Boolean);
+    return partes.length > 0 && partes.every(p => area.set.has(p));
+  });
+}
+function renderAreaFilter(el, opciones, seleccion, onChange) {
+  if (!el) return;
+  el._areaCtx = { opciones: opciones || [], seleccion: seleccion || [], onChange };
+  el.innerHTML = AREAS_NORM.map(a => {
+    const disp = opcionesDeArea(a, opciones);
+    const sel = disp.filter(o => (seleccion || []).includes(o)).length;
+    const todo = disp.length > 0 && sel === disp.length;
+    const parte = sel > 0 && !todo;
+    const cls = 'area-chip' + (todo ? ' is-on' : '') + (parte ? ' is-part' : '') + (disp.length === 0 ? ' is-off' : '');
+    const tip = a.nombre + (disp.length ? ' — ' + disp.join(', ') : ' — sin sucursales disponibles');
+    return '<label class="' + cls + '" title="' + escapeHtml(tip) + '">' +
+      '<input type="checkbox" data-area="' + a.id + '"' + (todo ? ' checked' : '') + (disp.length === 0 ? ' disabled' : '') + '/>' +
+      '<span>' + escapeHtml(a.corto) + '</span></label>';
+  }).join('');
+  el.querySelectorAll('input[data-area]').forEach(cb => {
+    const a = AREAS_NORM.find(x => x.id === cb.dataset.area);
+    const disp = opcionesDeArea(a, opciones);
+    const sel = disp.filter(o => (seleccion || []).includes(o)).length;
+    if (sel > 0 && sel < disp.length) cb.indeterminate = true;
+  });
+  if (!el.dataset.areaWired) {
+    el.dataset.areaWired = '1';
+    el.addEventListener('change', (e) => {
+      const cb = e.target.closest ? e.target.closest('input[data-area]') : null;
+      if (!cb) return;
+      const ctx = el._areaCtx;
+      const a = AREAS_NORM.find(x => x.id === cb.dataset.area);
+      const disp = opcionesDeArea(a, ctx.opciones);
+      let nueva;
+      if (cb.checked) {
+        nueva = ctx.seleccion.slice();
+        disp.forEach(o => { if (!nueva.includes(o)) nueva.push(o); });
+      } else {
+        nueva = ctx.seleccion.filter(o => !disp.includes(o));
+      }
+      ctx.onChange(nueva);
+    });
+  }
+}
+function renderAreaFilterEn(selector, opciones, seleccion, onChange) {
+  renderAreaFilter(document.querySelector(selector), opciones, seleccion, onChange);
+}
+function renderAreasFiltroCompartido() {
+  const opciones = opcionesFacetadas('sucursal');
+  FILTROS_COMPARTIDOS_BARRAS.forEach(bar => {
+    renderAreaFilterEn(bar.selector + ' .area-filter', opciones, state.filtrosCompartidos.sucursal, (vals) => {
+      state.filtrosCompartidos.sucursal = vals;
+      bar.onChange();
+    });
+  });
+}
+
 function uniqueValues(key) {
   return uniqueValuesFrom(state.registros, key);
 }
@@ -1246,6 +1316,7 @@ function populateFilterOptions() {
       });
     });
   });
+  renderAreasFiltroCompartido();
   sincronizarFiltrosAvanzadosUI();
 }
 
@@ -3008,6 +3079,7 @@ function populateCompFilterOptions() {
 function renderComparativa() {
   populateCompAnioSelects();
   populateCompFilterOptions();
+  renderAreaFilterEn('#compFiltersBar .area-filter', uniqueValues('sucursal'), state.comp.filtros.sucursal || [], vals => { state.comp.filtros.sucursal = vals; renderComparativa(); });
   if (!state.comp.anioA || !state.comp.anioB) {
     document.getElementById('compKpiRow').innerHTML = '<div class="empty-state">No hay años cargados todavía para comparar.</div>';
     return;
@@ -4790,6 +4862,7 @@ function comprasTramitesSortValue(t, key) { return t[key]; }
 
 function renderComprasTramitesTable() {
   const table = document.getElementById('comprasTramitesTable');
+  renderAreaFilterEn('#comprasTramitesFiltersBar .area-filter', comprasTramitesUniqueValues('sucursal'), comprasTramitesFiltros.sucursal || [], vals => { comprasTramitesFiltros.sucursal = vals; renderComprasTramitesTable(); });
   const puedeEditar = state.session && state.session.rol !== 'consulta';
   const isAdmin = state.session && state.session.rol === 'admin';
   let filas = comprasTramitesFiltrados();
@@ -5425,7 +5498,7 @@ document.getElementById('comprasMigrarBtn').addEventListener('click', async () =
 const ESTADIO_DIAS_ALERTA = 4;   // desde acá, ámbar
 const ESTADIO_DIAS_CRITICO = 7;  // desde acá, rojo Y "⚠ Con demora" (más de 6 días = 7 o más)
 
-let estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false };
+let estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false, sucursales: [] };
 let estadioSort = { key: 'diasEnEstadio', dir: -1 }; // por defecto: lo más demorado, arriba
 
 function diasDesde(fechaStr) {
@@ -5506,6 +5579,7 @@ function estadioFilasFiltradas() {
   return estadioFilasCompletas().filter(f => {
     if (estadioFiltros.modulo && f.modulo !== estadioFiltros.modulo) return false;
     if (estadioFiltros.anio && String(f.anio) !== estadioFiltros.anio) return false;
+    if (estadioFiltros.sucursales.length && !estadioFiltros.sucursales.includes(String(f.sucursal || '').trim())) return false;
     if (estadioFiltros.estadio) {
       if (estadioFiltros.estadio === '__vacio__') { if (f.estadioActual) return false; }
       else if (f.estadioActual !== estadioFiltros.estadio) return false;
@@ -5696,6 +5770,13 @@ function renderEstadioActual() {
 
 function _renderEstadioActualInterno() {
   poblarEstadioFiltroAnio();
+  {
+    const sucs = Array.from(new Set(estadioFilasCompletas().map(f => String(f.sucursal || '').trim()).filter(Boolean))).sort();
+    renderAreaFilterEn('#estadioFiltersBar .area-filter', sucs, estadioFiltros.sucursales, (vals) => {
+      estadioFiltros.sucursales = vals;
+      renderEstadioActual();
+    });
+  }
   poblarEstadioFiltroSelect();
   const isAdmin = state.session && state.session.rol === 'admin';
   let filas = estadioFilasFiltradas();
@@ -5843,7 +5924,7 @@ document.getElementById('estadioRiesgoBtn').addEventListener('click', () => {
   renderEstadioActual();
 });
 document.getElementById('estadioLimpiarBtn').addEventListener('click', () => {
-  estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false };
+  estadioFiltros = { modulo: '', anio: '', estadio: '', texto: '', riesgo: false, sucursales: [] };
   document.getElementById('estadioFiltroModulo').value = '';
   document.getElementById('estadioFiltroAnio').value = '';
   document.getElementById('estadioFiltroEstadio').value = '';
