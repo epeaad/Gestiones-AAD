@@ -3451,7 +3451,7 @@ function renderPospre() {
     pospXlsx = null;
     return;
   }
-  const grupos = listaAnios.concat(listaAnios.length > 1 ? ['__total__'] : []);
+  const grupos = listaAnios;
   const celdas = (g, esTotal) => '<td class="num' + (esTotal ? ' posp-total-col' : '') + '" title="' + (g ? g.n + ' trámite(s)' : '') + '">' + (g ? formatMoney(g.pres) : '<span class="muted">—</span>') + '</td>' +
     '<td class="num' + (esTotal ? ' posp-total-col' : '') + '">' + (g ? formatMoney(g.adj) : '<span class="muted">—</span>') + '</td>' +
     '<td class="num' + (esTotal ? ' posp-total-col' : '') + '">' + desvioTxt(desvio(g)) + '</td>';
