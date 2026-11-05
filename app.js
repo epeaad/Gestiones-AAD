@@ -297,6 +297,7 @@ function showView(name) {
   if (name === 'proyectos') abrirVistaProyectos();
   if (name === 'compras') abrirVistaCompras();
   if (name === 'usuarios') renderUsuarios();
+  if (name === 'pospre') renderPospre();
   if (name === 'seguimiento') renderSeguimiento();
   if (name === 'comparativa') renderComparativa();
   if (name === 'estadio') renderEstadioActual();
@@ -530,7 +531,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'certPrintBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'certPrintBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'pospExportBtn', 'pospPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -1276,6 +1277,7 @@ function opcionesFacetadas(key) {
 const FILTROS_COMPARTIDOS_BARRAS = [
   { selector: '#dashFiltersBar', attr: 'data-dashfilter', onChange: () => renderDashboard() },
   { selector: '#filtersBar', attr: 'data-filter', onChange: () => renderRegistros() },
+  { selector: '#pospFiltersBar', attr: 'data-pospfilter', onChange: () => renderPospre() },
   { selector: '#seguFiltersBar', attr: 'data-segufilter', onChange: () => renderSeguimiento() },
   { selector: '#certFiltersBar', attr: 'data-certfilter', onChange: () => renderCertTable() },
   { selector: '#proyFiltersBar', attr: 'data-proyfilter', onChange: () => renderProyTable() }
@@ -1382,6 +1384,7 @@ function limpiarFiltrosCompartidos(renderActual) {
 document.getElementById('clearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderRegistros));
 document.getElementById('dashClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderDashboard));
 document.getElementById('seguClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderSeguimiento));
+document.getElementById('pospClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderPospre));
 document.getElementById('certClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderCertTable));
 document.getElementById('proyClearFilters').addEventListener('click', () => limpiarFiltrosCompartidos(renderProyTable));
 
@@ -3392,6 +3395,69 @@ if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActi
   document.getElementById('seguFiltersBarAvanzados').hidden = false;
   document.getElementById('seguFiltrosAvanzadosToggle').classList.add('is-open');
 }
+
+// ============================================================
+// SEGUIMIENTO POR POSPRE — por cada PosPre y año: Presupuesto Oficial imputado, Total Adjudicado
+// hasta el momento y desvío presupuestario. Usa el MISMO filtro compartido que Dashboard/
+// Registros/Seguimiento (Pospre, Año, Sucursal, Rubro, Estado, avanzados, riesgo, etc.), así que lo
+// filtrado en cualquiera de esos módulos se refleja acá y viceversa. ----
+function colorDesvioPresupuestario(d) { return d <= 0 ? '#16A34A' : (d <= 15 ? '#D97706' : '#DC2626'); }
+function renderPospre() {
+  populateFilterOptions();
+  const rows = filteredForDashboard();
+  const grupos = {};
+  rows.forEach(r => {
+    const pos = String(r.pospre || '').trim() || '(sin PosPre)';
+    const anio = String(r.anio || '').trim() || '(s/año)';
+    const k = pos + '||' + anio;
+    if (!grupos[k]) grupos[k] = { pos, anio, n: 0, pres: 0, adj: 0 };
+    grupos[k].n++;
+    grupos[k].pres += num(r.presupuestoOficialRubro);
+    grupos[k].adj += num(r.totalAdjudicado);
+  });
+  const lista = Object.values(grupos).sort((a, b) => a.pos.localeCompare(b.pos, 'es', { numeric: true }) || a.anio.localeCompare(b.anio));
+  const tot = lista.reduce((t, g) => ({ n: t.n + g.n, pres: t.pres + g.pres, adj: t.adj + g.adj }), { n: 0, pres: 0, adj: 0 });
+  const desvio = (g) => g.adj > 0 && g.pres > 0 ? ((g.adj - g.pres) / g.pres) * 100 : null;
+  const desvioTxt = (d) => d == null ? '<span class="muted">—</span>'
+    : '<strong style="color:' + colorDesvioPresupuestario(d) + '">' + (d >= 0 ? '+' : '') + d.toFixed(1) + '%</strong>';
+
+  const dTot = desvio(tot);
+  document.getElementById('pospKpiRow').innerHTML = [
+    kpiCard('Presupuesto oficial', formatMillions(tot.pres), lista.length + ' combinación(es) PosPre / año', null, formatMoney(tot.pres)),
+    kpiCard('Total adjudicado', formatMillions(tot.adj), 'Millones de $ · sin IVA', null, formatMoney(tot.adj)),
+    kpiCard('Desvío presupuestario', dTot == null ? '—' : (dTot >= 0 ? '+' : '') + dTot.toFixed(1) + '%', dTot == null ? 'Sin adjudicaciones' : 'Adjudicado ' + (dTot >= 0 ? 'por encima' : 'por debajo') + ' del presupuesto oficial', dTot == null ? null : colorDesvioPresupuestario(dTot))
+  ].join('');
+
+  // Aviso de filtros que no se ven en esta barra pero sí se están aplicando (vienen del Dashboard).
+  const f = state.filtrosCompartidos;
+  const extra = [];
+  if (f.expediente) extra.push('Expediente');
+  ['rubro:Rubro', 'nroPedidoCompras:N° Pedido de Compras', 'adjudicatario:Contratista/Proveedor', 'estado:Estado'].forEach(p => {
+    const [k, n] = p.split(':'); if (f[k] && f[k].length) extra.push(n);
+  });
+  if (tieneFiltrosAvanzadosActivos(f, state.riesgoPlazoActivoCompartido)) extra.push('Filtros avanzados / Riesgo por Plazo');
+  const nota = document.getElementById('pospNotaFiltros');
+  nota.hidden = !extra.length;
+  nota.textContent = extra.length ? 'También se aplican filtros del Dashboard que no figuran en esta barra: ' + extra.join(', ') + '.' : '';
+
+  const table = document.getElementById('pospTable');
+  if (!lista.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">No hay trámites para el filtro actual.</td></tr></tbody>';
+    return;
+  }
+  table.innerHTML = '<thead><tr><th>PosPre</th><th>Año</th><th class="num">Trámites</th><th class="num">Presupuesto Oficial</th><th class="num">Total Adjudicado</th><th class="num">Desvío %</th></tr></thead><tbody>' +
+    lista.map(g => '<tr><td>' + escapeHtml(g.pos) + '</td><td>' + escapeHtml(g.anio) + '</td><td class="num">' + g.n + '</td><td class="num">' + formatMoney(g.pres) + '</td><td class="num">' + formatMoney(g.adj) + '</td><td class="num">' + desvioTxt(desvio(g)) + '</td></tr>').join('') +
+    '</tbody><tfoot><tr><th colspan="2">TOTAL</th><th class="num">' + tot.n + '</th><th class="num">' + formatMoney(tot.pres) + '</th><th class="num">' + formatMoney(tot.adj) + '</th><th class="num">' + desvioTxt(dTot) + '</th></tr></tfoot>';
+}
+document.getElementById('pospExportBtn').addEventListener('click', () => {
+  const table = document.getElementById('pospTable');
+  if (!table.querySelector('tbody tr') || table.querySelector('.empty-state')) { alert('No hay datos para exportar.'); return; }
+  exportTableToCsv(table, 'seguimiento_por_pospre.csv');
+});
+document.getElementById('pospPrintBtn').addEventListener('click', () => {
+  document.getElementById('pospPrintDate').textContent = new Date().toLocaleString('es-AR');
+  window.print();
+});
 
 // ============================================================
 // USUARIOS (admin)

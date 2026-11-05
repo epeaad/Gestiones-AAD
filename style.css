@@ -1547,3 +1547,8 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
   .table-wrap{ border-radius:0 !important; box-shadow:none !important; }
   #view-certificaciones .data-table th{ background:#EEF2F7 !important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
 }
+
+/* ---- Seguimiento por PosPre ---- */
+#pospTable th.num, #pospTable td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pospTable tfoot th { background: var(--blue-soft); color: var(--blue); font-weight: 800; border-top: 2px solid var(--blue); }
+#pospTable .muted { color: var(--text-soft); }
