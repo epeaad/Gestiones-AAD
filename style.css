@@ -1552,3 +1552,13 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 #pospTable th.num, #pospTable td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #pospTable tfoot th { background: var(--blue-soft); color: var(--blue); font-weight: 800; border-top: 2px solid var(--blue); }
 #pospTable .muted { color: var(--text-soft); }
+#pospTable th.posp-anio { text-align: center; border-left: 2px solid var(--border-strong); }
+#pospTable thead tr:nth-child(2) th:nth-child(3n+1), #pospTable tbody td:nth-child(3n+2), #pospTable tfoot th:nth-child(3n+2) { border-left: 2px solid var(--border-strong); }
+#pospTable .posp-total-col { background: var(--blue-soft); }
+.posp-chart { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 2px; }
+.posp-bar-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 64px; align-items: center; gap: 10px; }
+.posp-bar-label { font-size: 13px; font-weight: 600; color: var(--blue); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.posp-bar-track { position: relative; height: 18px; background: #F1F5F9; border-radius: 4px; }
+.posp-bar-axis { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--border-strong); z-index: 1; }
+.posp-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; }
+.posp-bar-val { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
