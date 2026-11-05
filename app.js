@@ -3402,8 +3402,7 @@ if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActi
 // Registros/Seguimiento (Pospre, Año, Sucursal, Rubro, Estado, avanzados, riesgo, etc.), así que lo
 // filtrado en cualquiera de esos módulos se refleja acá y viceversa. ----
 function colorDesvioPresupuestario(d) { return d <= 0 ? '#16A34A' : (d <= 15 ? '#D97706' : '#DC2626'); }
-let pospChartAnio = '';
-let pospCsvFilas = [];
+let pospXlsx = null;
 function renderPospre() {
   populateFilterOptions();
   const rows = filteredForDashboard();
@@ -3445,37 +3444,11 @@ function renderPospre() {
   nota.hidden = !extra.length;
   nota.textContent = extra.length ? 'También se aplican filtros del Dashboard que no figuran en esta barra: ' + extra.join(', ') + '.' : '';
 
-  // ---- Gráfico: desvío % por PosPre (barras divergentes desde el 0), de mayor a menor ----
-  const selAnio = document.getElementById('pospChartAnio');
-  const opcionesAnio = '<option value="">Todos los años</option>' + listaAnios.map(a => '<option value="' + escapeHtml(a) + '">' + escapeHtml(a) + '</option>').join('');
-  if (selAnio.innerHTML !== opcionesAnio) selAnio.innerHTML = opcionesAnio;
-  if (pospChartAnio && !listaAnios.includes(pospChartAnio)) pospChartAnio = '';
-  selAnio.value = pospChartAnio;
-  const chart = document.getElementById('pospChart');
-  const datos = poss.map(p => {
-    const g = pospChartAnio ? mapa[p][pospChartAnio] : suma(Object.values(mapa[p]));
-    return g ? { pos: p, g, d: desvio(g) } : null;
-  }).filter(x => x && x.d != null).sort((a, b) => b.d - a.d);
-  if (!datos.length) {
-    chart.innerHTML = '<div class="empty-state">Sin adjudicaciones para graficar con el filtro actual.</div>';
-  } else {
-    const maxAbs = Math.max(15, ...datos.map(x => Math.abs(x.d)));
-    chart.innerHTML = datos.map(x => {
-      const w = Math.min(50, Math.abs(x.d) / maxAbs * 50);
-      const col = colorDesvioPresupuestario(x.d);
-      const barra = x.d >= 0 ? 'left:50%;' : 'left:' + (50 - w) + '%;';
-      const tip = x.pos + ': presupuesto ' + formatMoney(x.g.pres) + ' · adjudicado ' + formatMoney(x.g.adj);
-      return '<div class="posp-bar-row" title="' + escapeHtml(tip) + '"><div class="posp-bar-label">' + escapeHtml(x.pos) + '</div>' +
-        '<div class="posp-bar-track"><span class="posp-bar-axis"></span><span class="posp-bar" style="' + barra + 'width:' + w + '%;background:' + col + '"></span></div>' +
-        '<div class="posp-bar-val" style="color:' + col + '">' + (x.d >= 0 ? '+' : '') + x.d.toFixed(1) + '%</div></div>';
-    }).join('');
-  }
-
   // ---- Tabla: una fila por PosPre; por cada año un grupo de columnas (Presupuesto / Adjudicado / Desvío) ----
   const table = document.getElementById('pospTable');
   if (!poss.length) {
     table.innerHTML = '<tbody><tr><td class="empty-state">No hay trámites para el filtro actual.</td></tr></tbody>';
-    pospCsvFilas = [];
+    pospXlsx = null;
     return;
   }
   const grupos = listaAnios.concat(listaAnios.length > 1 ? ['__total__'] : []);
@@ -3492,15 +3465,35 @@ function renderPospre() {
   }).join('') + '</tr></tfoot>';
   table.innerHTML = html;
 
-  pospCsvFilas = [['PosPre'].concat(grupos.flatMap(a => ['Presupuesto Oficial', 'Total Adjudicado', 'Desvío %'].map(t => (a === '__total__' ? 'TOTAL' : a) + ' - ' + t)))];
-  const filaCsv = (nombre, getG) => [nombre].concat(grupos.flatMap(a => { const g = getG(a); return g ? [Math.round(g.pres), Math.round(g.adj), dTxtPlano(desvio(g))] : ['', '', '']; }));
-  poss.forEach(p => pospCsvFilas.push(filaCsv(p, a => grupoDe(p, a))));
-  pospCsvFilas.push(filaCsv('TOTAL', a => a === '__total__' ? tot : suma(poss.map(p => mapa[p][a]).filter(Boolean))));
+  const subt = ['Presupuesto Oficial', 'Total Adjudicado', 'Desvío %'];
+  const fila1 = ['PosPre'], merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];
+  grupos.forEach((a, gi) => {
+    fila1.push(a === '__total__' ? 'TOTAL' : a, '', '');
+    merges.push({ s: { r: 0, c: 1 + gi * 3 }, e: { r: 0, c: 3 + gi * 3 } });
+  });
+  const fila2 = [''].concat(grupos.flatMap(() => subt));
+  const filaDatos = (nombre, getG) => [nombre].concat(grupos.flatMap(a => {
+    const g = getG(a); if (!g) return ['', '', ''];
+    const d = desvio(g);
+    return [Math.round(g.pres), Math.round(g.adj), d == null ? '' : d / 100];
+  }));
+  const cuerpo = poss.map(p => filaDatos(p, a => grupoDe(p, a)));
+  cuerpo.push(filaDatos('TOTAL', a => a === '__total__' ? tot : suma(poss.map(p => mapa[p][a]).filter(Boolean))));
+  pospXlsx = { filas: [fila1, fila2].concat(cuerpo), merges, nGrupos: grupos.length };
 }
-document.getElementById('pospChartAnio').addEventListener('change', (e) => { pospChartAnio = e.target.value; renderPospre(); });
 document.getElementById('pospExportBtn').addEventListener('click', () => {
-  if (pospCsvFilas.length < 2) { alert('No hay datos para exportar.'); return; }
-  descargarCsv(pospCsvFilas, 'seguimiento_por_pospre.csv');
+  if (!pospXlsx) { alert('No hay datos para exportar.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(pospXlsx.filas);
+  ws['!merges'] = pospXlsx.merges;
+  ws['!cols'] = [{ wch: 18 }].concat(Array.from({ length: pospXlsx.nGrupos * 3 }, () => ({ wch: 20 })));
+  const nFilas = pospXlsx.filas.length;
+  for (let r = 2; r < nFilas; r++) for (let g = 0; g < pospXlsx.nGrupos; g++) {
+    [1, 2].forEach(o => { const c = ws[XLSX.utils.encode_cell({ r, c: 1 + g * 3 + (o - 1) })]; if (c && typeof c.v === 'number') c.z = '#,##0'; });
+    const cd = ws[XLSX.utils.encode_cell({ r, c: 3 + g * 3 })]; if (cd && typeof cd.v === 'number') cd.z = '0.0%';
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Seguimiento por PosPre');
+  XLSX.writeFile(wb, 'seguimiento_por_pospre.xlsx');
 });
 document.getElementById('pospPrintBtn').addEventListener('click', () => {
   document.getElementById('pospPrintDate').textContent = new Date().toLocaleString('es-AR');

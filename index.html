@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261105b" />
+<link rel="stylesheet" href="style.css?v=20261105d" />
 </head>
 <body>
 
@@ -288,8 +288,8 @@
       <div class="view-header">
         <h2>Seguimiento por PosPre</h2>
         <div class="control-inline">
-          <button type="button" id="pospExportBtn" class="btn btn-secondary">Exportar a CSV</button>
-          <button type="button" id="pospPrintBtn" class="btn btn-secondary">Imprimir a PDF</button>
+          <button type="button" id="pospExportBtn" class="btn btn-secondary">Exportar a Excel</button>
+          <button type="button" id="pospPrintBtn" class="btn btn-secondary">Exportar a PDF</button>
         </div>
       </div>
 
@@ -320,15 +320,6 @@
       </div>
 
       <div class="kpi-row" id="pospKpiRow"></div>
-
-      <div class="panel">
-        <div class="view-header" style="margin-bottom:4px;">
-          <h3 style="margin:0;">Desvío presupuestario por PosPre</h3>
-          <div class="control-inline"><label for="pospChartAnio" style="font-size:13px;color:var(--text-soft);">Año:</label> <select id="pospChartAnio"></select></div>
-        </div>
-        <p class="table-note">Barras hacia la <strong>izquierda</strong> (verde): se adjudicó por debajo del presupuesto. Hacia la <strong>derecha</strong>: por encima (amarillo hasta +15%, rojo más). Ordenado del mayor al menor desvío; pasá el mouse para ver los montos.</p>
-        <div id="pospChart" class="posp-chart"></div>
-      </div>
 
       <div class="panel panel-primary">
         <p class="table-note">Cada fila es un PosPre y cada año tiene sus columnas: <strong>Presupuesto Oficial</strong> imputado a la cuenta (suma de los trámites), <strong>Total Adjudicado</strong> hasta el momento y <strong>Desvío</strong>; la última columna suma todos los años. <strong>Desvío</strong> = (Adjudicado − Presupuesto Oficial) ÷ Presupuesto Oficial: negativo (verde) es adjudicar por debajo del presupuesto, hasta +15% amarillo, más de +15% rojo. Sin nada adjudicado aún, el desvío no se calcula (—). Los filtros son los mismos del Dashboard: lo que filtres allí se refleja acá y viceversa. Montos en $ sin IVA.</p>
@@ -1375,7 +1366,7 @@
   } catch(e) {}
 })();
 </script>
-<script src="config.js?v=20261105b"></script>
-<script src="app.js?v=20261105b"></script>
+<script src="config.js?v=20261105d"></script>
+<script src="app.js?v=20261105d"></script>
 </body>
 </html>

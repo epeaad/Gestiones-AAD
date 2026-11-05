@@ -1555,10 +1555,7 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 #pospTable th.posp-anio { text-align: center; border-left: 2px solid var(--border-strong); }
 #pospTable thead tr:nth-child(2) th:nth-child(3n+1), #pospTable tbody td:nth-child(3n+2), #pospTable tfoot th:nth-child(3n+2) { border-left: 2px solid var(--border-strong); }
 #pospTable .posp-total-col { background: var(--blue-soft); }
-.posp-chart { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 2px; }
-.posp-bar-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 64px; align-items: center; gap: 10px; }
-.posp-bar-label { font-size: 13px; font-weight: 600; color: var(--blue); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.posp-bar-track { position: relative; height: 18px; background: #F1F5F9; border-radius: 4px; }
-.posp-bar-axis { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--border-strong); z-index: 1; }
-.posp-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; }
-.posp-bar-val { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* Columna PosPre fija al desplazar horizontalmente */
+#pospTable thead th:first-child, #pospTable tbody td:first-child, #pospTable tfoot th:first-child { position: sticky; left: 0; z-index: 2; min-width: 120px; box-shadow: 4px 0 6px -4px rgba(15,25,35,0.25); }
+#pospTable tbody td:first-child { background: #fff; font-weight: 600; }
+#pospTable thead th:first-child { z-index: 3; }
