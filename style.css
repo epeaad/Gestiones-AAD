@@ -1559,3 +1559,16 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 #pospTable thead th:first-child, #pospTable tbody td:first-child, #pospTable tfoot th:first-child { position: sticky; left: 0; z-index: 2; min-width: 120px; box-shadow: 4px 0 6px -4px rgba(15,25,35,0.25); }
 #pospTable tbody td:first-child { background: #fff; font-weight: 600; }
 #pospTable thead th:first-child { z-index: 3; }
+
+/* Tarjetas por año (Seguimiento por PosPre) */
+.posp-year-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.posp-year-card { background: #fff; border: 1px solid var(--border); border-top: 3px solid var(--kpi-accent, var(--blue)); border-radius: 14px; padding: 14px 16px 12px; box-shadow: var(--shadow-sm); }
+.posp-yc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.posp-yc-year { font-size: 18px; font-weight: 800; color: var(--blue); }
+.posp-yc-n { font-size: 11px; color: var(--text-soft); text-align: right; }
+.posp-yc-desvio { font-size: 34px; font-weight: 800; line-height: 1.1; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.posp-yc-sub { font-size: 11px; color: var(--text-soft); margin-bottom: 8px; }
+.posp-yc-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 3px 0; color: var(--text-soft); }
+.posp-yc-row strong { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.posp-yc-bar { height: 6px; background: #E8EDF3; border-radius: 99px; overflow: hidden; margin: 6px 0 4px; }
+.posp-yc-bar span { display: block; height: 100%; border-radius: 99px; }

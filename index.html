@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261105e" />
+<link rel="stylesheet" href="style.css?v=20261105f" />
 </head>
 <body>
 
@@ -319,10 +319,10 @@
         <p class="print-subtitle">Impreso el <span id="pospPrintDate"></span></p>
       </div>
 
-      <div class="kpi-row" id="pospKpiRow"></div>
+      <div class="posp-year-row" id="pospKpiRow"></div>
 
       <div class="panel panel-primary">
-        <p class="table-note">Cada fila es un PosPre y cada año tiene sus columnas: <strong>Presupuesto Oficial</strong> imputado a la cuenta (suma de los trámites), <strong>Total Adjudicado</strong> hasta el momento y <strong>Desvío</strong>. <strong>Desvío</strong> = (Adjudicado − Presupuesto Oficial) ÷ Presupuesto Oficial: negativo (verde) es adjudicar por debajo del presupuesto, hasta +15% amarillo, más de +15% rojo. Sin nada adjudicado aún, el desvío no se calcula (—). Los filtros son los mismos del Dashboard: lo que filtres allí se refleja acá y viceversa. Montos en $ sin IVA.</p>
+        <p class="table-note">Cada fila es un PosPre y cada año tiene sus columnas: <strong>Presupuesto Oficial</strong> imputado a la cuenta (suma de los trámites), <strong>Total Adjudicado</strong> hasta el momento y <strong>Desvío</strong>. <strong>Desvío</strong> = (Adjudicado − Presupuesto Oficial) ÷ Presupuesto Oficial: negativo (verde) es adjudicar por debajo del presupuesto, hasta +15% amarillo, más de +15% rojo. Sin nada adjudicado aún, el desvío no se calcula (—). Cada tarjeta resume un año: el <strong>desvío del año</strong> usa todo el presupuesto imputado, por lo que mientras haya trámites sin adjudicar sale más negativo; <strong>Desvío s/ adjudicados</strong> compara solo los trámites ya adjudicados (la lectura más justa del desempeño) y "vs año anterior" muestra la diferencia en puntos porcentuales (▼ verde = mejor). Los filtros son los mismos del Dashboard: lo que filtres allí se refleja acá y viceversa. Montos en $ sin IVA.</p>
         <div class="table-wrap">
           <table id="pospTable" class="data-table"></table>
         </div>
@@ -1366,7 +1366,7 @@
   } catch(e) {}
 })();
 </script>
-<script src="config.js?v=20261105e"></script>
-<script src="app.js?v=20261105e"></script>
+<script src="config.js?v=20261105f"></script>
+<script src="app.js?v=20261105f"></script>
 </body>
 </html>

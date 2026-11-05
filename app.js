@@ -3427,11 +3427,37 @@ function renderPospre() {
 
   const tot = suma(Object.values(mapa).flatMap(m => Object.values(m)));
   const dTot = desvio(tot);
-  document.getElementById('pospKpiRow').innerHTML = [
-    kpiCard('Presupuesto oficial', formatMillions(tot.pres), poss.length + ' PosPre · ' + listaAnios.length + ' año(s)', null, formatMoney(tot.pres)),
-    kpiCard('Total adjudicado', formatMillions(tot.adj), 'Millones de $ · sin IVA', null, formatMoney(tot.adj)),
-    kpiCard('Desvío presupuestario', dTot == null ? '—' : (dTot >= 0 ? '+' : '') + dTot.toFixed(1) + '%', dTot == null ? 'Sin adjudicaciones' : 'Adjudicado ' + (dTot >= 0 ? 'por encima' : 'por debajo') + ' del presupuesto oficial', dTot == null ? null : colorDesvioPresupuestario(dTot))
-  ].join('');
+  // ---- Tarjetas: una por año, con desempeño del año y comparación contra el año anterior ----
+  const porAnio = listaAnios.map(a => {
+    const rs = rows.filter(r => (String(r.anio || '').trim() || '(s/año)') === a);
+    const adjs = rs.filter(r => num(r.totalAdjudicado) > 0);
+    const g = { n: rs.length, pres: sumField(rs, 'presupuestoOficialRubro'), adj: sumField(rs, 'totalAdjudicado') };
+    const presAdj = sumField(adjs, 'presupuestoOficialRubro');
+    return { a, g, d: desvio(g), nAdj: adjs.length, dAdj: presAdj > 0 ? ((g.adj - presAdj) / presAdj) * 100 : null,
+      npos: new Set(rs.map(r => String(r.pospre || '').trim() || '(sin PosPre)')).size };
+  });
+  const fmtPct = (d) => d == null ? '—' : (d >= 0 ? '+' : '') + d.toFixed(1).replace('.', ',') + '%';
+  document.getElementById('pospKpiRow').innerHTML = porAnio.map((x, k) => {
+    const col = x.d == null ? 'var(--border-strong)' : colorDesvioPresupuestario(x.d);
+    const ant = k > 0 ? porAnio[k - 1] : null;
+    let comp = '';
+    if (ant && x.d != null && ant.d != null) {
+      const dif = x.d - ant.d;
+      comp = '<div class="posp-yc-row"><span>vs ' + escapeHtml(ant.a) + '</span><strong style="color:' + (Math.abs(dif) < 0.05 ? 'var(--text-soft)' : (dif < 0 ? '#16A34A' : '#DC2626')) + '">' +
+        (dif >= 0 ? '▲ +' : '▼ ') + dif.toFixed(1).replace('.', ',') + ' pp</strong></div>';
+    }
+    const ejec = x.g.pres > 0 ? Math.min(100, (x.g.adj / x.g.pres) * 100) : 0;
+    return '<div class="posp-year-card" style="--kpi-accent:' + col + '">' +
+      '<div class="posp-yc-head"><span class="posp-yc-year">' + escapeHtml(x.a) + '</span><span class="posp-yc-n">' + x.npos + ' PosPre · ' + x.g.n + ' trámites</span></div>' +
+      '<div class="posp-yc-desvio" style="color:' + col + '">' + fmtPct(x.d) + '</div>' +
+      '<div class="posp-yc-sub">desvío presupuestario del año</div>' +
+      '<div class="posp-yc-row"><span>Presupuesto Oficial</span><strong title="' + escapeHtml(formatMoney(x.g.pres)) + '">' + (x.g.pres / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' M</strong></div>' +
+      '<div class="posp-yc-row"><span>Total Adjudicado</span><strong title="' + escapeHtml(formatMoney(x.g.adj)) + '">' + (x.g.adj / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' M</strong></div>' +
+      '<div class="posp-yc-bar" title="Adjudicado sobre presupuesto oficial"><span style="width:' + ejec.toFixed(1) + '%;background:' + col + '"></span></div>' +
+      '<div class="posp-yc-row"><span>Trámites adjudicados</span><strong>' + x.nAdj + ' de ' + x.g.n + '</strong></div>' +
+      '<div class="posp-yc-row" title="Desvío comparando solo los trámites que ya tienen adjudicación (excluye el presupuesto de los pendientes)"><span>Desvío s/ adjudicados</span><strong>' + fmtPct(x.dAdj) + '</strong></div>' +
+      comp + '</div>';
+  }).join('') || '<div class="empty-state">Sin datos para el filtro actual.</div>';
 
   const f = state.filtrosCompartidos;
   const extra = [];
