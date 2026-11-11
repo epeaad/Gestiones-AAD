@@ -254,12 +254,17 @@
       <div class="panel">
         <div class="view-header" style="margin-bottom:14px;">
           <h3 style="margin:0;">Resumen por Contratista</h3>
-          <div class="control-inline">
+          <div class="control-inline" id="contratistaControls" hidden>
             <button id="contratistaTop10Btn" class="btn btn-ghost btn-toggle-active" data-mode="top10">Top 10</button>
             <button id="contratistaTodosBtn" class="btn btn-ghost" data-mode="todos">Todos</button>
           </div>
+          <button type="button" id="contratistaToggle" class="btn btn-ghost filtros-avanzados-toggle" aria-expanded="false" aria-controls="contratistaBody">
+            <span class="toggle-label">Mostrar cuadro</span> <span class="chevron">▾</span>
+          </button>
         </div>
-        <div class="contratista-grid" id="contratistaGrid"></div>
+        <div id="contratistaBody" hidden>
+          <div class="contratista-grid" id="contratistaGrid"></div>
+        </div>
       </div>
 
       <div class="panel">

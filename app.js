@@ -1475,22 +1475,25 @@ function wireToggleFiltrosAvanzados(btnId, panelId) {
 }
 wireToggleFiltrosAvanzados('dashFiltrosAvanzadosToggle', 'dashFiltersBarAvanzados');
 
-// ---- Cuadro "Trámites iniciados por Sucursal — por Estado" (Dashboard): oculto por defecto,
+// ---- Cuadros "Trámites iniciados por Sucursal — por Estado" y "Resumen por Contratista" (Dashboard): ocultos por defecto,
 // se muestra/oculta con su botón (mismo estilo que "Filtros avanzados"). La tabla se sigue
 // renderizando igual por debajo; solo cambia su visibilidad. ----
-(function () {
-  const btn = document.getElementById('dashPivotToggle');
-  const body = document.getElementById('dashPivotBody');
-  if (!btn || !body) return;
+[
+  ['dashPivotToggle', ['dashPivotBody']],
+  ['contratistaToggle', ['contratistaBody', 'contratistaControls']]
+].forEach(([btnId, panelIds]) => {
+  const btn = document.getElementById(btnId);
+  const panels = panelIds.map((id) => document.getElementById(id)).filter(Boolean);
+  if (!btn || !panels.length) return;
   const label = btn.querySelector('.toggle-label');
   btn.addEventListener('click', () => {
-    const abrir = body.hidden;
-    body.hidden = !abrir;
+    const abrir = panels[0].hidden;
+    panels.forEach((p) => { p.hidden = !abrir; });
     btn.classList.toggle('is-open', abrir);
     btn.setAttribute('aria-expanded', String(abrir));
     if (label) label.textContent = abrir ? 'Ocultar cuadro' : 'Mostrar cuadro';
   });
-})();
+});
 wireToggleFiltrosAvanzados('filtrosAvanzadosToggle', 'filtersBarAvanzados');
 if (tieneFiltrosAvanzadosActivos(state.filtrosCompartidos, state.riesgoPlazoActivoCompartido)) {
   document.getElementById('dashFiltersBarAvanzados').hidden = false;
