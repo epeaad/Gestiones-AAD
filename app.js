@@ -4998,6 +4998,12 @@ function renderComprasTramitesTable() {
   let filas = comprasTramitesFiltrados();
   const countEl = document.getElementById('comprasTramitesResultsCount');
   if (countEl) countEl.textContent = filas.length + ' trámite(s) encontrado(s), de ' + comprasTramitesCache.length + ' totales.';
+  // Tarjeta: suma de "$ Subtotal Oficial" de los trámites que pasan los filtros actuales.
+  const kpisEl = document.getElementById('comprasTramitesKpis');
+  if (kpisEl) {
+    const totalSubtotalOficial = filas.reduce((s, t) => s + num(t.montoSubtotalOficial), 0);
+    kpisEl.innerHTML = `<div class="reg-kpi"><small>$ Subtotal Oficial — trámites filtrados</small><b>${formatMoney(totalSubtotalOficial)}</b><span class="kpi-sub">${filas.length} trámite(s) · sin IVA</span><i style="background:var(--brand)"></i></div>`;
+  }
   if (!comprasTramitesCache.length) {
     table.innerHTML = '<tbody><tr><td class="empty-state">Todavía no hay trámites cargados en este modelo nuevo. Usá "+ Nuevo Trámite" o "Migrar datos del Árbol".</td></tr></tbody>';
     return;
