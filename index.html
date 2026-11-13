@@ -1098,6 +1098,7 @@
               <input type="file" id="comprasTramitesImportFile" accept=".csv" style="display:none;" />
             </label>
             <button type="button" id="comprasTramitesExportBtn" class="btn btn-secondary">Exportar a CSV</button>
+            <button type="button" id="comprasTramitesPrintBtn" class="btn btn-secondary" title="Imprime el listado tal como se ve en pantalla, con los filtros aplicados en el encabezado">Imprimir a PDF</button>
             <button type="button" id="comprasMigrarBtn" class="btn btn-ghost">Migrar datos del Árbol (una vez)</button>
           </div>
           <p class="table-note" id="comprasTramitesImportMsg" hidden></p>
@@ -1134,6 +1135,12 @@
         </div>
 
         <div class="panel">
+          <div class="print-header">
+            <p class="print-title">Gestiones AAD — Trámites de Compras</p>
+            <p class="print-subtitle">Impreso el <span id="comprasTramitesPrintDate"></span></p>
+            <p class="print-filtros-titulo">Filtros aplicados</p>
+            <div class="print-filtros" id="comprasTramitesPrintFiltros"></div>
+          </div>
           <div class="view-header" style="margin-bottom:14px;">
             <h3 style="margin:0;">Trámites de Compras</h3>
           </div>

@@ -531,7 +531,7 @@ async function boot() {
   // Los usuarios "Solo consulta" no pueden exportar a Excel/CSV ni imprimir a PDF, en ningún
   // módulo (Registros, Certificaciones, Proyectos, Compras y el Dashboard).
   const puedeExportar = state.session.rol !== 'consulta';
-  ['exportBtn', 'certExportBtn', 'certPrintBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'pospExportBtn', 'pospPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
+  ['exportBtn', 'certExportBtn', 'certPrintBtn', 'proyExportBtn', 'comprasTramitesExportBtn', 'comprasTramitesPrintBtn', 'printDashboardBtn', 'seguExportBtn', 'seguPrintBtn', 'pospExportBtn', 'pospPrintBtn', 'dashDetalleExportBtn', 'histSnapshotBtn', 'compExportBtn', 'estadioExportBtn', 'estadioPrintBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.hidden = !puedeExportar;
   });
@@ -4955,6 +4955,26 @@ document.getElementById('comprasTramitesClearFilters').addEventListener('click',
   populateComprasTramitesFilterOptions();
   renderComprasTramitesTable();
 });
+// ---- Impresión a PDF: el encabezado (solo visible al imprimir) detalla los filtros vigentes. Se
+// regenera con cada render de la tabla, así también coincide si se imprime con Ctrl+P. ----
+function actualizarCabeceraImpresionComprasTramites() {
+  const box = document.getElementById('comprasTramitesPrintFiltros');
+  if (!box) return;
+  const f = comprasTramitesFiltros;
+  const items = [];
+  [['pospre', 'Pospre'], ['anio', 'Año'], ['nroPC', 'N° PC'], ['sucursal', 'Sucursal'], ['estado', 'Estado']].forEach(([k, et]) => {
+    if (f[k] && f[k].length) items.push([et, f[k].join(', ')]);
+  });
+  if ((f.expediente || '').trim()) items.push(['Expediente', '"' + f.expediente.trim() + '"']);
+  box.innerHTML = items.length
+    ? items.map(([k, v]) => '<span class="print-filtro"><b>' + escapeHtml(k) + ':</b> ' + escapeHtml(v) + '</span>').join('')
+    : '<span class="print-filtro print-filtro-ninguno">Sin filtros: se muestran todos los trámites.</span>';
+}
+document.getElementById('comprasTramitesPrintBtn').addEventListener('click', () => {
+  document.getElementById('comprasTramitesPrintDate').textContent = new Date().toLocaleString('es-AR') +
+    (state.session && state.session.nombre ? ' · ' + state.session.nombre : '');
+  window.print();
+});
 function comprasTramitesFiltrados() {
   const texto = (comprasTramitesFiltros.expediente || '').trim().toLowerCase();
   return comprasTramitesCache.filter(t => {
@@ -4998,6 +5018,7 @@ function renderComprasTramitesTable() {
   let filas = comprasTramitesFiltrados();
   const countEl = document.getElementById('comprasTramitesResultsCount');
   if (countEl) countEl.textContent = filas.length + ' trámite(s) encontrado(s), de ' + comprasTramitesCache.length + ' totales.';
+  actualizarCabeceraImpresionComprasTramites();
   // Tarjeta: suma de "$ Subtotal Oficial" de los trámites que pasan los filtros actuales.
   const kpisEl = document.getElementById('comprasTramitesKpis');
   if (kpisEl) {

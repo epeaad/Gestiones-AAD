@@ -1572,3 +1572,19 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 .posp-yc-row strong { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .posp-yc-bar { height: 6px; background: #E8EDF3; border-radius: 99px; overflow: hidden; margin: 6px 0 4px; }
 .posp-yc-bar span { display: block; height: 100%; border-radius: 99px; }
+
+
+/* ---------- Impresión de Compras (Trámites de Compras) ----------
+   Solo sale el reporte: encabezado con los filtros, tarjeta de total y tabla. Se ocultan el
+   título del módulo, el panel de carga/importación, el formulario, la barra de filtros, el
+   buscador de scroll y la columna de acciones (última columna). */
+@media print{
+  #view-compras > .view-header, #comprasTramitesToolbar, #comprasTramiteFormPanel,
+  #comprasTramitesFiltersBar, #comprasTramitesScrollTop,
+  #comprasTramitesTable th:last-child, #comprasTramitesTable td:last-child{ display:none !important; }
+  #view-compras .panel{ padding:0 !important; border:0 !important; margin:0 !important; }
+  #view-compras .print-header{ border-bottom:2px solid #0A3A82; padding-bottom:8px; margin-bottom:12px; }
+  #view-compras .print-title{ font-family:var(--font-head); font-size:22px; color:#0A3A82; }
+  #view-compras .data-table th{ background:#EEF2F7 !important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  #comprasTramitesKpis{ margin:8px 0 10px !important; }
+}
