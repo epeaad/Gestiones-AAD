@@ -3504,12 +3504,32 @@ function renderPospre() {
   const grupoDe = (pos, a) => a === '__total__' ? suma(Object.values(mapa[pos])) : mapa[pos][a];
   let html = '<thead><tr><th rowspan="2">PosPre</th>' + grupos.map(a => '<th colspan="3" class="posp-anio' + (a === '__total__' ? ' posp-total-col' : '') + '">' + (a === '__total__' ? 'TOTAL' : escapeHtml(a)) + '</th>').join('') + '</tr><tr>' +
     grupos.map(a => ['Presupuesto Oficial', 'Total Adjudicado', 'Desvío %'].map(t => '<th class="num' + (a === '__total__' ? ' posp-total-col' : '') + '">' + t + '</th>').join('')).join('') + '</tr></thead><tbody>';
-  poss.forEach(p => { html += '<tr><td>' + escapeHtml(p) + '</td>' + grupos.map(a => celdas(grupoDe(p, a), a === '__total__')).join('') + '</tr>'; });
+  poss.forEach(p => { html += '<tr' + (p === '(sin PosPre)' ? '' : ' class="posp-row-link" data-pos="' + escapeHtml(p) + '" title="Click para ver los trámites de este PosPre en Registros"') + '><td>' + escapeHtml(p) + '</td>' + grupos.map(a => celdas(grupoDe(p, a), a === '__total__')).join('') + '</tr>'; });
   html += '</tbody><tfoot><tr><th>TOTAL</th>' + grupos.map(a => {
     const g = a === '__total__' ? tot : suma(poss.map(p => mapa[p][a]).filter(Boolean));
     return celdas(g, a === '__total__').replace(/<td/g, '<th').replace(/<\/td>/g, '</th>');
   }).join('') + '</tr></tfoot>';
   table.innerHTML = html;
+
+  // ---- Drill-down: click en el renglón de un PosPre -> abre Registros filtrado por esa cuenta, con
+  // los trámites que componen los montos. Si el click cae en las columnas de un año puntual, se
+  // filtra además por ese año (los montos de esa celda); en la columna del PosPre o en TOTAL se
+  // respeta el filtro de Año vigente. El resto de los filtros compartidos se mantiene tal cual, así
+  // el listado coincide exactamente con el monto que se ve acá. ----
+  table.onclick = (e) => {
+    const tr = e.target.closest('tbody tr.posp-row-link');
+    if (!tr) return;
+    const td = e.target.closest('td');
+    const pos = tr.dataset.pos;
+    state.filtrosCompartidos.pospre = [pos];
+    if (td && td.cellIndex > 0) {
+      const a = grupos[Math.floor((td.cellIndex - 1) / 3)];
+      if (a && a !== '__total__' && a !== '(s/año)') state.filtrosCompartidos.anio = [a];
+    }
+    state.regTab = 'todos';
+    document.querySelectorAll('#regTabs .reg-tab').forEach(t => t.classList.toggle('is-on', t.dataset.tab === 'todos'));
+    showView('registros');
+  };
 
   const subt = ['Presupuesto Oficial', 'Total Adjudicado', 'Desvío %'];
   const fila1 = ['PosPre'], merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];

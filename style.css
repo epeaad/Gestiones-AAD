@@ -1588,3 +1588,9 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
   #view-compras .data-table th{ background:#EEF2F7 !important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   #comprasTramitesKpis{ margin:8px 0 10px !important; }
 }
+
+
+/* ---- Seguimiento por PosPre: renglones clickeables (abren Registros filtrado por esa cuenta) ---- */
+#pospTable tbody tr.posp-row-link{ cursor:pointer; }
+#pospTable tbody tr.posp-row-link:hover td{ background:var(--blue-soft); }
+#pospTable tbody tr.posp-row-link:hover td:first-child{ background:var(--blue-soft); color:var(--blue); text-decoration:underline; }
