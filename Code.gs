@@ -497,10 +497,10 @@ function _registrosVisiblesParaUsuario(user) {
 
 // ======= ENDPOINTS =======
 function doGet(e) {
-  if (e && e.parameter && e.parameter.diagnostico) {
-    return _json(_diagnostico());
-  }
-  return _json({ ok: true, mensaje: 'API Gestiones AAD activa. Usá POST.' });
+  // SEGURIDAD: antes, "?diagnostico=1" devolvía sin login la URL del Sheet, los nombres de las
+  // pestañas y una fila de datos. Se quitó. Para diagnosticar, ejecutá _diagnostico() desde el
+  // editor de Apps Script (Ejecutar) y mirá el resultado en el Registro de ejecución.
+  return _json({ ok: true });
 }
 
 function _diagnostico() {
@@ -565,7 +565,23 @@ function _diagnostico() {
   }
 }
 
+// Acciones de la app que modifican datos que se ven en la página de contratistas.
+const ACCIONES_QUE_PUBLICAN = ['crear', 'actualizar', 'eliminar', 'unificar_valores',
+  'certificaciones_crear', 'certificaciones_actualizar', 'certificaciones_eliminar'];
+
 function doPost(e) {
+  const salida = _doPostInterno(e);
+  // Después de guardar un cambio, se programa la publicación automática (nunca debe romper el guardado).
+  try {
+    const accion = JSON.parse((e && e.postData && e.postData.contents) || '{}').action;
+    if (ACCIONES_QUE_PUBLICAN.indexOf(accion) !== -1) _programarPublicacion();
+  } catch (err) {
+    Logger.log('No se pudo programar la publicación: ' + err.message);
+  }
+  return salida;
+}
+
+function _doPostInterno(e) {
   try {
     const body = JSON.parse(e.postData.contents || '{}');
     const action = body.action;
@@ -3152,4 +3168,125 @@ function _guardarSnapshotHistorial(datos) {
   });
   sh.getRange(fila, 1, 1, HISTORIAL_LAST_COLUMN).setValues([rowValues]);
   return hoy;
+}
+
+
+// ======= PUBLICACIÓN DE CERTIFICACIONES PARA CONTRATISTAS =======
+// Envía una COPIA mínima de las certificaciones al Apps Script de la cuenta neutra.
+// La URL y el token se guardan en Propiedades del script (no en el código).
+// Se publican TODOS los datos de la tabla de Certificaciones de la app (Pospre, Expediente, Detalle
+// Rubro, Sucursal, PC, Contratista, Fecha de inicio, Exp. Certificación, N° Certificado, Mes/Año,
+// IIBB, $ Certificado, $ Reconocimiento, $ Multas, % del Adjudicado, Observaciones). Los importes y
+// el % van redondeados a 2 decimales. No se envían IDs internos.
+
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Contratistas')
+    .addItem('Publicar certificaciones ahora', 'publicarCertificacionesAlPublico')
+    .addItem('Configurar conexión (URL y token)', 'configurarPublicacion')
+    .addItem('Activar publicación automática (cada hora)', 'activarPublicacionAutomatica')
+    .addItem('Desactivar publicación automática', 'desactivarPublicacionAutomatica')
+    .addToUi();
+}
+
+function configurarPublicacion() {
+  const ui = SpreadsheetApp.getUi();
+  const props = PropertiesService.getScriptProperties();
+  const u = ui.prompt('URL del backend público', 'Pegá la URL "/exec" del Apps Script de la cuenta neutra:', ui.ButtonSet.OK_CANCEL);
+  if (u.getSelectedButton() !== ui.Button.OK) return;
+  const t = ui.prompt('Token secreto', 'Pegá el mismo TOKEN que cargaste en el backend público:', ui.ButtonSet.OK_CANCEL);
+  if (t.getSelectedButton() !== ui.Button.OK) return;
+  props.setProperty('PUBLICO_URL', u.getResponseText().trim());
+  props.setProperty('PUBLICO_TOKEN', t.getResponseText().trim());
+  ui.alert('Conexión guardada. Ahora podés usar "Publicar certificaciones ahora".');
+}
+
+function publicarCertificacionesAlPublico() {
+  const props = PropertiesService.getScriptProperties();
+  const url = props.getProperty('PUBLICO_URL');
+  const token = props.getProperty('PUBLICO_TOKEN');
+  if (!url || !token) throw new Error('Falta configurar la conexión: menú Contratistas > Configurar conexión.');
+  const r2 = v => { const n = parseFloat(v); return isNaN(n) ? 0 : Math.round((n + Number.EPSILON) * 100) / 100; };
+  // Detalle del Rubro y Sucursal no están en la hoja de Certificaciones: se toman del trámite (igual que la app).
+  const tramites = {};
+  _listarRegistros().forEach(t => { tramites[t._id] = t; });
+  const filas = _listarCertificaciones().map(c => {
+    const t = tramites[c.idTramite] || {};
+    return {
+      pospre: c.pospre,
+      expediente: c.expediente,
+      rubro: t.detalleRubro || '',
+      sucursal: t.sucursal || '',
+      pc: c.nroPedidoCompras,
+      contratista: c.contratista,
+      fechaInicioContrato: c.fechaInicioContrato,
+      expedienteCert: c.expedienteCertificacion,
+      numeroCertificado: c.numeroCertificado,
+      mesAnio: c.mesAnioCertificacion,
+      iibbCertificados: r2(c.iibbCertificados),
+      montoCertificado: r2(c.montoCertificado),
+      montoReconocimiento: r2(c.montoReconocimiento),
+      montoMultas: r2(c.montoMultas),
+      pctAvance: r2(c.pctAvance),
+      observaciones: c.observaciones
+    };
+  }).filter(f => String(f.pc || '').trim() !== '');
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json',
+    payload: JSON.stringify({ action: 'publicar', token: token, filas: filas }),
+    muteHttpExceptions: true, followRedirects: true
+  });
+  let data;
+  try { data = JSON.parse(resp.getContentText()); } catch (e) { throw new Error('Respuesta inválida del backend público.'); }
+  if (!data.ok) throw new Error('El backend público rechazó la publicación: ' + (data.error || 'sin detalle'));
+  Logger.log('Certificaciones publicadas: ' + data.publicadas);
+  try { SpreadsheetApp.getActiveSpreadsheet().toast('Publicadas ' + data.publicadas + ' certificaciones.', 'Contratistas', 5); } catch (e) {}
+}
+
+function activarPublicacionAutomatica() {
+  desactivarPublicacionAutomatica();
+  ScriptApp.newTrigger('publicarCertificacionesAlPublico').timeBased().everyHours(1).create();
+}
+function desactivarPublicacionAutomatica() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'publicarCertificacionesAlPublico') ScriptApp.deleteTrigger(t);
+  });
+}
+
+
+// ======= PUBLICACIÓN AUTOMÁTICA AL GUARDAR =======
+// Cada vez que se carga, edita o elimina un certificado o un trámite desde la app, se programa una
+// publicación para dentro de ~1 minuto. Si se guardan varios cambios seguidos, se juntan en una sola.
+// La demora de guardado en la app no cambia: la publicación corre aparte, en segundo plano.
+
+function _programarPublicacion() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('PUBLICO_URL') || !props.getProperty('PUBLICO_TOKEN')) return; // aún sin configurar
+  try {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(5000)) return;
+    try {
+      const yaProgramada = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'publicacionDiferida');
+      if (!yaProgramada) ScriptApp.newTrigger('publicacionDiferida').timeBased().after(60 * 1000).create();
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    // Si no se pudo programar (por ejemplo, falta el permiso de "autorizarPermisos"), se publica en el
+    // momento, para que el cambio igual llegue a la página de contratistas.
+    Logger.log('No se pudo programar la publicación (' + err.message + '). Se publica directamente.');
+    try { publicarCertificacionesAlPublico(); } catch (err2) { Logger.log('Falló la publicación directa: ' + err2.message); }
+  }
+}
+
+function publicacionDiferida() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'publicacionDiferida') ScriptApp.deleteTrigger(t);
+  });
+  publicarCertificacionesAlPublico();
+}
+
+// Ejecutar UNA vez desde el editor de Apps Script para otorgar el permiso de programar tareas.
+function autorizarPermisos() {
+  ScriptApp.getProjectTriggers();
+  Logger.log('Permisos otorgados. Ahora hacé Implementar > Administrar implementaciones > Nueva versión.');
 }

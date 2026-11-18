@@ -2691,6 +2691,8 @@ function renderDashboard() {
 // Columnas del detalle "Todos" del Dashboard: mismas claves que Registros, pero con etiquetas
 // propias más compactas (no se tocan las de REGISTROS_COLS para no afectar esa otra tabla) y
 // "Fin de Contrato" reubicada justo antes de "Seguimiento".
+// "Fecha Inicio" (entre Adjudicado y Certificado) es la Fecha Inicio Real cargada en Nueva
+// Contratación > Certificación: permite detectar inicios tardíos por gestión administrativa.
 const DASH_DETALLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
@@ -2701,6 +2703,7 @@ const DASH_DETALLE_COLS = [
   { key: 'adjudicatario', label: 'Contratista' },
   { key: 'presupuestoOficialRubro', label: 'Pres. Oficial' },
   { key: 'totalAdjudicado', label: 'Adjudicado' },
+  { key: 'fechaInicioReal', label: 'Fecha Inicio' },
   { key: 'certificadosAAD', label: 'Certificado' },
   { key: 'pctAvance', label: '% Avance' },
   { key: 'cantidadProyectos', label: 'Proyectos' },
