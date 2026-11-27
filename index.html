@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261127a" />
+<link rel="stylesheet" href="style.css?v=20261127c" />
 </head>
 <body>
 
@@ -330,6 +330,7 @@
       </div>
 
       <div class="posp-year-row" id="pospKpiRow"></div>
+      <p class="table-note" id="pospPacNota" hidden></p>
 
       <div class="panel panel-primary">
         <p class="table-note">Cada fila es un PosPre y cada año tiene sus columnas: <strong>Presupuesto Oficial</strong> imputado a la cuenta (suma de los trámites), <strong>Total Adjudicado</strong> hasta el momento y <strong>Desvío</strong>. <strong>Desvío</strong> = (Adjudicado − Presupuesto Oficial) ÷ Presupuesto Oficial: negativo (verde) es adjudicar por debajo del presupuesto, hasta +15% amarillo, más de +15% rojo. Sin nada adjudicado aún, el desvío no se calcula (—). Cada tarjeta resume un año: el <strong>desvío del año</strong> usa todo el presupuesto imputado, por lo que mientras haya trámites sin adjudicar sale más negativo; <strong>Desvío s/ adjudicados</strong> compara solo los trámites ya adjudicados (la lectura más justa del desempeño) y "vs año anterior" muestra la diferencia en puntos porcentuales (▼ verde = mejor). Los filtros son los mismos del Dashboard: lo que filtres allí se refleja acá y viceversa. Montos en $ sin IVA. <strong>Hacé click en el renglón de un PosPre</strong> (o en las columnas de un año puntual) para ver en Registros los trámites que componen ese monto.</p>
@@ -1213,22 +1214,13 @@
           <div class="view-header" style="margin-bottom:12px;">
             <h3 style="margin:0;" id="pacTitulo">PAC — Plan Anual de Compras</h3>
             <span class="table-note" id="pacRevInfo" style="margin:0;"></span>
+            <button type="button" class="btn btn-secondary" id="pacIrPospre">Ver desvíos por Pospre (PAC vs real) →</button>
           </div>
           <div class="reg-kpis" id="pacKpis"></div>
         </div>
 
         <div class="panel">
-          <div class="pac-subtabs" id="pacSubtabs">
-            <button type="button" class="pac-subtab is-on" data-ptab="resumen">Resumen por Pospre</button>
-            <button type="button" class="pac-subtab" data-ptab="lineas">Matrículas del PAC</button>
-          </div>
-
-          <div id="pacResumenWrap">
-            <p class="table-note" style="margin-top:0;">Plan vigente (sin IVA) contra lo tramitado: se suma el monto de inicio de los trámites de Compras de cada Pospre (se excluyen los Desiertos y Relanzados). Hacé click en un Pospre para ver sus matrículas.</p>
-            <div class="table-wrap"><table id="pacResumenTable" class="data-table"></table></div>
-          </div>
-
-          <div id="pacLineasWrap" hidden>
+          <div id="pacLineasWrap">
             <div class="filters-bar" id="pacFiltersBar">
               <div class="filter-field"><label>Área (PAC)</label><div class="multiselect" data-pfilter="area"></div></div>
               <div class="filter-field"><label>Pospre</label><div class="multiselect" data-pfilter="pospre"></div></div>
@@ -1239,12 +1231,18 @@
               <button id="pacClearFilters" class="btn btn-ghost">Limpiar filtros</button>
             </div>
             <div class="form-actions pac-acciones" style="justify-content:flex-start; gap:10px; flex-wrap:wrap;">
-              <button type="button" class="btn btn-primary" id="pacBtnTramitar">Tramitar seleccionadas</button>
-              <button type="button" class="btn btn-secondary" id="pacBtnAsignar">Asignar a trámite existente</button>
+              <button type="button" class="btn btn-primary" id="pacBtnTramitar">Asignar a expediente nuevo</button>
+              <button type="button" class="btn btn-secondary" id="pacBtnAsignar">Asignar a expediente existente</button>
               <button type="button" class="btn btn-ghost" id="pacBtnPegar">Seleccionar por lista de matrículas</button>
               <button type="button" class="btn btn-ghost" id="pacBtnLimpiarSel">Limpiar selección</button>
               <button type="button" class="btn btn-secondary" id="pacBtnExportar">Exportar a Excel</button>
               <span class="table-note" id="pacSelInfo" style="margin:0;"></span>
+            </div>
+            <div id="pacSelBar" class="pac-selbar" hidden>
+              <span id="pacSelBarInfo"></span>
+              <button type="button" class="btn btn-primary" id="pacBarNuevo">➕ Asignar a expediente NUEVO</button>
+              <button type="button" class="btn btn-secondary" id="pacBarExistente">Asignar a expediente existente</button>
+              <button type="button" class="btn btn-ghost" id="pacBarLimpiar">Limpiar</button>
             </div>
             <div id="pacPegarBox" class="pac-pegar" hidden>
               <label class="modal-field" style="margin-bottom:8px;">Pegá matrículas (una por línea, o separadas por coma/espacio)
@@ -1498,7 +1496,7 @@
   } catch(e) {}
 })();
 </script>
-<script src="config.js?v=20261127a"></script>
-<script src="app.js?v=20261127a"></script>
+<script src="config.js?v=20261127c"></script>
+<script src="app.js?v=20261127c"></script>
 </body>
 </html>

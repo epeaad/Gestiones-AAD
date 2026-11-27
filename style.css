@@ -1642,3 +1642,12 @@ input[type=checkbox], input[type=radio]{ accent-color:var(--blue); }
 .pac-m-cant{ width:90px; text-align:right; }
 .pac-trow-ok{ color:#166534; font-weight:600; }
 .pac-trow-dif{ color:var(--stage-3); font-weight:600; }
+
+.pac-selbar{ position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:60; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center;
+  background:#0f2d1f; color:#fff; padding:10px 16px; border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,.35); max-width:calc(100vw - 24px); }
+.pac-selbar[hidden]{ display:none; }
+.pac-selbar .btn-ghost{ color:#fff; border-color:rgba(255,255,255,.4); }
+.pac-selbar #pacSelBarInfo{ font-weight:600; font-size:13.5px; }
+
+.posp-pac-col{ background:rgba(245,166,0,.07); }
+th.posp-pac-col{ background:rgba(245,166,0,.16); }

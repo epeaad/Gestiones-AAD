@@ -3428,6 +3428,10 @@ function colorDesvioPresupuestario(d) { return d <= 0 ? '#16A34A' : (d <= 15 ? '
 let pospXlsx = null;
 function renderPospre() {
   populateFilterOptions();
+  if (!pacCache.cargado && !pacCache.intentoPospre) {
+    pacCache.intentoPospre = true; // una sola vez: si el PAC no está disponible, el módulo sigue como siempre
+    cargarPac(true).then(() => { if (!document.getElementById('view-pospre').hidden) renderPospre(); }).catch(() => {});
+  }
   const rows = filteredForDashboard();
   const mapa = {};
   const anios = new Set();
@@ -3501,18 +3505,64 @@ function renderPospre() {
     return;
   }
   const grupos = listaAnios;
+  // ---- PAC del año contra lo real (mismo código de Pospre) ----
+  const anioPac = String(PAC_ANIO_ACTUAL);
+  const ff = state.filtrosCompartidos;
+  const hayPac = pacCache.lineas.length > 0 && !(ff.anio && ff.anio.length && !ff.anio.includes(anioPac));
+  const pacPlan = {}, pacDesc = {};
+  if (hayPac) pacCache.lineas.forEach(l => {
+    if (l.estado !== 'Vigente') return;
+    const c = pacCodigoPospre(l.pospre);
+    pacPlan[c] = (pacPlan[c] || 0) + l.montoSinIVA;
+    if (!pacDesc[c]) pacDesc[c] = l.pospreDesc || '';
+  });
+  const pacDe = {}; // fila -> plan (se asigna a la primera fila de cada código, para no duplicar)
+  if (hayPac) {
+    const usados = new Set();
+    poss.forEach(p => {
+      const c = pacCodigoPospre(p);
+      if (p !== '(sin PosPre)' && pacPlan[c] != null && !usados.has(c)) { usados.add(c); pacDe[p] = pacPlan[c]; }
+    });
+    if (!(ff.pospre && ff.pospre.length)) {
+      Object.keys(pacPlan).forEach(c => {
+        if (usados.has(c) || pacPlan[c] <= 0) return;
+        const k = c + (pacDesc[c] ? ' ' + pacDesc[c] : '');
+        mapa[k] = {}; poss.push(k); pacDe[k] = pacPlan[c];
+      });
+      poss.sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+    }
+  }
+  const presAnio = (p) => (mapa[p] && mapa[p][anioPac]) ? mapa[p][anioPac].pres : 0;
+  const pacCeldas = (plan, pres, esTotal) => {
+    const cls = 'num posp-pac-col' + (esTotal ? ' posp-total-col' : '');
+    if (plan == null) return '<td class="' + cls + '"><span class="muted">—</span></td><td class="' + cls + '"><span class="muted">—</span></td><td class="' + cls + '"><span class="muted">—</span></td><td class="' + cls + '"><span class="muted">—</span></td>';
+    const pct = plan > 0 ? pres / plan * 100 : null;
+    const col = pct == null ? '' : (pct > 100.5 ? '#DC2626' : (pct >= 100 ? '#16A34A' : '#1F2937'));
+    return '<td class="' + cls + '">' + formatMoney(plan) + '</td><td class="' + cls + '">' + formatMoney(pres) + '</td>' +
+      '<td class="' + cls + '">' + (pct == null ? '—' : '<strong style="color:' + col + '">' + pct.toFixed(1).replace('.', ',') + '%</strong>') + '</td>' +
+      '<td class="' + cls + '">' + formatMoney(Math.max(0, plan - pres)) + '</td>';
+  };
+  const pacTotPlan = poss.reduce((t, p) => t + (pacDe[p] || 0), 0);
+  const pacTotPres = poss.reduce((t, p) => t + (pacDe[p] != null ? presAnio(p) : 0), 0);
+  const presFueraPac = poss.reduce((t, p) => t + (pacDe[p] == null ? presAnio(p) : 0), 0);
   const celdas = (g, esTotal) => '<td class="num' + (esTotal ? ' posp-total-col' : '') + '" title="' + (g ? g.n + ' trámite(s)' : '') + '">' + (g ? formatMoney(g.pres) : '<span class="muted">—</span>') + '</td>' +
     '<td class="num' + (esTotal ? ' posp-total-col' : '') + '">' + (g ? formatMoney(g.adj) : '<span class="muted">—</span>') + '</td>' +
     '<td class="num' + (esTotal ? ' posp-total-col' : '') + '">' + desvioTxt(desvio(g)) + '</td>';
   const grupoDe = (pos, a) => a === '__total__' ? suma(Object.values(mapa[pos])) : mapa[pos][a];
-  let html = '<thead><tr><th rowspan="2">PosPre</th>' + grupos.map(a => '<th colspan="3" class="posp-anio' + (a === '__total__' ? ' posp-total-col' : '') + '">' + (a === '__total__' ? 'TOTAL' : escapeHtml(a)) + '</th>').join('') + '</tr><tr>' +
-    grupos.map(a => ['Presupuesto Oficial', 'Total Adjudicado', 'Desvío %'].map(t => '<th class="num' + (a === '__total__' ? ' posp-total-col' : '') + '">' + t + '</th>').join('')).join('') + '</tr></thead><tbody>';
-  poss.forEach(p => { html += '<tr' + (p === '(sin PosPre)' ? '' : ' class="posp-row-link" data-pos="' + escapeHtml(p) + '" title="Click para ver los trámites de este PosPre en Registros"') + '><td>' + escapeHtml(p) + '</td>' + grupos.map(a => celdas(grupoDe(p, a), a === '__total__')).join('') + '</tr>'; });
+  let html = '<thead><tr><th rowspan="2">PosPre</th>' + grupos.map(a => '<th colspan="3" class="posp-anio' + (a === '__total__' ? ' posp-total-col' : '') + '">' + (a === '__total__' ? 'TOTAL' : escapeHtml(a)) + '</th>').join('') + (hayPac ? '<th colspan="4" class="posp-anio posp-pac-col" title="Plan Anual de Compras del año contra el Presupuesto Oficial tramitado ese año">PAC ' + escapeHtml(anioPac) + ' vs real</th>' : '') + '</tr><tr>' +
+    grupos.map(a => ['Presupuesto Oficial', 'Total Adjudicado', 'Desvío %'].map(t => '<th class="num' + (a === '__total__' ? ' posp-total-col' : '') + '">' + t + '</th>').join('')).join('') +
+    (hayPac ? ['Plan PAC (sin IVA)', 'Pres. Oficial tramitado', '% del plan', 'Pendiente de tramitar'].map(t => '<th class="num posp-pac-col">' + t + '</th>').join('') : '') + '</tr></thead><tbody>';
+  poss.forEach(p => { html += '<tr' + (p === '(sin PosPre)' ? '' : ' class="posp-row-link" data-pos="' + escapeHtml(p) + '" title="Click para ver los trámites de este PosPre en Registros"') + '><td>' + escapeHtml(p) + '</td>' + grupos.map(a => celdas(grupoDe(p, a), a === '__total__')).join('') + (hayPac ? pacCeldas(pacDe[p], presAnio(p), false) : '') + '</tr>'; });
   html += '</tbody><tfoot><tr><th>TOTAL</th>' + grupos.map(a => {
     const g = a === '__total__' ? tot : suma(poss.map(p => mapa[p][a]).filter(Boolean));
     return celdas(g, a === '__total__').replace(/<td/g, '<th').replace(/<\/td>/g, '</th>');
-  }).join('') + '</tr></tfoot>';
+  }).join('') + (hayPac ? pacCeldas(pacTotPlan, pacTotPres, false).replace(/<td/g, '<th').replace(/<\/td>/g, '</th>') : '') + '</tr></tfoot>';
   table.innerHTML = html;
+  const notaPac = document.getElementById('pospPacNota');
+  if (notaPac) {
+    notaPac.hidden = !hayPac;
+    notaPac.innerHTML = hayPac ? 'Columnas <b>PAC ' + escapeHtml(anioPac) + ' vs real</b>: el plan vigente del PAC (sin IVA, por código de Pospre) contra el Presupuesto Oficial tramitado en ' + escapeHtml(anioPac) + '. Más de 100% (rojo) = se tramitó por encima del plan. El PAC no se filtra por Sucursal, Rubro ni Estado.' + (presFueraPac > 0 ? ' Presupuesto de ' + escapeHtml(anioPac) + ' en Pospres que no figuran en el PAC: <b>' + formatMoney(presFueraPac) + '</b>.' : '') : '';
+  }
 
   // ---- Drill-down: click en el renglón de un PosPre -> abre Registros filtrado por esa cuenta, con
   // los trámites que componen los montos. Si el click cae en las columnas de un año puntual, se
@@ -3540,14 +3590,16 @@ function renderPospre() {
     fila1.push(a === '__total__' ? 'TOTAL' : a, '', '');
     merges.push({ s: { r: 0, c: 1 + gi * 3 }, e: { r: 0, c: 3 + gi * 3 } });
   });
-  const fila2 = [''].concat(grupos.flatMap(() => subt));
+  if (hayPac) { fila1.push('PAC ' + anioPac + ' vs real', '', '', ''); merges.push({ s: { r: 0, c: 1 + grupos.length * 3 }, e: { r: 0, c: 4 + grupos.length * 3 } }); }
+  const fila2 = [''].concat(grupos.flatMap(() => subt)).concat(hayPac ? ['Plan PAC (sin IVA)', 'Pres. Oficial tramitado', '% del plan', 'Pendiente de tramitar'] : []);
   const filaDatos = (nombre, getG) => [nombre].concat(grupos.flatMap(a => {
     const g = getG(a); if (!g) return ['', '', ''];
     const d = desvio(g);
     return [Math.round(g.pres), Math.round(g.adj), d == null ? '' : d / 100];
   }));
-  const cuerpo = poss.map(p => filaDatos(p, a => grupoDe(p, a)));
-  cuerpo.push(filaDatos('TOTAL', a => a === '__total__' ? tot : suma(poss.map(p => mapa[p][a]).filter(Boolean))));
+  const pacCols = (plan, pres) => !hayPac ? [] : (plan == null ? ['', '', '', ''] : [Math.round(plan), Math.round(pres), plan > 0 ? pres / plan : '', Math.round(Math.max(0, plan - pres))]);
+  const cuerpo = poss.map(p => filaDatos(p, a => grupoDe(p, a)).concat(pacCols(pacDe[p], presAnio(p))));
+  cuerpo.push(filaDatos('TOTAL', a => a === '__total__' ? tot : suma(poss.map(p => mapa[p][a]).filter(Boolean))).concat(pacCols(pacTotPlan, pacTotPres)));
   pospXlsx = { filas: [fila1, fila2].concat(cuerpo), merges, nGrupos: grupos.length };
 }
 document.getElementById('pospExportBtn').addEventListener('click', () => {
@@ -6187,7 +6239,7 @@ const PAC_SEG_AYUDA = {
 let pacCache = { cargado: false, revision: null, revisiones: [], lineas: [], asignaciones: [], areas: {}, error: '' };
 let pacIdx = { lineas: new Map(), asigPorLinea: new Map(), asigPorTramite: new Map() };
 let comprasTabActiva = 'tramites';
-let pacSubtab = 'resumen';
+let pacSubtab = 'lineas'; // el resumen por Pospre vive en "Seguimiento por PosPre"
 let pacFiltros = { area: [], pospre: [], estado: ['Pendiente', 'Parcial', 'Tramitado'], texto: '', revisar: false, soloSel: false };
 let pacSort = { key: 'pospre', dir: 1 };
 let pacResSort = { key: 'plan', dir: -1 };
@@ -6288,6 +6340,7 @@ function pacCalcularLineas() {
 // ---------------- Solapas de Compras ----------------
 function comprasMostrarTab(tab) {
   comprasTabActiva = tab;
+  document.getElementById('pacSelBar').hidden = true;
   document.querySelectorAll('#comprasTabs .reg-tab').forEach(b => b.classList.toggle('is-on', b.dataset.ctab === tab));
   document.getElementById('comprasTramitesWrap').hidden = tab !== 'tramites';
   document.getElementById('comprasPacWrap').hidden = tab !== 'pac';
@@ -6316,12 +6369,6 @@ async function abrirVistaPac() {
   renderPac();
 }
 
-document.getElementById('pacSubtabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('.pac-subtab');
-  if (!btn) return;
-  pacSubtab = btn.dataset.ptab;
-  renderPac();
-});
 
 // ---------------- Resumen por Pospre ----------------
 function pacResumenPorPospre() {
@@ -6362,42 +6409,6 @@ function renderPacKpis(res) {
     card('% del plan tramitado', (plan > 0 ? (tram / plan * 100) : 0).toFixed(1) + '%', res.otros.n ? res.otros.n + ' trámite(s) con Pospre fuera del PAC: ' + formatMoney(res.otros.monto) : 'Todos los trámites tienen Pospre del PAC', 'var(--brand)') +
     card('Matrículas Pend. / Parc. / Tram.', nP + ' / ' + nPa + ' / ' + nT, 'Según las matrículas asignadas a trámites', 'var(--stage-1)') +
     card('Líneas a revisar ⚠', String(nRev), nRev ? 'Cantidad asignada mayor al plan, o línea ya tramitada que salió del plan' : 'Sin diferencias con el plan', nRev ? 'var(--danger)' : 'var(--stage-5)');
-}
-
-function renderPacResumen(res) {
-  const table = document.getElementById('pacResumenTable');
-  const cols = [
-    { key: 'pospre', label: 'Pospre' }, { key: 'lineas', label: 'Matrículas' }, { key: 'plan', label: '$ Plan (sin IVA)' },
-    { key: 'tramitado', label: '$ Tramitado' }, { key: 'pendiente', label: '$ Pendiente' }, { key: 'pct', label: '% tramitado' },
-    { key: 'nPend', label: 'Pend. / Parc. / Tram.' }
-  ];
-  const filas = sortRows(res.filas, pacResSort, (f, k) => f[k]);
-  const sum = (k) => filas.reduce((a, f) => a + f[k], 0);
-  const pctTot = sum('plan') > 0 ? sum('tramitado') / sum('plan') : 0;
-  const barra = (p) => `<div class="pac-bar"><i class="${p > 1 ? 'over' : ''}" style="width:${Math.min(100, p * 100).toFixed(1)}%"></i></div>`;
-  table.innerHTML = sortableTheadHtml(cols, pacResSort) + '<tbody>' + filas.map(f => `
-    <tr class="pac-link-row" data-pospre="${escapeHtml(f.pospre)}" title="Ver las matrículas de este Pospre">
-      <td><b>${escapeHtml(f.pospre)}</b><br><small style="color:var(--text-soft)">${escapeHtml(f.desc)}</small></td>
-      <td class="mono">${f.lineas}</td>
-      <td class="mono">${formatMoney(f.plan)}</td>
-      <td class="mono">${formatMoney(f.tramitado)}<br><small style="color:var(--text-soft)">${f.nTramites} trámite(s)</small></td>
-      <td class="mono">${formatMoney(f.pendiente)}</td>
-      <td>${barra(f.pct)}<small class="mono">${(f.pct * 100).toFixed(1)}%</small></td>
-      <td class="mono">${f.nPend} / ${f.nParc} / ${f.nTram}</td>
-    </tr>`).join('') +
-    `<tr class="pac-total-row"><td>TOTAL</td><td class="mono">${sum('lineas')}</td><td class="mono">${formatMoney(sum('plan'))}</td><td class="mono">${formatMoney(sum('tramitado'))}</td><td class="mono">${formatMoney(sum('pendiente'))}</td><td class="mono">${(pctTot * 100).toFixed(1)}%</td><td class="mono">${sum('nPend')} / ${sum('nParc')} / ${sum('nTram')}</td></tr>` +
-    (res.otros.n ? `<tr class="pac-row-fuera"><td colspan="3"><i>Trámites cuyo Pospre no figura en el PAC</i></td><td class="mono">${formatMoney(res.otros.monto)}<br><small>${res.otros.n} trámite(s)</small></td><td colspan="3"></td></tr>` : '') +
-    '</tbody>';
-  wireSortableHeaders(table, pacResSort, () => renderPacResumen(res));
-  table.querySelectorAll('tr.pac-link-row').forEach(tr => {
-    tr.addEventListener('click', () => {
-      pacFiltros.pospre = [tr.dataset.pospre];
-      pacFiltros.area = []; pacFiltros.texto = ''; pacFiltros.revisar = false; pacFiltros.soloSel = false;
-      document.getElementById('pacFiltroTexto').value = '';
-      pacSubtab = 'lineas'; pacLimite = PAC_PAGE_SIZE;
-      renderPac();
-    });
-  });
 }
 
 // ---------------- Matrículas (líneas del PAC) ----------------
@@ -6462,8 +6473,17 @@ function pacActualizarSelInfo() {
   document.getElementById('pacBtnTramitar').disabled = !puede || !sel.length;
   document.getElementById('pacBtnAsignar').disabled = !puede || !sel.length;
   document.getElementById('pacBtnTramitar').hidden = !!pacModoAsignarTramite;
-  document.getElementById('pacBtnAsignar').textContent = pacModoAsignarTramite ? 'Asignar a este trámite' : 'Asignar a trámite existente';
+  document.getElementById('pacBtnAsignar').textContent = pacModoAsignarTramite ? 'Asignar a este trámite' : 'Asignar a expediente existente';
+  // Barra fija al pie: así la acción siempre está a la vista aunque se haya bajado por la tabla
+  const bar = document.getElementById('pacSelBar');
+  bar.hidden = !(sel.length && puede && comprasTabActiva === 'pac' && pacSubtab === 'lineas');
+  document.getElementById('pacSelBarInfo').textContent = sel.length + ' matrícula(s) · $ ' + formatMoney(monto).replace(/^\$\s*/, '');
+  document.getElementById('pacBarNuevo').hidden = !!pacModoAsignarTramite;
+  document.getElementById('pacBarExistente').textContent = pacModoAsignarTramite ? 'Asignar a este trámite' : 'Asignar a expediente existente';
 }
+document.getElementById('pacBarNuevo').addEventListener('click', () => document.getElementById('pacBtnTramitar').click());
+document.getElementById('pacBarExistente').addEventListener('click', () => document.getElementById('pacBtnAsignar').click());
+document.getElementById('pacBarLimpiar').addEventListener('click', () => document.getElementById('pacBtnLimpiarSel').click());
 function renderPacLineas() {
   const table = document.getElementById('pacLineasTable');
   let filas = pacLineasFiltradas();
@@ -6518,24 +6538,19 @@ function renderPac() {
   document.getElementById('pacTitulo').textContent = 'PAC ' + PAC_ANIO_ACTUAL + ' — Plan Anual de Compras';
   const rev = pacCache.revision;
   document.getElementById('pacRevInfo').textContent = rev ? 'Revisión ' + rev.revision + ' · cargada el ' + rev.fecha + (rev.usuario ? ' por ' + rev.usuario : '') + (rev.archivo ? ' · ' + rev.archivo : '') : '';
-  document.getElementById('pacSubtabs').querySelectorAll('.pac-subtab').forEach(b => b.classList.toggle('is-on', b.dataset.ptab === pacSubtab));
-  document.getElementById('pacResumenWrap').hidden = pacSubtab !== 'resumen';
-  document.getElementById('pacLineasWrap').hidden = pacSubtab !== 'lineas';
   renderPacBanner();
   if (sinPac) {
     document.getElementById('pacKpis').innerHTML = '';
     const motivo = pacCache.error
       ? 'No se pudo leer el PAC: ' + escapeHtml(pacCache.error) + '. Si acabás de actualizar la app, revisá que Code.gs esté publicado en su última versión y que hayas ejecutado "setup".'
       : 'Todavía no se cargó ningún PAC. ' + (pacEsAdmin() ? 'Subilo desde la solapa "Cargar PAC".' : 'Un administrador puede cargarlo desde la solapa "Cargar PAC".');
-    document.getElementById('pacResumenTable').innerHTML = '<tbody><tr><td class="empty-state">' + motivo + '</td></tr></tbody>';
     document.getElementById('pacLineasTable').innerHTML = '<tbody><tr><td class="empty-state">' + motivo + '</td></tr></tbody>';
     return;
   }
   pacCalcularLineas();
   const res = pacResumenPorPospre();
   renderPacKpis(res);
-  renderPacResumen(res);
-  if (pacSubtab === 'lineas') { pacPoblarFiltros(); renderPacLineas(); }
+  pacPoblarFiltros(); renderPacLineas();
 }
 
 function renderPacBanner() {
@@ -7023,3 +7038,5 @@ async function pacAplicarImportacion() {
     btn.disabled = false;
   }
 }
+
+document.getElementById('pacIrPospre').addEventListener('click', () => showView('pospre'));
