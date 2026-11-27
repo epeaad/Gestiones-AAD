@@ -26,3 +26,12 @@ const AREAS_DISTRIBUCION = [
   { id: 'adts', corto: 'A.D.T. Sur', nombre: 'Área Distribución Territorial Sur',
     sucursales: ['San Lorenzo', 'Rosario Norte', 'Rosario Oeste', 'Villa Constitución', 'Sur'] }
 ];
+
+// ============================================================
+// PAC (Plan Anual de Compras) — módulo Compras.
+// Año del plan que se está siguiendo; se usa como "Año (de imputación del pago / Plan)" por defecto
+// al iniciar un trámite desde el PAC (se puede cambiar en la ventana "Tramitar").
+// Las Áreas del PAC (AAD, ADSF, ADR...) y su equivalencia con las Sucursales de la app se definen
+// en Code.gs (constante PAC_AREAS_SUCURSALES).
+// ============================================================
+const PAC_ANIO = 2027;

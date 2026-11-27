@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=20261118a" />
+<link rel="stylesheet" href="style.css?v=20261127a" />
 </head>
 <body>
 
@@ -1087,6 +1087,12 @@
         <p class="table-note" style="margin:0;">Equipos, Máquinas, Instrumentos, Materiales y Bienes — módulo independiente de Contrataciones.</p>
       </div>
 
+      <div class="reg-tabs pac-tabs" id="comprasTabs" role="tablist">
+        <button type="button" class="reg-tab is-on" data-ctab="tramites" role="tab">Trámites</button>
+        <button type="button" class="reg-tab" data-ctab="pac" role="tab" id="comprasTabPac">PAC — Seguimiento</button>
+        <button type="button" class="reg-tab" data-ctab="carga" role="tab" id="comprasTabCarga" hidden>Cargar PAC</button>
+      </div>
+
       <div id="comprasTramitesWrap">
         <div class="panel" id="comprasTramitesToolbar">
           <div class="view-header" style="margin-bottom:10px;">
@@ -1132,6 +1138,11 @@
               </div>
             </form>
           </div>
+
+          <div id="comprasPacSection" class="subsection-card" hidden>
+            <div class="stage-panel-title"><span class="dot" style="background:var(--stage-5)"></span> Matrículas del PAC asignadas a este trámite</div>
+            <div id="comprasPacSectionBody"></div>
+          </div>
         </div>
 
         <div class="panel">
@@ -1173,6 +1184,14 @@
               <label>Estado</label>
               <div class="multiselect" data-tfilter="estado"></div>
             </div>
+            <div class="filter-field">
+              <label>Matrículas PAC</label>
+              <select data-tfilter="pac">
+                <option value="">Todos</option>
+                <option value="con">Con matrículas asignadas</option>
+                <option value="sin">Sin matrículas (fuera de PAC)</option>
+              </select>
+            </div>
             <button id="comprasTramitesClearFilters" class="btn btn-ghost">Limpiar filtros</button>
           </div>
           <div class="reg-kpis" id="comprasTramitesKpis" style="grid-template-columns:repeat(auto-fit,minmax(240px,320px)); margin-bottom:12px;"></div>
@@ -1184,6 +1203,101 @@
         </div>
       </div>
       <!-- /#comprasTramitesWrap -->
+
+      <!-- ===== PAC: seguimiento ===== -->
+      <div id="comprasPacWrap" hidden>
+        <div id="pacAsignarBanner" class="cert-nota pac-banner" hidden></div>
+        <p id="pacMsg" class="form-msg" hidden></p>
+
+        <div class="panel">
+          <div class="view-header" style="margin-bottom:12px;">
+            <h3 style="margin:0;" id="pacTitulo">PAC — Plan Anual de Compras</h3>
+            <span class="table-note" id="pacRevInfo" style="margin:0;"></span>
+          </div>
+          <div class="reg-kpis" id="pacKpis"></div>
+        </div>
+
+        <div class="panel">
+          <div class="pac-subtabs" id="pacSubtabs">
+            <button type="button" class="pac-subtab is-on" data-ptab="resumen">Resumen por Pospre</button>
+            <button type="button" class="pac-subtab" data-ptab="lineas">Matrículas del PAC</button>
+          </div>
+
+          <div id="pacResumenWrap">
+            <p class="table-note" style="margin-top:0;">Plan vigente (sin IVA) contra lo tramitado: se suma el monto de inicio de los trámites de Compras de cada Pospre (se excluyen los Desiertos y Relanzados). Hacé click en un Pospre para ver sus matrículas.</p>
+            <div class="table-wrap"><table id="pacResumenTable" class="data-table"></table></div>
+          </div>
+
+          <div id="pacLineasWrap" hidden>
+            <div class="filters-bar" id="pacFiltersBar">
+              <div class="filter-field"><label>Área (PAC)</label><div class="multiselect" data-pfilter="area"></div></div>
+              <div class="filter-field"><label>Pospre</label><div class="multiselect" data-pfilter="pospre"></div></div>
+              <div class="filter-field"><label>Estado</label><div class="multiselect" data-pfilter="estado"></div></div>
+              <div class="filter-field"><label>Buscar (matrícula / descripción / nota)</label><input type="text" id="pacFiltroTexto" placeholder="Buscar..." /></div>
+              <div class="filter-field pac-check-field"><label><input type="checkbox" id="pacFiltroRevisar" /> Solo "revisar" ⚠</label></div>
+              <div class="filter-field pac-check-field"><label><input type="checkbox" id="pacFiltroSel" /> Solo seleccionadas</label></div>
+              <button id="pacClearFilters" class="btn btn-ghost">Limpiar filtros</button>
+            </div>
+            <div class="form-actions pac-acciones" style="justify-content:flex-start; gap:10px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary" id="pacBtnTramitar">Tramitar seleccionadas</button>
+              <button type="button" class="btn btn-secondary" id="pacBtnAsignar">Asignar a trámite existente</button>
+              <button type="button" class="btn btn-ghost" id="pacBtnPegar">Seleccionar por lista de matrículas</button>
+              <button type="button" class="btn btn-ghost" id="pacBtnLimpiarSel">Limpiar selección</button>
+              <button type="button" class="btn btn-secondary" id="pacBtnExportar">Exportar a Excel</button>
+              <span class="table-note" id="pacSelInfo" style="margin:0;"></span>
+            </div>
+            <div id="pacPegarBox" class="pac-pegar" hidden>
+              <label class="modal-field" style="margin-bottom:8px;">Pegá matrículas (una por línea, o separadas por coma/espacio)
+                <textarea id="pacPegarTxt" rows="4" placeholder="100057&#10;100100&#10;100376"></textarea>
+              </label>
+              <div class="form-actions" style="justify-content:flex-start; gap:10px;">
+                <button type="button" class="btn btn-primary" id="pacPegarOk">Seleccionar</button>
+                <button type="button" class="btn btn-ghost" id="pacPegarCancel">Cerrar</button>
+                <span class="table-note" id="pacPegarMsg" style="margin:0;"></span>
+              </div>
+            </div>
+            <p class="results-count" id="pacResultsCount"></p>
+            <div class="table-wrap pac-lineas-wrap"><table id="pacLineasTable" class="data-table"></table></div>
+            <div class="form-actions" style="justify-content:center;">
+              <button type="button" class="btn btn-ghost" id="pacMasBtn" hidden>Mostrar más</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PAC: cargar una revisión (solo admin) ===== -->
+      <div id="comprasPacCargaWrap" hidden>
+        <div class="panel">
+          <div class="view-header" style="margin-bottom:10px;"><h3 style="margin:0;">Cargar una revisión del PAC</h3></div>
+          <p class="table-note" style="margin-top:0;">Subí el Excel del PAC (hoja con las columnas Área, Sector/Unidad, Matrícula, Descripción, Cant., PU, IVA%, Observación, Subtotal c/IVA, PosPre, Ajuste/Recorte). La app agrupa las líneas por <b>Área + Pospre + Matrícula</b>, compara contra el PAC vigente y te muestra qué cambió <b>antes de aplicar nada</b>. Lo ya tramitado nunca se borra: si una revisión deja una línea por debajo de lo asignado, queda marcada "revisar".</p>
+          <div class="form-actions" style="justify-content:flex-start; gap:10px; flex-wrap:wrap;">
+            <label class="btn btn-primary" style="cursor:pointer;">Elegir archivo Excel del PAC
+              <input type="file" id="pacArchivo" accept=".xlsx,.xlsm,.xls" style="display:none;" />
+            </label>
+            <span class="table-note" id="pacArchivoMsg" style="margin:0;"></span>
+          </div>
+          <div id="pacPreview" hidden></div>
+        </div>
+        <div class="panel">
+          <div class="view-header" style="margin-bottom:10px;"><h3 style="margin:0;">Historial de revisiones</h3></div>
+          <div class="table-wrap"><table id="pacRevTable" class="data-table"></table></div>
+        </div>
+      </div>
+
+      <!-- ===== PAC: ventana Tramitar / Asignar ===== -->
+      <div id="pacModalOverlay" class="modal-overlay" hidden>
+        <div class="modal-box modal-wide">
+          <h3 id="pacModalTitulo">Tramitar</h3>
+          <p class="modal-sub" id="pacModalSub"></p>
+          <div id="pacModalCampos" class="field-grid"></div>
+          <div class="table-wrap" style="margin-top:12px; max-height:38vh; overflow:auto;"><table id="pacModalTable" class="data-table"></table></div>
+          <p class="form-msg" id="pacModalMsg" hidden></p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" id="pacModalCancelar">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="pacModalOk">Confirmar</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ---------- FORMULARIO (alta / edición) ---------- -->
@@ -1384,7 +1498,7 @@
   } catch(e) {}
 })();
 </script>
-<script src="config.js?v=20261118a"></script>
-<script src="app.js?v=20261118a"></script>
+<script src="config.js?v=20261127a"></script>
+<script src="app.js?v=20261127a"></script>
 </body>
 </html>

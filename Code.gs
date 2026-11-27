@@ -460,6 +460,9 @@ function setup() {
   // Crea "Historial KPIs" (snapshots fechados) si no existe.
   _setupHistorialKPIs();
 
+  // Crea las hojas del módulo PAC (Plan Anual de Compras) si no existen.
+  _setupPAC();
+
   return 'Setup OK. Usuario admin creado con clave admin123 (cambiala apenas puedas).';
 }
 
@@ -509,9 +512,9 @@ function _diagnostico() {
     const data = _sheetData();
     const info = {
       ok: true,
-      VERSION_DE_CODIGO: 'v2026-09-08-cero-recalcula-y-leyenda', // <- cambia cada vez que se publica una actualización; compará este valor con lo que Claude te diga que espera
-      accionesDisponibles: ['listar','crear','actualizar','eliminar','usuarios_listar','usuarios_crear','recalcular_todos','completar_valores_iniciales','corregir_iva','unificar_valores','certificaciones_listar','certificaciones_crear','certificaciones_actualizar','certificaciones_eliminar','proyectos_listar','proyectos_crear','proyectos_actualizar','proyectos_eliminar','compras_listar','compras_exp_crear','compras_exp_actualizar','compras_exp_eliminar','compras_pc_crear','compras_pc_actualizar','compras_pc_eliminar','compras_pos_crear','compras_pos_actualizar','compras_pos_eliminar','compras_importar','compras_tramites_listar','compras_tramite_crear','compras_tramite_actualizar','compras_tramite_eliminar','compras_tramite_clonar','compras_entrega_crear','compras_entrega_actualizar','compras_entrega_eliminar','compras_migrar_a_tramites','historial_kpis_listar','historial_kpis_guardar','estadio_actualizar'],
-      pestaniasEsperadas: [SHEET_DATA, SHEET_USERS, SHEET_CERT, SHEET_PROY, SHEET_COMPRAS_EXP, SHEET_COMPRAS_PC, SHEET_COMPRAS_POS, SHEET_COMPRAS_TRAMITES, SHEET_COMPRAS_ENTREGAS, SHEET_HISTORIAL],
+      VERSION_DE_CODIGO: 'v2026-11-27-pac-27', // <- cambia cada vez que se publica una actualización; compará este valor con lo que Claude te diga que espera
+      accionesDisponibles: ['listar','crear','actualizar','eliminar','usuarios_listar','usuarios_crear','recalcular_todos','completar_valores_iniciales','corregir_iva','unificar_valores','certificaciones_listar','certificaciones_crear','certificaciones_actualizar','certificaciones_eliminar','proyectos_listar','proyectos_crear','proyectos_actualizar','proyectos_eliminar','compras_listar','compras_exp_crear','compras_exp_actualizar','compras_exp_eliminar','compras_pc_crear','compras_pc_actualizar','compras_pc_eliminar','compras_pos_crear','compras_pos_actualizar','compras_pos_eliminar','compras_importar','compras_tramites_listar','compras_tramite_crear','compras_tramite_actualizar','compras_tramite_eliminar','compras_tramite_clonar','compras_entrega_crear','compras_entrega_actualizar','compras_entrega_eliminar','compras_migrar_a_tramites','historial_kpis_listar','historial_kpis_guardar','estadio_actualizar','pac_listar','pac_importar','pac_asignar','pac_desasignar','pac_tramitar'],
+      pestaniasEsperadas: [SHEET_DATA, SHEET_USERS, SHEET_CERT, SHEET_PROY, SHEET_COMPRAS_EXP, SHEET_COMPRAS_PC, SHEET_COMPRAS_POS, SHEET_COMPRAS_TRAMITES, SHEET_COMPRAS_ENTREGAS, SHEET_HISTORIAL, SHEET_PAC_LINEAS, SHEET_PAC_ASIG, SHEET_PAC_REV, SHEET_PAC_CAMBIOS],
       spreadsheetName: ss.getName(),
       spreadsheetUrl: ss.getUrl(),
       todasLasPestanias: ss.getSheets().map(s => s.getName()),
@@ -757,6 +760,23 @@ function _doPostInterno(e) {
       case 'historial_kpis_guardar':
         if (user.rol === 'consulta') return _json({ ok: false, error: 'Tu usuario es de solo consulta y no puede guardar snapshots.' });
         return _json({ ok: true, fecha: _guardarSnapshotHistorial(body.datos) });
+
+      // ---- PAC (Plan Anual de Compras) ----
+      case 'pac_listar':
+        return _json(Object.assign({ ok: true }, _pacListar(user, !!body.liviano)));
+      case 'pac_importar':
+        if (user.rol !== 'admin') return _json({ ok: false, error: 'Solo un administrador puede cargar una revisión del PAC.' });
+        return _json({ ok: true, resultado: _pacImportar(body.lineas, body.archivo, !!body.simular, user) });
+      case 'pac_asignar':
+        if (user.rol === 'consulta') return _json({ ok: false, error: 'Tu usuario es de solo consulta y no puede asignar matrículas del PAC.' });
+        return _json({ ok: true, resultado: _pacAsignar(body.idTramite, body.items, user) });
+      case 'pac_desasignar':
+        if (user.rol === 'consulta') return _json({ ok: false, error: 'Tu usuario es de solo consulta y no puede quitar asignaciones del PAC.' });
+        _pacDesasignar(body.id);
+        return _json({ ok: true });
+      case 'pac_tramitar':
+        if (user.rol === 'consulta') return _json({ ok: false, error: 'Tu usuario es de solo consulta y no puede iniciar trámites.' });
+        return _json({ ok: true, id: _pacTramitar(body.datos, body.items, user) });
 
       default:
         return _json({ ok: false, error: 'Acción desconocida: ' + action });
@@ -2465,7 +2485,7 @@ const COMPRAS_TRAMITES_FIRST_ROW = 2;
 // Columna técnica 20 (ver más abajo, COMPRAS_MIGRACION_COL_ORIGEN) queda RESERVADA entre los
 // campos de negocio (2-19) y este último (21) — no se reordena para no correr de lugar ninguna
 // columna ya cargada en una hoja creada con una versión anterior de este módulo.
-const COMPRAS_TRAMITES_LAST_COL = 24;
+const COMPRAS_TRAMITES_LAST_COL = 25;
 // Columna técnica 20, aparte de COMPRAS_TRAMITES_FIELDS: guarda el _id de la Posición del modelo
 // viejo que originó este trámite, SOLO en los trámites que vinieron de la migración (para no
 // migrar la misma Posición dos veces si se corre la migración de nuevo). En trámites cargados
@@ -2503,9 +2523,12 @@ const COMPRAS_TRAMITES_FIELDS = [
   // Mismo par de campos, misma clave y mismo significado que en FIELDS (Contrataciones) — ver el
   // comentario grande junto a ESTADIOS_ADMINISTRATIVOS (cerca de STAGES). No se reinventa acá.
   { key: 'estadioActual', col: 23, label: 'Estadío Administrativo Actual' },
-  { key: 'estadioDesde', col: 24, label: 'En este Estadío desde' }
+  { key: 'estadioDesde', col: 24, label: 'En este Estadío desde' },
+  // Fecha en la que se inició el expediente (cuándo se "tramitó"). La carga el usuario al iniciar la
+  // gestión (por ejemplo desde "Tramitar" en el PAC) y se refleja en "Fecha Inicio Expte." de Registros.
+  { key: 'fechaInicioExpte', col: 25, label: 'Fecha Inicio Expte.' }
 ];
-const COMPRAS_TRAMITES_DATE_KEYS = new Set(['fechaApertura', 'fechaPC', 'estadioDesde']);
+const COMPRAS_TRAMITES_DATE_KEYS = new Set(['fechaApertura', 'fechaPC', 'estadioDesde', 'fechaInicioExpte']);
 const COMPRAS_TRAMITES_ESTADOS = ['Adjudicado', 'Desierto', 'Relanzado', 'Finalizado'];
 
 // ---- Hoja "Compras - Entregas": N filas por trámite, mismo patrón que "Certificaciones" ----
@@ -2530,7 +2553,23 @@ const COMPRAS_ENTREGAS_TIPOS = ['Oficial', 'Planificada', 'Ampliación'];
 // el Pedido de Compras — constante fija, no varía por contrato. Ver _listarComprasTramitesConSaldos.
 const COMPRAS_AMPLIACION_PCT_MAXIMO = 0.30;
 
-function _sheetComprasTramites() { return _ss().getSheetByName(SHEET_COMPRAS_TRAMITES); }
+let _comprasTramitesColsOk = false;
+function _sheetComprasTramites() {
+  const sh = _ss().getSheetByName(SHEET_COMPRAS_TRAMITES);
+  // Si la hoja se creó con una versión anterior (menos columnas), se agrega la columna nueva
+  // ("Fecha Inicio Expte.") sola, una vez por ejecución, sin tocar nada de lo ya cargado.
+  if (sh && !_comprasTramitesColsOk) {
+    _comprasTramitesColsOk = true;
+    if (sh.getMaxColumns() < COMPRAS_TRAMITES_LAST_COL) sh.insertColumnsAfter(sh.getMaxColumns(), COMPRAS_TRAMITES_LAST_COL - sh.getMaxColumns());
+    COMPRAS_TRAMITES_FIELDS.forEach(f => {
+      if (f.col > 22 && sh.getRange(1, f.col).getValue() === '') {
+        sh.getRange(1, f.col).setValue(f.label);
+        sh.getRange(1, f.col).setFontWeight('bold');
+      }
+    });
+  }
+  return sh;
+}
 function _sheetComprasEntregas() { return _ss().getSheetByName(SHEET_COMPRAS_ENTREGAS); }
 
 /** Crea las 2 hojas nuevas si no existen, y les agrega columnas si ya existían de una versión
@@ -2753,6 +2792,7 @@ function _eliminarComprasTramite(id) {
     if (r !== -1) _sheetComprasEntregas().deleteRow(r);
   });
   _sheetComprasTramites().deleteRow(row);
+  try { _pacEliminarAsignacionesDeTramite(id); } catch (errPac) { Logger.log('No se pudieron limpiar las asignaciones PAC: ' + errPac.message); }
   _sincronizarRegistroTramiteCompra(id); // el trámite ya no existe: esto borra su fila espejo en Gestiones Plan
 }
 
@@ -2795,6 +2835,7 @@ function _clonarComprasTramite(id) {
   COMPRAS_TRAMITES_FIELDS.forEach(f => { datos[f.key] = original[f.key]; });
   datos.nroPC = ''; datos.contratista = ''; datos.fechaPC = ''; datos.estado = '';
   datos.montoUnitAdjudicado = ''; datos.montoSubtotalAdjudicado = '';
+  datos.fechaInicioExpte = '';
   return _crearComprasTramite(datos);
 }
 
@@ -2840,6 +2881,7 @@ function _sincronizarRegistroTramiteCompra(idTramite) {
     // Calendario de Aperturas — con el modelo plano, Compras por fin puede completarlo también (el
     // árbol viejo no tenía este dato a nivel Expediente).
     fechaPedidoCompras: t.fechaApertura || '',
+    fechaInicioExpte: t.fechaInicioExpte || '',
     presupuestoOficialRubro: t.montoSubtotalOficial || 0,
     adjudicatario: t.contratista || '',
     totalAdjudicado: t.montoSubtotalAdjudicado || 0,
@@ -3289,4 +3331,497 @@ function publicacionDiferida() {
 function autorizarPermisos() {
   ScriptApp.getProjectTriggers();
   Logger.log('Permisos otorgados. Ahora hacé Implementar > Administrar implementaciones > Nueva versión.');
+}
+
+
+// ============================================================
+// MÓDULO PAC — Plan Anual de Compras (seguimiento de trámites contra el plan)
+// ------------------------------------------------------------
+// El PAC (Excel "PAC 27 GE") se sube desde la app y se guarda agrupado por
+// ÁREA + POSPRE + MATRÍCULA (las líneas por sector del Excel se suman en una sola línea, y el
+// detalle de sectores queda como texto de referencia). Sobre esas líneas:
+//   - "PAC - Líneas":        las líneas vigentes del plan (se actualizan en cada revisión).
+//   - "PAC - Asignaciones":  vínculo trámite de Compras <-> línea del PAC (cantidad y $ asignados).
+//                            Es la ÚNICA fuente de "qué se tramitó": cada línea calcula su estado
+//                            (Pendiente / Parcial / Tramitado) sumando sus asignaciones.
+//   - "PAC - Revisiones":    una fila por carga del Excel (fecha, usuario, resumen de cambios).
+//   - "PAC - Cambios":       detalle línea por línea de lo que cambió en cada revisión (desde la 2ª).
+// Las asignaciones se pegan a la clave de la línea (Área|Pospre|Matrícula), no al N° de fila: subir
+// una revisión nueva del PAC NUNCA borra lo ya tramitado. Si una revisión baja una cantidad por
+// debajo de lo asignado, o saca del plan una línea ya tramitada, la línea queda marcada "revisar".
+// ============================================================
+const SHEET_PAC_LINEAS = 'PAC - Líneas';
+const SHEET_PAC_ASIG = 'PAC - Asignaciones';
+const SHEET_PAC_REV = 'PAC - Revisiones';
+const SHEET_PAC_CAMBIOS = 'PAC - Cambios';
+
+const PAC_FIRST_ROW = 2;
+const PAC_LINEAS_LAST_COL = 19;
+const PAC_LINEAS_FIELDS = [
+  { key: 'clave', col: 2, label: 'Clave (Área|Pospre|Matrícula)' },
+  { key: 'pospre', col: 3, label: 'Pospre' },
+  { key: 'pospreDesc', col: 4, label: 'Descripción Pospre' },
+  { key: 'area', col: 5, label: 'Área' },
+  { key: 'matricula', col: 6, label: 'Matrícula' },
+  { key: 'descripcion', col: 7, label: 'Descripción' },
+  { key: 'tipo', col: 8, label: 'Tipo Bienes/Servicios' },
+  { key: 'cantOriginal', col: 9, label: 'Cantidad original (sin ajuste)' },
+  { key: 'cantidad', col: 10, label: 'Cantidad PAC (con ajuste)' },
+  { key: 'montoSinIVA', col: 11, label: '$ PAC sin IVA' },
+  { key: 'montoConIVA', col: 12, label: '$ PAC con IVA' },
+  { key: 'ajuste', col: 13, label: 'Ajuste/Recorte' },
+  { key: 'sectores', col: 14, label: 'Sectores (referencia)' },
+  { key: 'nota', col: 15, label: 'Observaciones del PAC' },
+  { key: 'estado', col: 16, label: 'Estado en el plan (Vigente/Excluida/Eliminada)' },
+  { key: 'revAlta', col: 17, label: 'Revisión de alta' },
+  { key: 'revMod', col: 18, label: 'Última revisión con cambios' },
+  { key: 'detalleCambio', col: 19, label: 'Detalle del último cambio' }
+];
+const PAC_ASIG_LAST_COL = 7;
+const PAC_REV_LAST_COL = 13;
+const PAC_CAMBIOS_LAST_COL = 12;
+
+// Qué Áreas del PAC corresponden a qué Sucursales de la app. Se usa para:
+//  - que un usuario con "Sucursales Restringidas" vea solo las áreas del PAC que le corresponden
+//    (un Área del PAC que NO figure acá, o con lista vacía, queda oculta para esos usuarios);
+//  - sugerir la Sucursal/Destino al iniciar un trámite desde el PAC.
+// Para sumar o mover un Área, basta con editar esta lista (y publicar una nueva versión).
+const PAC_AREAS_SUCURSALES = {
+  'ADSF': ['A.D. Santa Fe', 'AD Santa Fe', 'ADSF', 'Área Distribución Santa Fe', 'Area Distribucion Santa Fe'],
+  'ADR': ['A.D. Rosario', 'AD Rosario', 'ADR', 'Área Distribución Rosario', 'Area Distribucion Rosario']
+};
+
+function _pacNorm(v) {
+  return String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function _pacNum(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+function _pacRound2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+function _pacClave(area, pospre, matricula) {
+  return [area, pospre, matricula].map(x => String(x == null ? '' : x).trim().toUpperCase()).join('|');
+}
+function _pacConLock(fn) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('El sistema está ocupado con otra operación. Esperá unos segundos y volvé a intentar.');
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+function _sheetPacLineas() { return _ss().getSheetByName(SHEET_PAC_LINEAS); }
+function _sheetPacAsig() { return _ss().getSheetByName(SHEET_PAC_ASIG); }
+function _sheetPacRev() { return _ss().getSheetByName(SHEET_PAC_REV); }
+function _sheetPacCambios() { return _ss().getSheetByName(SHEET_PAC_CAMBIOS); }
+
+/** Crea las 4 hojas del PAC si no existen (idempotente). No toca nada más. */
+function _setupPAC() {
+  const ss = _ss();
+  const crear = (nombre, headers, color, columnasTexto) => {
+    let sh = ss.getSheetByName(nombre);
+    if (!sh) {
+      sh = ss.insertSheet(nombre);
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sh.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      sh.setTabColor(color);
+      // Columnas que deben guardarse SIEMPRE como texto (Sheets si no las convertiría en número y
+      // perdería ceros a la izquierda o cambiaría el formato de la clave).
+      (columnasTexto || []).forEach(c => sh.getRange(1, c, sh.getMaxRows(), 1).setNumberFormat('@'));
+    }
+    return sh;
+  };
+  crear(SHEET_PAC_LINEAS,
+    ['ID_Linea'].concat(PAC_LINEAS_FIELDS.map(f => f.label)), '#16A34A', [2, 3, 5, 6]);
+  crear(SHEET_PAC_ASIG,
+    ['ID_Asignacion', 'ID_Tramite', 'ID_Linea', 'Cantidad asignada', '$ asignado (sin IVA)', 'Fecha', 'Usuario'], '#16A34A');
+  crear(SHEET_PAC_REV,
+    ['Revisión', 'Fecha', 'Usuario', 'Archivo', 'Líneas vigentes', 'Nuevas', 'Modificadas', 'Salieron del plan', 'Reincorporadas', 'Sin cambios', 'Excluidas', '$ vigente sin IVA', 'A revisar'], '#16A34A');
+  crear(SHEET_PAC_CAMBIOS,
+    ['Revisión', 'Fecha', 'Clave', 'Pospre', 'Área', 'Matrícula', 'Descripción', 'Tipo de cambio', 'Cantidad antes', 'Cantidad después', '$ antes', '$ después'], '#16A34A', [3, 4, 5, 6]);
+}
+let _pacHojasOk = false;
+function _pacAsegurarHojas() {
+  if (_pacHojasOk) return;
+  _pacHojasOk = true;
+  if (!_sheetPacLineas() || !_sheetPacAsig() || !_sheetPacRev() || !_sheetPacCambios()) _setupPAC();
+}
+
+// ---- Lectura ----
+function _pacFechaStr(v, conHora) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), conHora ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd');
+  return v == null ? '' : String(v);
+}
+function _pacLineaRowToRecord(row, rowIndex) {
+  const rec = { _row: rowIndex, _id: row[0] };
+  PAC_LINEAS_FIELDS.forEach(f => {
+    let v = row[f.col - 1];
+    if (['cantOriginal', 'cantidad', 'montoSinIVA', 'montoConIVA'].indexOf(f.key) !== -1) v = _pacNum(v);
+    else if (['revAlta', 'revMod'].indexOf(f.key) !== -1) v = v === '' ? 0 : _pacNum(v);
+    else v = v == null ? '' : String(v);
+    rec[f.key] = v;
+  });
+  return rec;
+}
+function _pacLeerLineas() {
+  const sh = _sheetPacLineas();
+  const lastRow = sh.getLastRow();
+  if (lastRow < PAC_FIRST_ROW) return [];
+  const n = lastRow - PAC_FIRST_ROW + 1;
+  const values = sh.getRange(PAC_FIRST_ROW, 1, n, PAC_LINEAS_LAST_COL).getValues();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    if (!values[i][0]) continue;
+    out.push(_pacLineaRowToRecord(values[i], PAC_FIRST_ROW + i));
+  }
+  return out;
+}
+function _pacAsigRowToRecord(row, rowIndex) {
+  return {
+    _row: rowIndex, _id: row[0], idTramite: row[1], idLinea: row[2],
+    cantidad: _pacNum(row[3]), monto: _pacNum(row[4]),
+    fecha: _pacFechaStr(row[5], true), usuario: row[6] == null ? '' : String(row[6])
+  };
+}
+function _pacLeerAsignaciones() {
+  const sh = _sheetPacAsig();
+  const lastRow = sh.getLastRow();
+  if (lastRow < PAC_FIRST_ROW) return [];
+  const n = lastRow - PAC_FIRST_ROW + 1;
+  const values = sh.getRange(PAC_FIRST_ROW, 1, n, PAC_ASIG_LAST_COL).getValues();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    if (!values[i][0]) continue;
+    out.push(_pacAsigRowToRecord(values[i], PAC_FIRST_ROW + i));
+  }
+  return out;
+}
+function _pacLeerRevisiones() {
+  const sh = _sheetPacRev();
+  const lastRow = sh.getLastRow();
+  if (lastRow < PAC_FIRST_ROW) return [];
+  const n = lastRow - PAC_FIRST_ROW + 1;
+  const values = sh.getRange(PAC_FIRST_ROW, 1, n, PAC_REV_LAST_COL).getValues();
+  return values.filter(r => r[0] !== '' && r[0] !== null).map(r => ({
+    revision: _pacNum(r[0]), fecha: _pacFechaStr(r[1], true), usuario: String(r[2] || ''), archivo: String(r[3] || ''),
+    vigentes: _pacNum(r[4]), nuevas: _pacNum(r[5]), modificadas: _pacNum(r[6]), salieron: _pacNum(r[7]),
+    reincorporadas: _pacNum(r[8]), sinCambios: _pacNum(r[9]), excluidas: _pacNum(r[10]),
+    montoVigente: _pacNum(r[11]), aRevisar: _pacNum(r[12])
+  })).sort((a, b) => b.revision - a.revision);
+}
+
+/** Áreas del PAC que un usuario puede ver: todas, salvo que tenga Sucursales Restringidas. */
+function _pacAreasPermitidas(user) {
+  if (!user || !user.sucursalesRestringidas || !user.sucursalesRestringidas.length) return null; // null = todas
+  const restr = new Set(user.sucursalesRestringidas.map(_pacNorm));
+  const out = new Set();
+  Object.keys(PAC_AREAS_SUCURSALES).forEach(area => {
+    if (PAC_AREAS_SUCURSALES[area].some(s => restr.has(_pacNorm(s)))) out.add(area.toUpperCase());
+  });
+  return out;
+}
+
+function _pacListar(user, liviano) {
+  _pacAsegurarHojas();
+  const revisiones = _pacLeerRevisiones();
+  const out = { revision: revisiones[0] || null, areas: PAC_AREAS_SUCURSALES };
+  let lineas = null;
+  const permitidas = _pacAreasPermitidas(user);
+  let asig = _pacLeerAsignaciones();
+  if (permitidas) {
+    lineas = _pacLeerLineas().filter(l => permitidas.has(String(l.area).toUpperCase()));
+    const ids = new Set(lineas.map(l => l._id));
+    asig = asig.filter(a => ids.has(a.idLinea));
+  }
+  out.asignaciones = asig;
+  if (!liviano) {
+    if (!lineas) lineas = _pacLeerLineas();
+    out.lineas = lineas.map(l => { const c = Object.assign({}, l); delete c.clave; delete c.montoConIVA; delete c._row; return c; });
+    out.revisiones = revisiones.slice(0, 30);
+  }
+  return out;
+}
+
+// ---- Importación de una revisión del PAC ----
+function _pacNormalizarEntrantes(lineas) {
+  if (!Array.isArray(lineas)) throw new Error('Formato de importación inválido.');
+  const mapa = {};
+  const orden = [];
+  lineas.forEach(l => {
+    const area = String(l.area == null ? '' : l.area).trim();
+    const pospre = String(l.pospre == null ? '' : l.pospre).trim();
+    const matricula = String(l.matricula == null ? '' : l.matricula).trim();
+    if (!matricula && !pospre) return;
+    const clave = _pacClave(area, pospre, matricula);
+    let e = mapa[clave];
+    if (!e) {
+      e = mapa[clave] = {
+        clave: clave, pospre: pospre, pospreDesc: String(l.pospreDesc || ''), area: area, matricula: matricula,
+        descripcion: String(l.descripcion || ''), tipo: String(l.tipo == null ? '' : l.tipo),
+        cantOriginal: 0, cantidad: 0, montoSinIVA: 0, montoConIVA: 0,
+        ajuste: String(l.ajuste || ''), sectores: String(l.sectores || ''), nota: String(l.nota || '')
+      };
+      orden.push(clave);
+    } else {
+      // Duplicado dentro del mismo archivo (el frontend ya agrupa, esto es solo por seguridad).
+      if (l.sectores) e.sectores = e.sectores ? e.sectores + '; ' + l.sectores : String(l.sectores);
+      if (l.nota && e.nota.indexOf(l.nota) === -1) e.nota = e.nota ? e.nota + ' | ' + l.nota : String(l.nota);
+    }
+    e.cantOriginal += _pacNum(l.cantOriginal);
+    e.cantidad += _pacNum(l.cantidad);
+    e.montoSinIVA += _pacNum(l.montoSinIVA);
+    e.montoConIVA += _pacNum(l.montoConIVA);
+  });
+  return orden.map(k => {
+    const e = mapa[k];
+    e.cantOriginal = _pacRound2(e.cantOriginal); e.cantidad = _pacRound2(e.cantidad);
+    e.montoSinIVA = _pacRound2(e.montoSinIVA); e.montoConIVA = _pacRound2(e.montoConIVA);
+    e.estado = (e.montoSinIVA <= 0.005 && e.cantidad <= 0.0001) ? 'Excluida' : 'Vigente';
+    if (e.nota.length > 1500) e.nota = e.nota.substring(0, 1500) + '…';
+    if (e.sectores.length > 1500) e.sectores = e.sectores.substring(0, 1500) + '…';
+    return e;
+  });
+}
+
+function _pacTextoCambio(old, nuevo) {
+  const partes = [];
+  if (Math.abs(old.cantidad - nuevo.cantidad) > 0.0001) partes.push('Cant. ' + old.cantidad + ' → ' + nuevo.cantidad);
+  if (Math.abs(old.montoSinIVA - nuevo.montoSinIVA) > 0.5) partes.push('$ ' + Math.round(old.montoSinIVA) + ' → ' + Math.round(nuevo.montoSinIVA));
+  if (old.estado !== nuevo.estado) partes.push(old.estado + ' → ' + nuevo.estado);
+  return partes.join('; ');
+}
+
+/** Compara el PAC entrante contra lo vigente. No escribe nada. */
+function _pacCalcularDiff(entrantes, existentes, asigPorLinea) {
+  const porClave = {};
+  existentes.forEach(l => { porClave[l.clave] = l; });
+  const claves = new Set();
+  const diff = { nuevas: [], modificadas: [], salieron: [], reincorporadas: [], sinCambios: [], conflictos: [] };
+
+  entrantes.forEach(n => {
+    claves.add(n.clave);
+    const old = porClave[n.clave];
+    if (!old) { diff.nuevas.push({ nuevo: n }); return; }
+    if (old.estado === 'Eliminada') { diff.reincorporadas.push({ old: old, nuevo: n }); return; }
+    const cambioCant = Math.abs(old.cantidad - n.cantidad) > 0.0001;
+    const cambioMonto = Math.abs(old.montoSinIVA - n.montoSinIVA) > 0.5;
+    const cambioEstado = old.estado !== n.estado;
+    if (cambioCant || cambioMonto || cambioEstado) {
+      diff.modificadas.push({ old: old, nuevo: n });
+      const asignada = asigPorLinea[old._id] || 0;
+      if (asignada > n.cantidad + 0.0001) {
+        diff.conflictos.push({ old: old, nuevo: n, motivo: 'Lo asignado a trámites (' + _pacRound2(asignada) + ') supera la nueva cantidad del plan (' + n.cantidad + ').' });
+      } else if (n.estado === 'Excluida' && asignada > 0) {
+        diff.conflictos.push({ old: old, nuevo: n, motivo: 'La línea queda excluida del plan pero ya tiene ' + _pacRound2(asignada) + ' asignado a trámites.' });
+      }
+    } else {
+      diff.sinCambios.push({ old: old, nuevo: n });
+    }
+  });
+  existentes.forEach(l => {
+    if (claves.has(l.clave) || l.estado === 'Eliminada') return;
+    diff.salieron.push({ old: l });
+    if ((asigPorLinea[l._id] || 0) > 0) diff.conflictos.push({ old: l, nuevo: null, motivo: 'La línea salió del plan pero ya tiene ' + _pacRound2(asigPorLinea[l._id]) + ' asignado a trámites.' });
+  });
+  return diff;
+}
+
+function _pacResumenDiff(diff, totalEntrantes, montoVigente, excluidas) {
+  return {
+    totalLineas: totalEntrantes, nuevas: diff.nuevas.length, modificadas: diff.modificadas.length,
+    salieron: diff.salieron.length, reincorporadas: diff.reincorporadas.length,
+    sinCambios: diff.sinCambios.length, excluidas: excluidas, conflictos: diff.conflictos.length,
+    montoVigente: montoVigente
+  };
+}
+function _pacLineaCorta(l) { return { pospre: l.pospre, area: l.area, matricula: l.matricula, descripcion: l.descripcion }; }
+
+/**
+ * Importa una revisión del PAC. Con simular=true solo devuelve qué cambiaría (no escribe nada);
+ * con simular=false la aplica. Las líneas llegan ya agrupadas por Área|Pospre|Matrícula desde el
+ * navegador (que es quien lee el Excel).
+ */
+function _pacImportar(lineas, archivo, simular, user) {
+  _pacAsegurarHojas();
+  const entrantes = _pacNormalizarEntrantes(lineas);
+  if (!entrantes.length) throw new Error('El archivo no tiene líneas válidas para importar.');
+
+  const run = () => {
+    const existentes = _pacLeerLineas();
+    const asigPorLinea = {};
+    _pacLeerAsignaciones().forEach(a => { asigPorLinea[a.idLinea] = (asigPorLinea[a.idLinea] || 0) + a.cantidad; });
+    const diff = _pacCalcularDiff(entrantes, existentes, asigPorLinea);
+    const excluidas = entrantes.filter(n => n.estado === 'Excluida').length;
+    const montoVigente = _pacRound2(entrantes.filter(n => n.estado === 'Vigente').reduce((a, n) => a + n.montoSinIVA, 0));
+    const resumen = _pacResumenDiff(diff, entrantes.length, montoVigente, excluidas);
+    const primera = existentes.length === 0;
+
+    if (simular) {
+      const MAX = 60;
+      return {
+        simulacion: true, primeraCarga: primera, resumen: resumen,
+        detalle: {
+          nuevas: primera ? [] : diff.nuevas.slice(0, MAX).map(x => _pacLineaCorta(x.nuevo)),
+          modificadas: diff.modificadas.slice(0, MAX).map(x => Object.assign(_pacLineaCorta(x.nuevo), { cambio: _pacTextoCambio(x.old, x.nuevo) })),
+          salieron: diff.salieron.slice(0, MAX).map(x => _pacLineaCorta(x.old)),
+          reincorporadas: diff.reincorporadas.slice(0, MAX).map(x => _pacLineaCorta(x.nuevo)),
+          conflictos: diff.conflictos.slice(0, MAX).map(x => Object.assign(_pacLineaCorta(x.old), { motivo: x.motivo }))
+        }
+      };
+    }
+
+    // ---- Aplicar ----
+    const revisiones = _pacLeerRevisiones();
+    const rev = (revisiones[0] ? revisiones[0].revision : 0) + 1;
+    const ahora = new Date();
+    const mapaEntrantes = {};
+    entrantes.forEach(n => { mapaEntrantes[n.clave] = n; });
+
+    const filaDe = (id, n, revAlta, revMod, detalle) => {
+      const row = new Array(PAC_LINEAS_LAST_COL).fill('');
+      row[0] = id;
+      PAC_LINEAS_FIELDS.forEach(f => { row[f.col - 1] = n[f.key] === undefined ? '' : n[f.key]; });
+      row[16] = revAlta; row[17] = revMod; row[18] = detalle;
+      return row;
+    };
+    const cambios = [];
+    const cambio = (tipo, l, antes, despues) => cambios.push([
+      rev, ahora, l.clave, l.pospre, l.area, l.matricula, l.descripcion, tipo,
+      antes ? antes.cantidad : '', despues ? despues.cantidad : '', antes ? antes.montoSinIVA : '', despues ? despues.montoSinIVA : ''
+    ]);
+
+    const filas = [];
+    existentes.forEach(old => {
+      const n = mapaEntrantes[old.clave];
+      if (n) {
+        const reinc = old.estado === 'Eliminada';
+        const cambioReal = reinc || Math.abs(old.cantidad - n.cantidad) > 0.0001 || Math.abs(old.montoSinIVA - n.montoSinIVA) > 0.5 || old.estado !== n.estado;
+        if (cambioReal) {
+          const detalle = 'Rev. ' + rev + ': ' + (reinc ? 'volvió al plan; ' : '') + _pacTextoCambio(old, n);
+          filas.push(filaDe(old._id, n, old.revAlta, rev, detalle));
+          if (!primera) cambio(reinc ? 'Reincorporada' : 'Modificada', n, old, n);
+        } else {
+          // Sin cambios de cantidad/monto: se refrescan solo los textos de referencia (descripción, sectores, notas).
+          filas.push(filaDe(old._id, n, old.revAlta, old.revMod, old.detalleCambio));
+        }
+      } else if (old.estado !== 'Eliminada') {
+        const eliminada = Object.assign({}, old, { estado: 'Eliminada' });
+        filas.push(filaDe(old._id, eliminada, old.revAlta, rev, 'Rev. ' + rev + ': salió del plan (antes: cant. ' + old.cantidad + ', $ ' + Math.round(old.montoSinIVA) + ')'));
+        cambio('Salió del plan', old, old, null);
+      } else {
+        filas.push(filaDe(old._id, old, old.revAlta, old.revMod, old.detalleCambio));
+      }
+    });
+    diff.nuevas.forEach(x => {
+      filas.push(filaDe(Utilities.getUuid(), x.nuevo, rev, rev, primera ? '' : 'Rev. ' + rev + ': línea nueva en el plan'));
+      if (!primera) cambio('Nueva', x.nuevo, null, x.nuevo);
+    });
+
+    const sh = _sheetPacLineas();
+    if (sh.getMaxRows() < PAC_FIRST_ROW + filas.length) sh.insertRowsAfter(sh.getMaxRows(), PAC_FIRST_ROW + filas.length - sh.getMaxRows());
+    sh.getRange(PAC_FIRST_ROW, 1, filas.length, PAC_LINEAS_LAST_COL).setValues(filas);
+
+    if (cambios.length) {
+      const shC = _sheetPacCambios();
+      const iniC = Math.max(shC.getLastRow() + 1, PAC_FIRST_ROW);
+      if (shC.getMaxRows() < iniC + cambios.length) shC.insertRowsAfter(shC.getMaxRows(), iniC + cambios.length - shC.getMaxRows());
+      shC.getRange(iniC, 1, cambios.length, PAC_CAMBIOS_LAST_COL).setValues(cambios);
+    }
+
+    const shR = _sheetPacRev();
+    shR.getRange(Math.max(shR.getLastRow() + 1, PAC_FIRST_ROW), 1, 1, PAC_REV_LAST_COL).setValues([[
+      rev, ahora, user ? user.usuario : '', archivo || '', entrantes.filter(n => n.estado === 'Vigente').length,
+      diff.nuevas.length, diff.modificadas.length, diff.salieron.length, diff.reincorporadas.length,
+      diff.sinCambios.length, excluidas, montoVigente, diff.conflictos.length
+    ]]);
+    return { simulacion: false, primeraCarga: primera, revision: rev, resumen: resumen };
+  };
+  return simular ? run() : _pacConLock(run);
+}
+
+// ---- Asignaciones ----
+function _pacEliminarAsignacionesDeTramite(idTramite) {
+  const sh = _sheetPacAsig();
+  if (!sh) return;
+  const lastRow = sh.getLastRow();
+  if (lastRow < PAC_FIRST_ROW) return;
+  const n = lastRow - PAC_FIRST_ROW + 1;
+  const ids = sh.getRange(PAC_FIRST_ROW, 2, n, 1).getValues();
+  for (let i = n - 1; i >= 0; i--) {
+    if (ids[i][0] === idTramite) sh.deleteRow(PAC_FIRST_ROW + i);
+  }
+}
+
+function _pacDesasignar(id) {
+  _pacAsegurarHojas();
+  _pacConLock(() => {
+    const sh = _sheetPacAsig();
+    const lastRow = sh.getLastRow();
+    if (lastRow < PAC_FIRST_ROW) throw new Error('Asignación no encontrada.');
+    const n = lastRow - PAC_FIRST_ROW + 1;
+    const ids = sh.getRange(PAC_FIRST_ROW, 1, n, 1).getValues();
+    for (let i = 0; i < n; i++) {
+      if (ids[i][0] === id) { sh.deleteRow(PAC_FIRST_ROW + i); return; }
+    }
+    throw new Error('Asignación no encontrada.');
+  });
+}
+
+/**
+ * Asigna (o actualiza) matrículas del PAC a un trámite de Compras. items = [{ idLinea, cantidad }].
+ * Si ya existía una asignación de esa línea a ese trámite, se REEMPLAZA su cantidad; con cantidad 0
+ * la asignación se quita. El $ asignado se calcula con el precio unitario del PAC (monto / cantidad).
+ */
+function _pacAsignar(idTramite, items, user) {
+  _pacAsegurarHojas();
+  if (!idTramite) throw new Error('Falta indicar el trámite.');
+  if (_findComprasTramiteRowById(idTramite) === -1) throw new Error('Trámite de Compras no encontrado.');
+  if (!Array.isArray(items)) throw new Error('Formato inválido.');
+  return _pacConLock(() => {
+    const lineasPorId = {};
+    _pacLeerLineas().forEach(l => { lineasPorId[l._id] = l; });
+    const sh = _sheetPacAsig();
+    const existentes = _pacLeerAsignaciones().filter(a => a.idTramite === idTramite);
+    const porLinea = {};
+    existentes.forEach(a => { porLinea[a.idLinea] = a; });
+
+    const nuevas = [];
+    const aBorrar = [];
+    let creadas = 0, actualizadas = 0, quitadas = 0, omitidas = 0;
+    const ahora = new Date();
+    items.forEach(it => {
+      const linea = lineasPorId[it.idLinea];
+      if (!linea) { omitidas++; return; }
+      const cant = _pacNum(it.cantidad);
+      const pu = linea.cantidad > 0 ? linea.montoSinIVA / linea.cantidad : 0;
+      const monto = _pacRound2(cant * pu);
+      const previa = porLinea[it.idLinea];
+      if (cant <= 0) {
+        if (previa) { aBorrar.push(previa._row); quitadas++; }
+        return;
+      }
+      if (previa) {
+        sh.getRange(previa._row, 4, 1, 4).setValues([[cant, monto, ahora, user ? user.usuario : '']]);
+        actualizadas++;
+      } else {
+        nuevas.push([Utilities.getUuid(), idTramite, it.idLinea, cant, monto, ahora, user ? user.usuario : '']);
+        creadas++;
+      }
+    });
+    if (nuevas.length) {
+      const ini = Math.max(sh.getLastRow() + 1, PAC_FIRST_ROW);
+      if (sh.getMaxRows() < ini + nuevas.length) sh.insertRowsAfter(sh.getMaxRows(), ini + nuevas.length - sh.getMaxRows());
+      sh.getRange(ini, 1, nuevas.length, PAC_ASIG_LAST_COL).setValues(nuevas);
+    }
+    aBorrar.sort((a, b) => b - a).forEach(r => sh.deleteRow(r));
+    return { creadas: creadas, actualizadas: actualizadas, quitadas: quitadas, omitidas: omitidas };
+  });
+}
+
+/** Crea un trámite global de Compras (expediente) y le asigna las matrículas elegidas del PAC. */
+function _pacTramitar(datos, items, user) {
+  _pacAsegurarHojas();
+  if (!datos || !String(datos.expediente || '').trim()) throw new Error('Falta el N° de expediente.');
+  if (!Array.isArray(items) || !items.length) throw new Error('No hay matrículas para tramitar.');
+  const id = _crearComprasTramite(datos);
+  _pacAsignar(id, items, user);
+  return id;
 }

@@ -4878,7 +4878,7 @@ let comprasTramitesMeta = { estados: [], tiposEntrega: [], pctMaximoAmpliacion: 
 let comprasTramiteFormEditId = null; // id del trámite en edición, o null si es alta nueva
 let comprasTramiteActiveStage = 'inicio';
 let comprasEntregaFormEditId = null; // id de la entrega en edición, o null si es alta nueva
-let comprasTramitesFiltros = { pospre: [], anio: [], expediente: '', nroPC: [], sucursal: [], estado: [] };
+let comprasTramitesFiltros = { pospre: [], anio: [], expediente: '', nroPC: [], sucursal: [], estado: [], pac: '' };
 let comprasTramitesSort = { key: null, dir: 1 };
 
 // ---- Click en una fila de Registros o del detalle "Todos" del Dashboard: si esa fila es en
@@ -4920,6 +4920,8 @@ async function cargarComprasTramites() {
     const esAdmin = state.session && state.session.rol === 'admin';
     document.getElementById('comprasTramitesToolbar').hidden = !puedeEditar;
     document.getElementById('comprasMigrarBtn').hidden = !esAdmin;
+    document.getElementById('comprasTabCarga').hidden = !esAdmin;
+    pacRefrescarTrasCargaTramites(); // sin await a propósito: el PAC se completa aparte y no demora esta carga
   } catch (err) {
     showAppError('No se pudieron cargar los trámites de Compras: ' + err.message);
   }
@@ -4973,6 +4975,9 @@ document.querySelector('#comprasTramitesFiltersBar [data-tfilter="expediente"]')
 document.getElementById('comprasTramitesClearFilters').addEventListener('click', () => {
   COMPRAS_TRAMITES_FILTER_KEYS.forEach(k => { comprasTramitesFiltros[k] = []; });
   comprasTramitesFiltros.expediente = '';
+  comprasTramitesFiltros.pac = '';
+  const pacSelEl = document.querySelector('#comprasTramitesFiltersBar [data-tfilter="pac"]');
+  if (pacSelEl) pacSelEl.value = '';
   const expEl = document.querySelector('#comprasTramitesFiltersBar [data-tfilter="expediente"]');
   if (expEl) expEl.value = '';
   populateComprasTramitesFilterOptions();
@@ -4989,6 +4994,7 @@ function actualizarCabeceraImpresionComprasTramites() {
     if (f[k] && f[k].length) items.push([et, f[k].join(', ')]);
   });
   if ((f.expediente || '').trim()) items.push(['Expediente', '"' + f.expediente.trim() + '"']);
+  if (f.pac) items.push(['Matrículas PAC', f.pac === 'con' ? 'Con matrículas asignadas' : 'Sin matrículas (fuera de PAC)']);
   box.innerHTML = items.length
     ? items.map(([k, v]) => '<span class="print-filtro"><b>' + escapeHtml(k) + ':</b> ' + escapeHtml(v) + '</span>').join('')
     : '<span class="print-filtro print-filtro-ninguno">Sin filtros: se muestran todos los trámites.</span>';
@@ -4998,9 +5004,15 @@ document.getElementById('comprasTramitesPrintBtn').addEventListener('click', () 
     (state.session && state.session.nombre ? ' · ' + state.session.nombre : '');
   window.print();
 });
+document.querySelector('#comprasTramitesFiltersBar [data-tfilter="pac"]').addEventListener('change', (e) => {
+  comprasTramitesFiltros.pac = e.target.value;
+  renderComprasTramitesTable();
+});
 function comprasTramitesFiltrados() {
   const texto = (comprasTramitesFiltros.expediente || '').trim().toLowerCase();
   return comprasTramitesCache.filter(t => {
+    if (comprasTramitesFiltros.pac === 'con' && !(t.pacLineas > 0)) return false;
+    if (comprasTramitesFiltros.pac === 'sin' && (t.pacLineas > 0)) return false;
     if (comprasTramitesFiltros.pospre.length && !comprasTramitesFiltros.pospre.includes(String(t.pospre || '').trim())) return false;
     if (comprasTramitesFiltros.anio.length && !comprasTramitesFiltros.anio.includes(String(t.anio || ''))) return false;
     if (texto && !String(t.expediente || '').toLowerCase().includes(texto)) return false;
@@ -5015,6 +5027,7 @@ function comprasTramitesFiltrados() {
 const COMPRAS_TRAMITES_TABLE_COLS = [
   { key: 'pospre', label: 'Pospre' },
   { key: 'expediente', label: 'Expediente' },
+  { key: 'fechaInicioExpte', label: 'Inicio Expte.' },
   { key: 'anio', label: 'Año' },
   { key: 'extracto', label: 'Extracto' },
   { key: 'sucursal', label: 'Sucursal' },
@@ -5025,7 +5038,8 @@ const COMPRAS_TRAMITES_TABLE_COLS = [
   { key: 'nroPC', label: 'N° PC' },
   { key: 'montoSubtotalAdjudicado', label: '$ Subtotal Adjudicado' },
   { key: 'estado', label: 'Estado' },
-  { key: 'cantidadPlanificadaDisponible', label: 'Planif. Disponible' }
+  { key: 'cantidadPlanificadaDisponible', label: 'Planif. Disponible' },
+  { key: 'pacLineas', label: 'Matrículas PAC' }
 ];
 const COMPRAS_TRAMITES_MONEY_KEYS = new Set(['montoSubtotalOficial', 'montoSubtotalAdjudicado']);
 const COMPRAS_TRAMITES_NUMBER_KEYS = new Set(['anio', 'cantidad', 'cantidadPlanificadaDisponible']);
@@ -5063,6 +5077,12 @@ function renderComprasTramitesTable() {
   const tbody = '<tbody>' + filas.map(t => {
     const tds = COMPRAS_TRAMITES_TABLE_COLS.map(col => {
       const val = t[col.key];
+      if (col.key === 'fechaInicioExpte') return `<td class="mono">${escapeHtml(formatFechaCorta(val))}</td>`;
+      if (col.key === 'pacLineas') {
+        return val > 0
+          ? `<td class="mono"><span class="pac-pill pac-pill-tram" title="Matrículas del PAC asignadas a este trámite">${val}</span></td>`
+          : `<td class="mono" style="color:var(--text-soft)" title="Sin matrículas del PAC asignadas">—</td>`;
+      }
       if (COMPRAS_TRAMITES_MONEY_KEYS.has(col.key)) return `<td class="mono">${formatMoney(val)}</td>`;
       if (COMPRAS_TRAMITES_NUMBER_KEYS.has(col.key)) return `<td class="mono">${val || val === 0 ? val : ''}</td>`;
       if (col.key === 'extracto') return `<td class="td-truncate" title="${escapeHtml(String(val || ''))}">${escapeHtml(String(val || ''))}</td>`;
@@ -5109,6 +5129,7 @@ const COMPRAS_TRAMITE_INICIO_FIELDS = [
   { key: 'cantidad', label: 'Cantidad', type: 'number' },
   { key: 'montoUnitOficial', label: '$ Unitario Oficial (sin IVA)', type: 'number' },
   { key: 'montoSubtotalOficial', label: '$ Subtotal Oficial (sin IVA)', type: 'number', derived: true },
+  { key: 'fechaInicioExpte', label: 'Fecha Inicio Expte.', type: 'date' },
   { key: 'fechaApertura', label: 'Fecha de Apertura', type: 'date' },
   { key: 'cantidadPlanificada', label: 'Cantidad Planificada (tope)', type: 'number' },
   { key: 'plazoEntrega', label: 'Plazo de Entrega (días desde la Fecha de PC)', type: 'number' }
@@ -5328,8 +5349,10 @@ function abrirComprasTramiteForm(id) {
     renderComprasEntregasTable(record);
     buildComprasEntregaForm();
     renderComprasAmpliacionResumen(record);
+    renderComprasPacSection(record);
   } else {
     entregasSection.hidden = true;
+    document.getElementById('comprasPacSection').hidden = true;
   }
   document.getElementById('comprasTramiteFormPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -5337,6 +5360,7 @@ function cerrarComprasTramiteForm() {
   comprasTramiteFormEditId = null;
   comprasEntregaFormEditId = null;
   document.getElementById('comprasTramiteFormPanel').hidden = true;
+  document.getElementById('comprasPacSection').hidden = true;
 }
 document.getElementById('comprasTramiteFormCancelarBtn').addEventListener('click', cerrarComprasTramiteForm);
 
@@ -5582,8 +5606,8 @@ document.getElementById('comprasTramitesExportBtn').addEventListener('click', ()
     'Pospre': t.pospre, 'Expediente': t.expediente, 'Año': t.anio, 'Extracto': t.extracto,
     'Sucursal / Destino': t.sucursal, 'Matrícula N°': t.matricula, 'Detalle de Matrícula': t.detalleMat,
     'Cantidad': t.cantidad, '$ Unitario Oficial': t.montoUnitOficial, '$ Subtotal Oficial': t.montoSubtotalOficial,
-    'Fecha de Apertura': t.fechaApertura, 'Cantidad Planificada (tope)': t.cantidadPlanificada,
-    'Plazo de Entrega (días desde Fecha de PC)': t.plazoEntrega,
+    'Fecha Inicio Expte.': t.fechaInicioExpte, 'Fecha de Apertura': t.fechaApertura, 'Cantidad Planificada (tope)': t.cantidadPlanificada,
+    'Plazo de Entrega (días desde Fecha de PC)': t.plazoEntrega, 'Matrículas PAC asignadas': t.pacLineas || 0,
     'Cantidad Planificada Gestionada': t.cantidadPlanificadaGestionada, 'Cantidad Planificada Disponible': t.cantidadPlanificadaDisponible,
     '$ Unitario Adjudicado': t.montoUnitAdjudicado, '$ Subtotal Adjudicado': t.montoSubtotalAdjudicado,
     'Contratista / Oferente': t.contratista, 'N° de Pedido de Compras': t.nroPC, 'Fecha de PC': t.fechaPC,
@@ -5614,6 +5638,7 @@ document.getElementById('comprasTramitesImportFile').addEventListener('change', 
       'Pospre': 'pospre', 'Expediente': 'expediente', 'Año': 'anio', 'Extracto': 'extracto',
       'Sucursal / Destino': 'sucursal', 'Matrícula N°': 'matricula', 'Detalle de Matrícula': 'detalleMat',
       'Cantidad': 'cantidad', '$ Unitario Oficial': 'montoUnitOficial', '$ Subtotal Oficial': 'montoSubtotalOficial',
+      'Fecha Inicio Expte.': 'fechaInicioExpte',
       'Fecha de Apertura': 'fechaApertura', 'Cantidad Planificada (tope)': 'cantidadPlanificada',
       'Plazo de Entrega (días desde Fecha de PC)': 'plazoEntrega',
       '$ Unitario Adjudicado': 'montoUnitAdjudicado', '$ Subtotal Adjudicado': 'montoSubtotalAdjudicado',
@@ -6135,3 +6160,866 @@ document.getElementById('estadioPrintBtn').addEventListener('click', () => {
   document.getElementById('estadioPrintDate').textContent = new Date().toLocaleString('es-AR');
   window.print();
 });
+
+
+// ============================================================
+// PAC — Plan Anual de Compras (solapas dentro del módulo Compras)
+// ------------------------------------------------------------
+// El PAC (Excel) se sube desde "Cargar PAC" (solo admin): el navegador lo lee, agrupa las líneas por
+// Área + Pospre + Matrícula y le pide al backend la comparación contra el PAC vigente ANTES de
+// aplicar nada. Cada línea del PAC calcula su estado (Pendiente / Parcial / Tramitado) a partir de
+// las "asignaciones" que la vinculan a trámites de Compras: no hay un estado que cargar a mano.
+// Los trámites de Compras siguen siendo globales (un expediente, un extracto): las matrículas del
+// PAC se les asignan, o se crean desde el PAC con "Tramitar".
+// ============================================================
+const PAC_ANIO_ACTUAL = (typeof PAC_ANIO !== 'undefined') ? PAC_ANIO : 2027;
+const PAC_PAGE_SIZE = 200;
+const PAC_SEG_ORDEN = ['Pendiente', 'Parcial', 'Tramitado', 'Excluida', 'Eliminada'];
+const PAC_SEG_CLASE = { Pendiente: 'pac-pill-pend', Parcial: 'pac-pill-parc', Tramitado: 'pac-pill-tram', Excluida: 'pac-pill-excl', Eliminada: 'pac-pill-elim' };
+const PAC_SEG_AYUDA = {
+  Pendiente: 'Todavía no hay matrículas de esta línea asignadas a ningún trámite.',
+  Parcial: 'Hay trámites asignados, pero no cubren toda la cantidad del plan.',
+  Tramitado: 'La cantidad del plan está cubierta por trámites.',
+  Excluida: 'Esta línea quedó fuera del plan (Ajuste/Recorte): no cuenta en el total ni en lo pendiente.',
+  Eliminada: 'Esta línea ya no figura en la última revisión del PAC.'
+};
+
+let pacCache = { cargado: false, revision: null, revisiones: [], lineas: [], asignaciones: [], areas: {}, error: '' };
+let pacIdx = { lineas: new Map(), asigPorLinea: new Map(), asigPorTramite: new Map() };
+let comprasTabActiva = 'tramites';
+let pacSubtab = 'resumen';
+let pacFiltros = { area: [], pospre: [], estado: ['Pendiente', 'Parcial', 'Tramitado'], texto: '', revisar: false, soloSel: false };
+let pacSort = { key: 'pospre', dir: 1 };
+let pacResSort = { key: 'plan', dir: -1 };
+let pacSel = new Set();
+let pacLimite = PAC_PAGE_SIZE;
+let pacModoAsignarTramite = null; // id del trámite al que se están eligiendo matrículas (viene de su ficha)
+let pacModal = null;
+let pacImportPendiente = null;
+
+function pacPuedeEditar() { return !!(state.session && state.session.rol !== 'consulta'); }
+function pacEsAdmin() { return !!(state.session && state.session.rol === 'admin'); }
+function pacTramiteActivo(t) { return !['Desierto', 'Relanzado'].includes(String(t.estado || '').trim()); }
+function pacMontoTramite(t) { return num(t.montoSubtotalOficial) || num(t.montoSubtotalAdjudicado); }
+function pacCodigoPospre(v) {
+  const s = String(v == null ? '' : v).trim();
+  const m = s.match(/G\d{9}/i);
+  return m ? m[0].toUpperCase() : s.toUpperCase();
+}
+function pacNormTexto(v) {
+  return String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function pacFmtNum(n) { return (Math.round(num(n) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 }); }
+function pacMsg(texto, tipo) {
+  const el = document.getElementById('pacMsg');
+  if (!texto) { el.hidden = true; return; }
+  el.textContent = texto;
+  el.className = 'form-msg ' + (tipo === 'err' ? 'err' : 'ok');
+  el.hidden = false;
+}
+
+// ---------------- Carga de datos ----------------
+async function cargarPac(completo) {
+  const data = await apiCall('pac_listar', { liviano: !completo });
+  pacCache.asignaciones = data.asignaciones || [];
+  pacCache.revision = data.revision || null;
+  pacCache.areas = data.areas || {};
+  pacCache.error = '';
+  if (completo) {
+    pacCache.lineas = data.lineas || [];
+    pacCache.revisiones = data.revisiones || [];
+    pacCache.cargado = true;
+  }
+  pacReindexar();
+}
+function pacReindexar() {
+  pacIdx.lineas = new Map(pacCache.lineas.map(l => [l._id, l]));
+  pacIdx.asigPorLinea = new Map();
+  pacIdx.asigPorTramite = new Map();
+  pacCache.asignaciones.forEach(a => {
+    if (!pacIdx.asigPorLinea.has(a.idLinea)) pacIdx.asigPorLinea.set(a.idLinea, []);
+    pacIdx.asigPorLinea.get(a.idLinea).push(a);
+    if (!pacIdx.asigPorTramite.has(a.idTramite)) pacIdx.asigPorTramite.set(a.idTramite, []);
+    pacIdx.asigPorTramite.get(a.idTramite).push(a);
+  });
+  pacAplicarATramites();
+}
+function pacAplicarATramites() {
+  comprasTramitesCache.forEach(t => {
+    const arr = pacIdx.asigPorTramite.get(t._id);
+    t.pacLineas = arr ? arr.length : 0;
+  });
+}
+async function pacRefrescarTrasCargaTramites() {
+  try {
+    await cargarPac(false);
+  } catch (err) {
+    pacCache.error = err.message;
+    console.warn('El PAC no está disponible todavía:', err.message);
+    pacAplicarATramites();
+  }
+  renderComprasTramitesTable();
+  if (comprasTabActiva === 'pac') renderPac();
+}
+
+// Calcula, para cada línea, lo ya tramitado (según las asignaciones a trámites activos) y su estado.
+function pacCalcularLineas() {
+  const tmap = new Map(comprasTramitesCache.map(t => [t._id, t]));
+  pacCache.lineas.forEach(l => {
+    l._asig = 0; l._montoAsig = 0; l._tram = [];
+    (pacIdx.asigPorLinea.get(l._id) || []).forEach(a => {
+      const t = tmap.get(a.idTramite);
+      if (!t) return; // asignación huérfana: se ignora
+      const activo = pacTramiteActivo(t);
+      l._tram.push({ id: t._id, expediente: t.expediente || '(sin expediente)', fecha: t.fechaInicioExpte || '', cantidad: a.cantidad, activo: activo, estado: t.estado || '' });
+      if (activo) { l._asig += a.cantidad; l._montoAsig += a.monto; }
+    });
+    l._saldo = Math.max(0, l.cantidad - l._asig);
+    if (l.estado === 'Vigente') {
+      l._seg = l._asig <= 0.0001 ? 'Pendiente' : (l._asig >= l.cantidad - 0.0001 ? 'Tramitado' : 'Parcial');
+    } else {
+      l._seg = l.estado; // Excluida / Eliminada
+    }
+    l._revisar = (l.estado !== 'Vigente' && l._asig > 0.0001) || (l._asig > l.cantidad + 0.0001);
+    l._pospreCod = pacCodigoPospre(l.pospre);
+  });
+}
+
+// ---------------- Solapas de Compras ----------------
+function comprasMostrarTab(tab) {
+  comprasTabActiva = tab;
+  document.querySelectorAll('#comprasTabs .reg-tab').forEach(b => b.classList.toggle('is-on', b.dataset.ctab === tab));
+  document.getElementById('comprasTramitesWrap').hidden = tab !== 'tramites';
+  document.getElementById('comprasPacWrap').hidden = tab !== 'pac';
+  document.getElementById('comprasPacCargaWrap').hidden = tab !== 'carga';
+  if (tab === 'pac') abrirVistaPac();
+  if (tab === 'carga') abrirVistaPacCarga();
+}
+document.getElementById('comprasTabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.reg-tab');
+  if (!btn || btn.classList.contains('is-on')) return;
+  comprasMostrarTab(btn.dataset.ctab);
+});
+document.getElementById('comprasTabPac').textContent = 'PAC ' + String(PAC_ANIO_ACTUAL).slice(-2) + ' — Seguimiento';
+
+async function abrirVistaPac() {
+  if (!pacCache.cargado) {
+    try {
+      pacMsg('Cargando el PAC...', 'ok');
+      await cargarPac(true);
+      pacMsg('');
+    } catch (err) {
+      pacCache.error = err.message;
+      pacMsg('No se pudo cargar el PAC: ' + err.message, 'err');
+    }
+  }
+  renderPac();
+}
+
+document.getElementById('pacSubtabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.pac-subtab');
+  if (!btn) return;
+  pacSubtab = btn.dataset.ptab;
+  renderPac();
+});
+
+// ---------------- Resumen por Pospre ----------------
+function pacResumenPorPospre() {
+  const mapa = new Map();
+  pacCache.lineas.forEach(l => {
+    if (l.estado !== 'Vigente') return;
+    let f = mapa.get(l._pospreCod);
+    if (!f) { f = { pospre: l._pospreCod, desc: l.pospreDesc || '', lineas: 0, plan: 0, tramitado: 0, nTramites: 0, nPend: 0, nParc: 0, nTram: 0, pendiente: 0, pct: 0 }; mapa.set(l._pospreCod, f); }
+    f.lineas++; f.plan += l.montoSinIVA;
+    if (l._seg === 'Pendiente') f.nPend++; else if (l._seg === 'Parcial') f.nParc++; else if (l._seg === 'Tramitado') f.nTram++;
+  });
+  const otros = { n: 0, monto: 0 };
+  comprasTramitesCache.forEach(t => {
+    if (!pacTramiteActivo(t)) return;
+    const cod = pacCodigoPospre(t.pospre);
+    const f = mapa.get(cod);
+    if (f) { f.tramitado += pacMontoTramite(t); f.nTramites++; }
+    else { otros.n++; otros.monto += pacMontoTramite(t); }
+  });
+  const filas = Array.from(mapa.values());
+  filas.forEach(f => { f.pendiente = Math.max(0, f.plan - f.tramitado); f.pct = f.plan > 0 ? f.tramitado / f.plan : 0; });
+  return { filas: filas, otros: otros };
+}
+
+function renderPacKpis(res) {
+  const cont = document.getElementById('pacKpis');
+  const vig = pacCache.lineas.filter(l => l.estado === 'Vigente');
+  const plan = res.filas.reduce((a, f) => a + f.plan, 0);
+  const tram = res.filas.reduce((a, f) => a + f.tramitado, 0);
+  const pend = res.filas.reduce((a, f) => a + f.pendiente, 0);
+  const nP = vig.filter(l => l._seg === 'Pendiente').length, nPa = vig.filter(l => l._seg === 'Parcial').length, nT = vig.filter(l => l._seg === 'Tramitado').length;
+  const nRev = pacCache.lineas.filter(l => l._revisar).length;
+  const card = (label, valor, sub, color) => `<div class="reg-kpi"><small>${label}</small><b>${valor}</b><span class="kpi-sub">${sub}</span><i style="background:${color}"></i></div>`;
+  cont.innerHTML =
+    card('$ Plan vigente (sin IVA)', formatMoney(plan), vig.length + ' matrícula(s) vigentes', 'var(--accent)') +
+    card('$ Tramitado', formatMoney(tram), 'Monto de inicio de trámites con Pospre del PAC', 'var(--stage-5)') +
+    card('$ Pendiente', formatMoney(pend), 'Por Pospre (si un Pospre se pasó del plan no resta)', 'var(--stage-3)') +
+    card('% del plan tramitado', (plan > 0 ? (tram / plan * 100) : 0).toFixed(1) + '%', res.otros.n ? res.otros.n + ' trámite(s) con Pospre fuera del PAC: ' + formatMoney(res.otros.monto) : 'Todos los trámites tienen Pospre del PAC', 'var(--brand)') +
+    card('Matrículas Pend. / Parc. / Tram.', nP + ' / ' + nPa + ' / ' + nT, 'Según las matrículas asignadas a trámites', 'var(--stage-1)') +
+    card('Líneas a revisar ⚠', String(nRev), nRev ? 'Cantidad asignada mayor al plan, o línea ya tramitada que salió del plan' : 'Sin diferencias con el plan', nRev ? 'var(--danger)' : 'var(--stage-5)');
+}
+
+function renderPacResumen(res) {
+  const table = document.getElementById('pacResumenTable');
+  const cols = [
+    { key: 'pospre', label: 'Pospre' }, { key: 'lineas', label: 'Matrículas' }, { key: 'plan', label: '$ Plan (sin IVA)' },
+    { key: 'tramitado', label: '$ Tramitado' }, { key: 'pendiente', label: '$ Pendiente' }, { key: 'pct', label: '% tramitado' },
+    { key: 'nPend', label: 'Pend. / Parc. / Tram.' }
+  ];
+  const filas = sortRows(res.filas, pacResSort, (f, k) => f[k]);
+  const sum = (k) => filas.reduce((a, f) => a + f[k], 0);
+  const pctTot = sum('plan') > 0 ? sum('tramitado') / sum('plan') : 0;
+  const barra = (p) => `<div class="pac-bar"><i class="${p > 1 ? 'over' : ''}" style="width:${Math.min(100, p * 100).toFixed(1)}%"></i></div>`;
+  table.innerHTML = sortableTheadHtml(cols, pacResSort) + '<tbody>' + filas.map(f => `
+    <tr class="pac-link-row" data-pospre="${escapeHtml(f.pospre)}" title="Ver las matrículas de este Pospre">
+      <td><b>${escapeHtml(f.pospre)}</b><br><small style="color:var(--text-soft)">${escapeHtml(f.desc)}</small></td>
+      <td class="mono">${f.lineas}</td>
+      <td class="mono">${formatMoney(f.plan)}</td>
+      <td class="mono">${formatMoney(f.tramitado)}<br><small style="color:var(--text-soft)">${f.nTramites} trámite(s)</small></td>
+      <td class="mono">${formatMoney(f.pendiente)}</td>
+      <td>${barra(f.pct)}<small class="mono">${(f.pct * 100).toFixed(1)}%</small></td>
+      <td class="mono">${f.nPend} / ${f.nParc} / ${f.nTram}</td>
+    </tr>`).join('') +
+    `<tr class="pac-total-row"><td>TOTAL</td><td class="mono">${sum('lineas')}</td><td class="mono">${formatMoney(sum('plan'))}</td><td class="mono">${formatMoney(sum('tramitado'))}</td><td class="mono">${formatMoney(sum('pendiente'))}</td><td class="mono">${(pctTot * 100).toFixed(1)}%</td><td class="mono">${sum('nPend')} / ${sum('nParc')} / ${sum('nTram')}</td></tr>` +
+    (res.otros.n ? `<tr class="pac-row-fuera"><td colspan="3"><i>Trámites cuyo Pospre no figura en el PAC</i></td><td class="mono">${formatMoney(res.otros.monto)}<br><small>${res.otros.n} trámite(s)</small></td><td colspan="3"></td></tr>` : '') +
+    '</tbody>';
+  wireSortableHeaders(table, pacResSort, () => renderPacResumen(res));
+  table.querySelectorAll('tr.pac-link-row').forEach(tr => {
+    tr.addEventListener('click', () => {
+      pacFiltros.pospre = [tr.dataset.pospre];
+      pacFiltros.area = []; pacFiltros.texto = ''; pacFiltros.revisar = false; pacFiltros.soloSel = false;
+      document.getElementById('pacFiltroTexto').value = '';
+      pacSubtab = 'lineas'; pacLimite = PAC_PAGE_SIZE;
+      renderPac();
+    });
+  });
+}
+
+// ---------------- Matrículas (líneas del PAC) ----------------
+const PAC_LINEAS_COLS = [
+  { key: 'area', label: 'Área' }, { key: 'pospre', label: 'Pospre' }, { key: 'matricula', label: 'Matrícula' },
+  { key: 'descripcion', label: 'Descripción' }, { key: 'cantidad', label: 'Cant. PAC' }, { key: 'asig', label: 'Cant. tramitada' },
+  { key: 'saldo', label: 'Saldo' }, { key: 'monto', label: '$ PAC (sin IVA)' }, { key: 'seg', label: 'Estado' }, { key: 'tramites', label: 'Expediente(s) · inicio' }
+];
+function pacSortValue(l, key) {
+  switch (key) {
+    case 'area': return l.area; case 'pospre': return l._pospreCod; case 'matricula': return l.matricula;
+    case 'descripcion': return l.descripcion; case 'cantidad': return l.cantidad; case 'asig': return l._asig;
+    case 'saldo': return l._saldo; case 'monto': return l.montoSinIVA; case 'seg': return PAC_SEG_ORDEN.indexOf(l._seg);
+    case 'tramites': return l._tram.length ? l._tram[0].expediente : '';
+    default: return '';
+  }
+}
+function pacLineasFiltradas() {
+  const f = pacFiltros;
+  const txt = pacNormTexto(f.texto).trim();
+  return pacCache.lineas.filter(l => {
+    if (f.area.length && !f.area.includes(l.area)) return false;
+    if (f.pospre.length && !f.pospre.includes(l._pospreCod)) return false;
+    if (f.estado.length && !f.estado.includes(l._seg)) return false;
+    if (f.revisar && !l._revisar) return false;
+    if (f.soloSel && !pacSel.has(l._id)) return false;
+    if (txt && !pacNormTexto(l.matricula + ' ' + l.descripcion + ' ' + l.nota + ' ' + l.pospreDesc).includes(txt)) return false;
+    return true;
+  });
+}
+function pacPoblarFiltros() {
+  const uniq = (fn) => Array.from(new Set(pacCache.lineas.map(fn).filter(Boolean))).sort();
+  const defs = [['area', uniq(l => l.area)], ['pospre', uniq(l => l._pospreCod)], ['estado', PAC_SEG_ORDEN]];
+  defs.forEach(([k, opts]) => {
+    const el = document.querySelector('#pacFiltersBar [data-pfilter="' + k + '"]');
+    pacFiltros[k] = pacFiltros[k].filter(v => opts.includes(v));
+    renderMultiselect(el, opts, pacFiltros[k], (vals) => { pacFiltros[k] = vals; pacLimite = PAC_PAGE_SIZE; renderPacLineas(); });
+  });
+  document.getElementById('pacFiltroRevisar').checked = pacFiltros.revisar;
+  document.getElementById('pacFiltroSel').checked = pacFiltros.soloSel;
+}
+document.getElementById('pacFiltroTexto').addEventListener('input', debounce((e) => { pacFiltros.texto = e.target.value; pacLimite = PAC_PAGE_SIZE; renderPacLineas(); }, 300));
+document.getElementById('pacFiltroRevisar').addEventListener('change', (e) => { pacFiltros.revisar = e.target.checked; pacLimite = PAC_PAGE_SIZE; renderPacLineas(); });
+document.getElementById('pacFiltroSel').addEventListener('change', (e) => { pacFiltros.soloSel = e.target.checked; pacLimite = PAC_PAGE_SIZE; renderPacLineas(); });
+document.getElementById('pacClearFilters').addEventListener('click', () => {
+  pacFiltros = { area: [], pospre: [], estado: ['Pendiente', 'Parcial', 'Tramitado'], texto: '', revisar: false, soloSel: false };
+  document.getElementById('pacFiltroTexto').value = '';
+  pacLimite = PAC_PAGE_SIZE;
+  pacPoblarFiltros(); renderPacLineas();
+});
+document.getElementById('pacMasBtn').addEventListener('click', () => { pacLimite += PAC_PAGE_SIZE; renderPacLineas(); });
+
+function pacTramitesTexto(l) {
+  return l._tram.map(t => t.expediente + (t.fecha ? ' (' + formatFechaCorta(t.fecha) + ')' : '') + (t.activo ? '' : ' [' + t.estado + ']')).join(' · ');
+}
+function pacActualizarSelInfo() {
+  const sel = Array.from(pacSel).map(id => pacIdx.lineas.get(id)).filter(Boolean);
+  const monto = sel.reduce((a, l) => a + l.montoSinIVA, 0);
+  const info = document.getElementById('pacSelInfo');
+  info.textContent = sel.length ? sel.length + ' matrícula(s) seleccionada(s) · $ PAC ' + formatMoney(monto) : 'Ninguna matrícula seleccionada.';
+  const puede = pacPuedeEditar();
+  document.getElementById('pacBtnTramitar').disabled = !puede || !sel.length;
+  document.getElementById('pacBtnAsignar').disabled = !puede || !sel.length;
+  document.getElementById('pacBtnTramitar').hidden = !!pacModoAsignarTramite;
+  document.getElementById('pacBtnAsignar').textContent = pacModoAsignarTramite ? 'Asignar a este trámite' : 'Asignar a trámite existente';
+}
+function renderPacLineas() {
+  const table = document.getElementById('pacLineasTable');
+  let filas = pacLineasFiltradas();
+  document.getElementById('pacResultsCount').textContent = filas.length + ' matrícula(s) encontrada(s), de ' + pacCache.lineas.length + ' en el PAC.';
+  if (!filas.length) {
+    table.innerHTML = '<tbody><tr><td class="empty-state">Ninguna matrícula coincide con los filtros aplicados.</td></tr></tbody>';
+    document.getElementById('pacMasBtn').hidden = true;
+    pacActualizarSelInfo();
+    return;
+  }
+  filas = sortRows(filas, pacSort, pacSortValue);
+  const visibles = filas.slice(0, pacLimite);
+  const seleccionables = filas.filter(l => l.estado === 'Vigente');
+  const todasSel = seleccionables.length && seleccionables.every(l => pacSel.has(l._id));
+  const thead = sortableTheadHtml(PAC_LINEAS_COLS, pacSort).replace('<tr>', '<tr><th><input type="checkbox" id="pacSelAll" title="Seleccionar todas las vigentes que cumplen el filtro" ' + (todasSel ? 'checked' : '') + ' /></th>');
+  table.innerHTML = thead + '<tbody>' + visibles.map(l => {
+    const warn = l._revisar ? `<span class="pac-warn" title="${escapeHtml('Revisar: ' + (l.detalleCambio || 'la cantidad asignada supera la del plan'))}">⚠</span>` : '';
+    const tip = [l.sectores ? 'Sectores: ' + l.sectores : '', l.nota ? 'PAC: ' + l.nota : '', l.detalleCambio || ''].filter(Boolean).join('\n');
+    const tr = pacTramitesTexto(l);
+    return `<tr data-id="${l._id}" class="${l._revisar ? 'pac-row-revisar' : ''}">
+      <td><input type="checkbox" class="pac-chk" data-id="${l._id}" ${pacSel.has(l._id) ? 'checked' : ''} ${l.estado === 'Vigente' ? '' : 'disabled'} /></td>
+      <td>${escapeHtml(l.area)}</td>
+      <td title="${escapeHtml(l.pospreDesc)}">${escapeHtml(l._pospreCod)}</td>
+      <td class="mono">${escapeHtml(l.matricula)}</td>
+      <td class="td-truncate" title="${escapeHtml(l.descripcion + (tip ? '\n' + tip : ''))}">${escapeHtml(l.descripcion)}</td>
+      <td class="mono">${pacFmtNum(l.cantidad)}</td>
+      <td class="mono">${l._asig ? pacFmtNum(l._asig) : ''}</td>
+      <td class="mono">${l.estado === 'Vigente' ? pacFmtNum(l._saldo) : ''}</td>
+      <td class="mono">${formatMoney(l.montoSinIVA)}</td>
+      <td><span class="pac-pill ${PAC_SEG_CLASE[l._seg] || ''}" title="${escapeHtml(PAC_SEG_AYUDA[l._seg] || '')}">${escapeHtml(l._seg)}</span>${warn}</td>
+      <td class="td-truncate" title="${escapeHtml(tr)}">${escapeHtml(tr)}</td>
+    </tr>`;
+  }).join('') + '</tbody>';
+  const mas = document.getElementById('pacMasBtn');
+  mas.hidden = filas.length <= pacLimite;
+  mas.textContent = 'Mostrar más (' + Math.min(PAC_PAGE_SIZE, filas.length - pacLimite) + ' de ' + (filas.length - pacLimite) + ' restantes)';
+  wireSortableHeaders(table, pacSort, renderPacLineas);
+  table.querySelectorAll('.pac-chk').forEach(chk => chk.addEventListener('change', () => {
+    if (chk.checked) pacSel.add(chk.dataset.id); else pacSel.delete(chk.dataset.id);
+    pacActualizarSelInfo();
+  }));
+  const all = document.getElementById('pacSelAll');
+  if (all) all.addEventListener('change', () => {
+    seleccionables.forEach(l => { if (all.checked) pacSel.add(l._id); else pacSel.delete(l._id); });
+    renderPacLineas();
+  });
+  pacActualizarSelInfo();
+}
+
+function renderPac() {
+  const sinPac = !pacCache.lineas.length;
+  document.getElementById('pacTitulo').textContent = 'PAC ' + PAC_ANIO_ACTUAL + ' — Plan Anual de Compras';
+  const rev = pacCache.revision;
+  document.getElementById('pacRevInfo').textContent = rev ? 'Revisión ' + rev.revision + ' · cargada el ' + rev.fecha + (rev.usuario ? ' por ' + rev.usuario : '') + (rev.archivo ? ' · ' + rev.archivo : '') : '';
+  document.getElementById('pacSubtabs').querySelectorAll('.pac-subtab').forEach(b => b.classList.toggle('is-on', b.dataset.ptab === pacSubtab));
+  document.getElementById('pacResumenWrap').hidden = pacSubtab !== 'resumen';
+  document.getElementById('pacLineasWrap').hidden = pacSubtab !== 'lineas';
+  renderPacBanner();
+  if (sinPac) {
+    document.getElementById('pacKpis').innerHTML = '';
+    const motivo = pacCache.error
+      ? 'No se pudo leer el PAC: ' + escapeHtml(pacCache.error) + '. Si acabás de actualizar la app, revisá que Code.gs esté publicado en su última versión y que hayas ejecutado "setup".'
+      : 'Todavía no se cargó ningún PAC. ' + (pacEsAdmin() ? 'Subilo desde la solapa "Cargar PAC".' : 'Un administrador puede cargarlo desde la solapa "Cargar PAC".');
+    document.getElementById('pacResumenTable').innerHTML = '<tbody><tr><td class="empty-state">' + motivo + '</td></tr></tbody>';
+    document.getElementById('pacLineasTable').innerHTML = '<tbody><tr><td class="empty-state">' + motivo + '</td></tr></tbody>';
+    return;
+  }
+  pacCalcularLineas();
+  const res = pacResumenPorPospre();
+  renderPacKpis(res);
+  renderPacResumen(res);
+  if (pacSubtab === 'lineas') { pacPoblarFiltros(); renderPacLineas(); }
+}
+
+function renderPacBanner() {
+  const b = document.getElementById('pacAsignarBanner');
+  if (!pacModoAsignarTramite) { b.hidden = true; return; }
+  const t = comprasTramitesCache.find(x => x._id === pacModoAsignarTramite);
+  b.innerHTML = `<p><b>Asignando matrículas al trámite ${escapeHtml(t ? (t.expediente || '(sin expediente)') : '')}</b>${t && t.extracto ? ' — ' + escapeHtml(t.extracto) : ''}. Tildá las matrículas en "Matrículas del PAC" y apretá "Asignar a este trámite".</p><button type="button" class="btn btn-ghost" id="pacCancelarAsignar">Cancelar y volver al trámite</button>`;
+  b.hidden = false;
+  document.getElementById('pacCancelarAsignar').addEventListener('click', () => pacVolverAlTramite());
+}
+function pacVolverAlTramite() {
+  const id = pacModoAsignarTramite;
+  pacModoAsignarTramite = null;
+  pacSel.clear();
+  comprasMostrarTab('tramites');
+  if (id) abrirComprasTramiteForm(id);
+}
+function pacIrAAsignar(idTramite) {
+  pacModoAsignarTramite = idTramite;
+  pacSel.clear();
+  pacSubtab = 'lineas';
+  pacFiltros.estado = ['Pendiente', 'Parcial'];
+  pacLimite = PAC_PAGE_SIZE;
+  comprasMostrarTab('pac');
+}
+
+// Botones de la barra de acciones
+document.getElementById('pacBtnLimpiarSel').addEventListener('click', () => { pacSel.clear(); renderPacLineas(); });
+document.getElementById('pacBtnTramitar').addEventListener('click', () => pacAbrirModal('nuevo', null));
+document.getElementById('pacBtnAsignar').addEventListener('click', () => pacAbrirModal('existente', pacModoAsignarTramite));
+document.getElementById('pacBtnPegar').addEventListener('click', () => { document.getElementById('pacPegarBox').hidden = !document.getElementById('pacPegarBox').hidden; });
+document.getElementById('pacPegarCancel').addEventListener('click', () => { document.getElementById('pacPegarBox').hidden = true; });
+document.getElementById('pacPegarOk').addEventListener('click', () => {
+  const clave = (s) => /^\d+$/.test(s) ? String(parseInt(s, 10)) : s.toUpperCase();
+  const tokens = Array.from(new Set(document.getElementById('pacPegarTxt').value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean)));
+  const porMat = new Map();
+  pacCache.lineas.forEach(l => { if (l.estado !== 'Vigente') return; const k = clave(String(l.matricula)); if (!porMat.has(k)) porMat.set(k, []); porMat.get(k).push(l); });
+  let encontradas = 0, lineas = 0; const faltan = [];
+  tokens.forEach(tk => {
+    const ls = porMat.get(clave(tk));
+    if (!ls) { faltan.push(tk); return; }
+    encontradas++; ls.forEach(l => { pacSel.add(l._id); lineas++; });
+  });
+  document.getElementById('pacPegarMsg').textContent = encontradas + ' matrícula(s) seleccionada(s) (' + lineas + ' línea/s del PAC)' + (faltan.length ? ' · no están en el PAC: ' + faltan.slice(0, 15).join(', ') + (faltan.length > 15 ? '…' : '') : '');
+  pacFiltros.soloSel = true;
+  document.getElementById('pacFiltroSel').checked = true;
+  pacFiltros.estado = []; // para ver también las que ya tienen asignaciones
+  pacPoblarFiltros(); renderPacLineas();
+});
+document.getElementById('pacBtnExportar').addEventListener('click', () => {
+  const filas = sortRows(pacLineasFiltradas(), pacSort, pacSortValue).map(l => ({
+    'Área': l.area, 'Pospre': l.pospre, 'Descripción Pospre': l.pospreDesc, 'Matrícula': l.matricula, 'Descripción': l.descripcion,
+    'Cant. PAC': l.cantidad, 'Cant. tramitada': l._asig, 'Saldo': l.estado === 'Vigente' ? l._saldo : '',
+    '$ PAC sin IVA': l.montoSinIVA, '$ asignado': l._montoAsig, 'Estado': l._seg,
+    'Expediente(s)': l._tram.map(t => t.expediente).join(' | '), 'Inicio de expediente': l._tram.map(t => formatFechaCorta(t.fecha)).join(' | '),
+    'Sectores': l.sectores, 'Observaciones PAC': l.nota
+  }));
+  if (!filas.length) { alert('No hay matrículas para exportar con los filtros actuales.'); return; }
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Seguimiento PAC');
+  XLSX.writeFile(wb, 'seguimiento_pac_' + PAC_ANIO_ACTUAL + '.xlsx');
+});
+
+// ---------------- Ventana "Tramitar" / "Asignar a trámite existente" ----------------
+function pacPospreParaTramite(codigo, desc) {
+  const hit = comprasTramitesCache.find(t => t.pospre && pacCodigoPospre(t.pospre) === codigo);
+  if (hit) return String(hit.pospre).trim();
+  const hitReg = (state.registros || []).find(r => r.pospre && pacCodigoPospre(r.pospre) === codigo);
+  if (hitReg) return String(hitReg.pospre).trim();
+  return (codigo + (desc ? ' ' + desc : '')).trim();
+}
+function pacCantidadDefault(linea, idTramite) {
+  if (idTramite) {
+    const previa = (pacIdx.asigPorLinea.get(linea._id) || []).find(a => a.idTramite === idTramite);
+    if (previa) return previa.cantidad;
+  }
+  return linea._saldo;
+}
+function pacAbrirModal(modo, idTramitePreset) {
+  const lineas = Array.from(pacSel).map(id => pacIdx.lineas.get(id)).filter(l => l && l.estado === 'Vigente');
+  if (!lineas.length) { alert('Primero tildá al menos una matrícula vigente.'); return; }
+  pacModal = { modo: modo, idTramite: idTramitePreset || null, montoManual: false, items: lineas.map(l => ({ linea: l, cantidad: 0 })) };
+  const campos = document.getElementById('pacModalCampos');
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (modo === 'nuevo') {
+    document.getElementById('pacModalTitulo').textContent = 'Tramitar ' + lineas.length + ' matrícula(s)';
+    document.getElementById('pacModalSub').textContent = 'Se crea un trámite de Compras (un expediente) con estas matrículas asignadas. Ajustá las cantidades que entran en este expediente.';
+    document.getElementById('pacModalOk').textContent = 'Crear trámite';
+    // Pospre sugerido = el de mayor monto entre las líneas elegidas
+    const porPospre = new Map();
+    lineas.forEach(l => { const x = porPospre.get(l._pospreCod) || { cod: l._pospreCod, desc: l.pospreDesc, monto: 0 }; x.monto += l.montoSinIVA; porPospre.set(l._pospreCod, x); });
+    const pospres = Array.from(porPospre.values()).sort((a, b) => b.monto - a.monto);
+    const areas = Array.from(new Set(lineas.map(l => l.area)));
+    const sugSuc = areas.length === 1 && pacCache.areas[areas[0]] && pacCache.areas[areas[0]].length ? pacCache.areas[areas[0]][0] : '';
+    campos.innerHTML = `
+      <label><span class="field-label-text">Expediente *</span><input type="text" id="pacMExp" /></label>
+      <label><span class="field-label-text">Fecha de inicio del expediente *</span><input type="date" id="pacMFecha" value="${hoy}" /></label>
+      <label><span class="field-label-text">Extracto</span><input type="text" id="pacMExtracto" /></label>
+      <label><span class="field-label-text">Pospre</span><input type="text" id="pacMPospre" list="pacMPospreList" value="${escapeHtml(pacPospreParaTramite(pospres[0].cod, pospres[0].desc))}" />
+        <datalist id="pacMPospreList">${pospres.map(p => `<option value="${escapeHtml(pacPospreParaTramite(p.cod, p.desc))}"></option>`).join('')}</datalist></label>
+      <label><span class="field-label-text">Sucursal / Destino</span><input type="text" id="pacMSuc" value="${escapeHtml(sugSuc)}" /></label>
+      <label><span class="field-label-text">Año (de imputación del pago / Plan)</span><input type="text" inputmode="numeric" id="pacMAnio" value="${PAC_ANIO_ACTUAL}" /></label>
+      <label style="grid-column:1/-1;"><span class="field-label-text">$ Monto total con el que se inicia la gestión (sin IVA) <span class="calc-badge" id="pacMMontoBadge" title="Se suma solo (cantidad × precio del PAC). Podés escribir otro monto si el expediente inicia con un valor distinto.">sugerido ⓘ</span></span>
+        <input type="text" inputmode="decimal" class="num-decimal" id="pacMMonto" /></label>`;
+    pacModal.items.forEach(it => { it.cantidad = pacCantidadDefault(it.linea, null); });
+  } else {
+    document.getElementById('pacModalTitulo').textContent = 'Asignar ' + lineas.length + ' matrícula(s) a un trámite existente';
+    document.getElementById('pacModalSub').textContent = 'Si una matrícula ya estaba asignada a ese trámite, la cantidad que pongas la REEMPLAZA (con 0 se quita).';
+    document.getElementById('pacModalOk').textContent = 'Asignar';
+    const trams = comprasTramitesCache.slice().sort((a, b) => String(a.expediente || '').localeCompare(String(b.expediente || '')));
+    campos.innerHTML = `
+      <label style="grid-column:1/-1;"><span class="field-label-text">Trámite *</span>
+        <select id="pacMTramite" ${pacModal.idTramite ? 'disabled' : ''}>
+          <option value="">— Elegí un trámite —</option>
+          ${trams.map(t => `<option value="${escapeHtml(t._id)}" ${t._id === pacModal.idTramite ? 'selected' : ''}>${escapeHtml((t.expediente || '(sin expediente)') + ' — ' + String(t.extracto || '').slice(0, 70) + (t.estado ? ' [' + t.estado + ']' : ''))}</option>`).join('')}
+        </select></label>
+      <p class="table-note" id="pacMTramiteInfo" style="grid-column:1/-1; margin:0;"></p>`;
+    pacModal.items.forEach(it => { it.cantidad = pacCantidadDefault(it.linea, pacModal.idTramite); });
+  }
+  document.getElementById('pacModalMsg').hidden = true;
+  pacModalRenderItems();
+  document.getElementById('pacModalOverlay').hidden = false;
+  if (modo === 'nuevo') document.getElementById('pacMExp').focus();
+  const selTr = document.getElementById('pacMTramite');
+  if (selTr) {
+    selTr.addEventListener('change', () => {
+      pacModal.idTramite = selTr.value || null;
+      pacModal.items.forEach(it => { it.cantidad = pacCantidadDefault(it.linea, pacModal.idTramite); });
+      pacModalRenderItems();
+    });
+  }
+  const mont = document.getElementById('pacMMonto');
+  if (mont) mont.addEventListener('input', () => { pacModal.montoManual = true; document.getElementById('pacMMontoBadge').textContent = 'escrito a mano ⓘ'; });
+}
+function pacPU(l) { return l.cantidad > 0 ? l.montoSinIVA / l.cantidad : 0; }
+function pacModalRenderItems() {
+  const table = document.getElementById('pacModalTable');
+  table.innerHTML = '<thead><tr><th>Matrícula</th><th>Área</th><th>Descripción</th><th>Saldo PAC</th><th>Cantidad a asignar</th><th>$ unit. PAC</th><th>$ asignado</th><th></th></tr></thead><tbody>' +
+    pacModal.items.map((it, i) => `<tr data-i="${i}">
+      <td class="mono">${escapeHtml(it.linea.matricula)}</td><td>${escapeHtml(it.linea.area)}</td>
+      <td class="td-truncate" title="${escapeHtml(it.linea.descripcion)}">${escapeHtml(it.linea.descripcion)}</td>
+      <td class="mono">${pacFmtNum(it.linea._saldo)}</td>
+      <td><input type="text" inputmode="decimal" class="pac-m-cant num-decimal" data-i="${i}" value="${it.cantidad || it.cantidad === 0 ? pacFmtNumInput(it.cantidad) : ''}" /></td>
+      <td class="mono">${formatMoney(pacPU(it.linea))}</td>
+      <td class="mono pac-m-monto" data-i="${i}"></td>
+      <td><button type="button" class="icon-btn danger pac-m-quitar" data-i="${i}" title="Sacar esta matrícula de la ventana">✕</button></td>
+    </tr>`).join('') + '</tbody><tfoot><tr class="pac-total-row"><td colspan="6">TOTAL</td><td class="mono" id="pacModalTotal"></td><td></td></tr></tfoot>';
+  pacModalRecalcular();
+}
+function pacFmtNumInput(n) { return String(Math.round(num(n) * 100) / 100); }
+function pacModalRecalcular() {
+  let total = 0;
+  pacModal.items.forEach((it, i) => {
+    const m = num(it.cantidad) * pacPU(it.linea);
+    total += m;
+    const td = document.querySelector('#pacModalTable .pac-m-monto[data-i="' + i + '"]');
+    if (td) td.textContent = formatMoney(m);
+  });
+  const tot = document.getElementById('pacModalTotal');
+  if (tot) tot.textContent = formatMoney(total);
+  const mont = document.getElementById('pacMMonto');
+  if (mont && !pacModal.montoManual) mont.value = (Math.round(total * 100) / 100).toString();
+  const info = document.getElementById('pacMTramiteInfo');
+  if (info) {
+    const t = pacModal.idTramite ? comprasTramitesCache.find(x => x._id === pacModal.idTramite) : null;
+    info.textContent = t ? 'Monto del trámite: ' + formatMoney(pacMontoTramite(t)) + ' · ya tiene ' + (t.pacLineas || 0) + ' matrícula(s) del PAC asignadas · lo que asignes ahora: ' + formatMoney(total) : '';
+  }
+}
+document.getElementById('pacModalTable').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('pac-m-cant')) return;
+  pacModal.items[parseInt(e.target.dataset.i, 10)].cantidad = e.target.value;
+  pacModalRecalcular();
+});
+document.getElementById('pacModalTable').addEventListener('click', (e) => {
+  const b = e.target.closest('.pac-m-quitar');
+  if (!b) return;
+  pacModal.items.splice(parseInt(b.dataset.i, 10), 1);
+  if (!pacModal.items.length) { pacCerrarModal(); return; }
+  pacModalRenderItems();
+});
+function pacCerrarModal() { document.getElementById('pacModalOverlay').hidden = true; pacModal = null; }
+document.getElementById('pacModalCancelar').addEventListener('click', pacCerrarModal);
+
+function pacModalError(texto) {
+  const m = document.getElementById('pacModalMsg');
+  m.textContent = texto; m.className = 'form-msg err'; m.hidden = false;
+}
+document.getElementById('pacModalOk').addEventListener('click', async () => {
+  if (!pacModal) return;
+  const nuevo = pacModal.modo === 'nuevo';
+  const items = pacModal.items.map(it => ({ idLinea: it.linea._id, cantidad: num(it.cantidad) }));
+  if (!items.some(i => i.cantidad > 0) && nuevo) { pacModalError('Poné una cantidad mayor a 0 en al menos una matrícula.'); return; }
+  // Aviso (no bloqueo) si se asigna más que el saldo disponible
+  const excedidas = pacModal.items.filter(it => num(it.cantidad) > pacCantidadDefault(it.linea, pacModal.idTramite) + 0.0001 && num(it.cantidad) > it.linea._saldo + 0.0001);
+  if (excedidas.length && !confirm(excedidas.length + ' matrícula(s) superan el saldo disponible del PAC (quedarían por encima del plan y marcadas "revisar"). ¿Continuar igual?')) return;
+  const ok = document.getElementById('pacModalOk');
+  ok.disabled = true;
+  try {
+    let idTramite = pacModal.idTramite;
+    if (nuevo) {
+      const expediente = document.getElementById('pacMExp').value.trim();
+      const fecha = document.getElementById('pacMFecha').value;
+      if (!expediente) { pacModalError('Falta el N° de expediente.'); return; }
+      if (!fecha) { pacModalError('Falta la fecha de inicio del expediente.'); return; }
+      const monto = parseFloat(String(document.getElementById('pacMMonto').value).replace(',', '.'));
+      const datos = {
+        expediente: expediente, fechaInicioExpte: fecha, extracto: document.getElementById('pacMExtracto').value.trim(),
+        pospre: document.getElementById('pacMPospre').value.trim(), sucursal: document.getElementById('pacMSuc').value.trim(),
+        anio: document.getElementById('pacMAnio').value.trim(), montoSubtotalOficial: isNaN(monto) ? 0 : monto
+      };
+      const r = await apiCall('pac_tramitar', { datos: datos, items: items.filter(i => i.cantidad > 0) });
+      idTramite = r.id;
+    } else {
+      if (!idTramite) { pacModalError('Elegí el trámite al que se asignan.'); return; }
+      await apiCall('pac_asignar', { idTramite: idTramite, items: items });
+    }
+    const volver = !!pacModoAsignarTramite;
+    const cant = items.filter(i => i.cantidad > 0).length;
+    pacCerrarModal();
+    pacSel.clear();
+    await cargarComprasTramites();
+    await cargarPac(false); // asignaciones al día antes de volver a mostrar la ficha o el seguimiento
+    await refrescarRegistrosTrasCompras();
+    if (volver) { pacVolverAlTramite(); return; }
+    pacMsg(nuevo ? 'Trámite creado con ' + cant + ' matrícula(s) asignada(s).' : 'Asignación guardada (' + cant + ' matrícula/s).', 'ok');
+    renderPac();
+  } catch (err) {
+    pacModalError(err.message);
+  } finally {
+    ok.disabled = false;
+  }
+});
+
+// ---------------- Sección "Matrículas del PAC" dentro de la ficha del trámite ----------------
+async function renderComprasPacSection(record) {
+  const sec = document.getElementById('comprasPacSection');
+  const body = document.getElementById('comprasPacSectionBody');
+  sec.hidden = false;
+  if (!pacCache.cargado) {
+    body.innerHTML = '<p class="table-note">Cargando el PAC...</p>';
+    try { await cargarPac(true); }
+    catch (err) { body.innerHTML = '<p class="table-note">El PAC no está disponible: ' + escapeHtml(err.message) + '</p>'; return; }
+    if (comprasTramiteFormEditId !== record._id) return; // el usuario ya abrió otro trámite
+  }
+  pacCalcularLineas();
+  const asigs = (pacIdx.asigPorTramite.get(record._id) || []).map(a => ({ a: a, l: pacIdx.lineas.get(a.idLinea) })).filter(x => x.l);
+  const totalAsig = asigs.reduce((s, x) => s + x.a.monto, 0);
+  const montoTr = pacMontoTramite(record);
+  const dif = montoTr - totalAsig;
+  const puede = pacPuedeEditar();
+  let html = `<p class="table-note" style="margin-top:0;">${asigs.length
+    ? '<b>' + asigs.length + '</b> matrícula(s) asignada(s) · valor según PAC: <b>' + formatMoney(totalAsig) + '</b> · monto del trámite: <b>' + formatMoney(montoTr) + '</b> · diferencia: <span class="' + (Math.abs(dif) < 1 ? 'pac-trow-ok' : 'pac-trow-dif') + '">' + formatMoney(dif) + '</span> <small>(informativa: el monto del trámite no tiene por qué coincidir)</small>'
+    : 'Este trámite todavía no tiene matrículas del PAC asignadas.'}</p>`;
+  if (asigs.length) {
+    html += '<div class="table-wrap" style="max-height:34vh; overflow:auto; margin-bottom:10px;"><table class="data-table"><thead><tr><th>Matrícula</th><th>Área</th><th>Pospre</th><th>Descripción</th><th>Cantidad asignada</th><th>$ (según PAC)</th>' + (puede ? '<th></th>' : '') + '</tr></thead><tbody>' +
+      asigs.map(x => `<tr><td class="mono">${escapeHtml(x.l.matricula)}</td><td>${escapeHtml(x.l.area)}</td><td>${escapeHtml(pacCodigoPospre(x.l.pospre))}</td><td class="td-truncate" title="${escapeHtml(x.l.descripcion)}">${escapeHtml(x.l.descripcion)}</td><td class="mono">${pacFmtNum(x.a.cantidad)}</td><td class="mono">${formatMoney(x.a.monto)}</td>${puede ? `<td><button type="button" class="icon-btn danger" title="Quitar esta matrícula del trámite" onclick="pacQuitarAsignacion(${comprasJsArg(x.a._id)})">🗑️</button></td>` : ''}</tr>`).join('') +
+      '</tbody></table></div>';
+  }
+  if (puede) html += `<button type="button" class="btn btn-secondary" onclick="pacIrAAsignar(${comprasJsArg(record._id)})">+ Asignar matrículas del PAC...</button>`;
+  body.innerHTML = html;
+}
+async function pacQuitarAsignacion(idAsig) {
+  if (!confirm('¿Quitar esta matrícula del trámite? La línea del PAC vuelve a quedar con ese saldo pendiente.')) return;
+  try {
+    await apiCall('pac_desasignar', { id: idAsig });
+    const idTr = comprasTramiteFormEditId;
+    await cargarPac(false);
+    renderComprasTramitesTable();
+    const rec = comprasTramitesCache.find(t => t._id === idTr);
+    if (rec) renderComprasPacSection(rec);
+  } catch (err) {
+    alert('Error al quitar la asignación: ' + err.message);
+  }
+}
+
+// ---------------- Cargar una revisión del PAC (Excel) ----------------
+function pacNormHeader(s) {
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9$]/g, '');
+}
+function pacNumero(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : NaN;
+  if (v == null) return NaN;
+  let s = String(v).trim();
+  if (!s) return NaN;
+  if (s.indexOf(',') !== -1 && s.indexOf('.') === -1) s = s.replace(',', '.');
+  return parseFloat(s);
+}
+function pacTextoCelda(v) { return v == null ? '' : String(v).trim(); }
+
+// Lee una hoja y devuelve { idx, filaEncabezado, ws } si tiene las columnas del PAC; si no, null
+function pacDetectarColumnas(ws) {
+  if (!ws || !ws['!ref']) return null;
+  const rango = XLSX.utils.decode_range(ws['!ref']);
+  const maxFilaEnc = Math.min(rango.e.r, rango.s.r + 14);
+  for (let r = rango.s.r; r <= maxFilaEnc; r++) {
+    const idx = {};
+    for (let c = rango.s.c; c <= rango.e.c; c++) {
+      const cel = ws[XLSX.utils.encode_cell({ r: r, c: c })];
+      if (!cel || cel.t === 'e') continue;
+      const n = pacNormHeader(cel.v);
+      if (!n) continue;
+      if (n === 'area' && idx.area == null) idx.area = c;
+      else if (n.indexOf('sector') === 0 && idx.sector == null) idx.sector = c;
+      else if (n === 'matricula' && idx.matricula == null) idx.matricula = c;
+      else if (n === 'descripcion' && idx.descripcion == null) idx.descripcion = c;
+      else if (n.indexOf('cant') === 0 && idx.cant == null) idx.cant = c;
+      else if (n === 'pu$siva' && idx.pu == null) idx.pu = c;
+      else if (n === 'puu$siva' && idx.usd == null) idx.usd = c;
+      else if (n === 'iva' && idx.iva == null) idx.iva = c;
+      else if (n === 'observacion' && idx.obs == null) idx.obs = c;
+      else if (n === 'subtotalciva' && idx.sub == null) idx.sub = c;
+      else if (n === 'pospre' && idx.pospre == null) idx.pospre = c;
+      else if (n === 'descpospre' && idx.pospreDesc == null) idx.pospreDesc = c;
+      else if (n.indexOf('tipobienes') === 0 && idx.tipo == null) idx.tipo = c;
+      else if (n.indexOf('ajuste') === 0 && idx.ajuste == null) idx.ajuste = c;
+    }
+    if (idx.area != null && idx.matricula != null && idx.pospre != null && idx.cant != null && (idx.sub != null || idx.pu != null)) {
+      return { idx: idx, filaEncabezado: r, rango: rango };
+    }
+  }
+  return null;
+}
+
+/**
+ * Lee el Excel del PAC y lo agrupa por Área + Pospre + Matrícula. Usa los valores YA CALCULADOS del
+ * Excel (Subtotal c/IVA, que ya incluye el Ajuste/Recorte y la cotización del dólar): no recalcula
+ * nada, porque esas fórmulas dependen de otras planillas. Devuelve { lineas, stats }.
+ */
+function pacParsearExcel(buf) {
+  const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+  let det = null, hoja = '';
+  for (const nombre of wb.SheetNames) {
+    det = pacDetectarColumnas(wb.Sheets[nombre]);
+    if (det) { hoja = nombre; break; }
+  }
+  if (!det) throw new Error('No encontré una hoja con las columnas del PAC (Área, Matrícula, PosPre, Cant., Subtotal c/IVA). Revisá que el archivo tenga los encabezados en las primeras filas.');
+  const ws = wb.Sheets[hoja];
+  const idx = det.idx;
+  const val = (r, c) => {
+    if (c == null) return null;
+    const cel = ws[XLSX.utils.encode_cell({ r: r, c: c })];
+    return (cel && cel.t !== 'e') ? cel.v : null;
+  };
+  const grupos = new Map();
+  const stats = { hoja: hoja, filasLeidas: 0, filasIgnoradas: 0, sinPospre: 0, sinPrecio: 0, lineas: 0 };
+  for (let r = det.filaEncabezado + 1; r <= det.rango.e.r; r++) {
+    const area = pacTextoCelda(val(r, idx.area));
+    const matricula = pacTextoCelda(val(r, idx.matricula));
+    const pospre = pacTextoCelda(val(r, idx.pospre));
+    if (!matricula && !pospre) { if (area || pacTextoCelda(val(r, idx.descripcion))) stats.filasIgnoradas++; continue; }
+    if (!matricula) { stats.filasIgnoradas++; continue; }
+    stats.filasLeidas++;
+    if (!pospre) stats.sinPospre++;
+    const cant = pacNumero(val(r, idx.cant)) || 0;
+    const ivaN = pacNumero(val(r, idx.iva)); const iva = isNaN(ivaN) ? 0 : ivaN;
+    const ajN = pacNumero(val(r, idx.ajuste));
+    // Mismo criterio que la fórmula del Excel: Ajuste = 1 deja la línea en $0 (fuera del plan);
+    // cualquier otro valor multiplica el monto; vacío = sin ajuste.
+    const factor = isNaN(ajN) ? 1 : (ajN === 1 ? 0 : ajN);
+    let conIva = pacNumero(val(r, idx.sub));
+    if (isNaN(conIva)) {
+      const pu = pacNumero(val(r, idx.pu));
+      if (!isNaN(pu) && pu > 0) conIva = cant * pu * (1 + iva) * factor;
+      else { conIva = 0; }
+    }
+    if (!(conIva > 0) && cant > 0 && factor > 0) stats.sinPrecio++;
+    const sinIva = conIva / (1 + iva);
+    const clave = [area, pospre, matricula].map(x => x.toUpperCase()).join('|');
+    let g = grupos.get(clave);
+    if (!g) {
+      g = { area: area, pospre: pospre, matricula: matricula, descripcion: '', pospreDesc: '', tipo: '', cantOriginal: 0, cantidad: 0, montoSinIVA: 0, montoConIVA: 0, sectores: new Map(), notas: [], ajustes: new Set() };
+      grupos.set(clave, g);
+    }
+    if (!g.descripcion) g.descripcion = pacTextoCelda(val(r, idx.descripcion)).replace(/^#N\/A$/i, '');
+    if (!g.pospreDesc) g.pospreDesc = pacTextoCelda(val(r, idx.pospreDesc)).replace(/^#N\/A$/i, '');
+    if (!g.tipo) g.tipo = pacTextoCelda(val(r, idx.tipo));
+    g.cantOriginal += cant; g.cantidad += cant * factor;
+    g.montoSinIVA += sinIva; g.montoConIVA += conIva;
+    const sector = pacTextoCelda(val(r, idx.sector)) || '(sin sector)';
+    g.sectores.set(sector, (g.sectores.get(sector) || 0) + cant);
+    const obs = pacTextoCelda(val(r, idx.obs));
+    // Se descartan las notas de "método" que solo informan la cotización del dólar o ML/ME
+    if (obs && !/\$\s*\/\s*USD/i.test(obs) && !/^(ML|ME)$/i.test(obs) && g.notas.indexOf(obs) === -1) g.notas.push(obs);
+    if (!isNaN(ajN)) g.ajustes.add(String(ajN));
+  }
+  const lineas = Array.from(grupos.values()).map(g => ({
+    area: g.area, pospre: g.pospre, pospreDesc: g.pospreDesc, matricula: g.matricula, descripcion: g.descripcion, tipo: g.tipo,
+    cantOriginal: Math.round(g.cantOriginal * 100) / 100, cantidad: Math.round(g.cantidad * 100) / 100,
+    montoSinIVA: Math.round(g.montoSinIVA * 100) / 100, montoConIVA: Math.round(g.montoConIVA * 100) / 100,
+    ajuste: g.ajustes.size === 0 ? '' : (g.ajustes.size === 1 ? Array.from(g.ajustes)[0] : 'varios'),
+    sectores: Array.from(g.sectores.entries()).map(([s, c]) => s + ' ×' + (Math.round(c * 100) / 100)).join('; '),
+    nota: g.notas.join(' | ')
+  }));
+  stats.lineas = lineas.length;
+  return { lineas: lineas, stats: stats };
+}
+
+function abrirVistaPacCarga() {
+  (async () => {
+    if (!pacCache.cargado) { try { await cargarPac(true); } catch (err) { pacCache.error = err.message; } }
+    renderPacRevisiones();
+  })();
+}
+function renderPacRevisiones() {
+  const t = document.getElementById('pacRevTable');
+  if (!pacCache.revisiones.length) { t.innerHTML = '<tbody><tr><td class="empty-state">Todavía no se cargó ninguna revisión del PAC.</td></tr></tbody>'; return; }
+  t.innerHTML = '<thead><tr><th>Rev.</th><th>Fecha</th><th>Usuario</th><th>Archivo</th><th>Vigentes</th><th>Nuevas</th><th>Modif.</th><th>Salieron</th><th>Reincorp.</th><th>Sin cambios</th><th>Excluidas</th><th>$ vigente (sin IVA)</th><th>A revisar</th></tr></thead><tbody>' +
+    pacCache.revisiones.map(r => `<tr><td class="mono"><b>${r.revision}</b></td><td>${escapeHtml(r.fecha)}</td><td>${escapeHtml(r.usuario)}</td><td class="td-truncate" title="${escapeHtml(r.archivo)}">${escapeHtml(r.archivo)}</td><td class="mono">${r.vigentes}</td><td class="mono">${r.nuevas}</td><td class="mono">${r.modificadas}</td><td class="mono">${r.salieron}</td><td class="mono">${r.reincorporadas}</td><td class="mono">${r.sinCambios}</td><td class="mono">${r.excluidas}</td><td class="mono">${formatMoney(r.montoVigente)}</td><td class="mono">${r.aRevisar}</td></tr>`).join('') + '</tbody>';
+}
+
+function pacDetalleHtml(titulo, filas, extra) {
+  if (!filas || !filas.length) return '';
+  return `<details class="pac-detalle"><summary>${escapeHtml(titulo)} (${filas.length}${filas.length >= 60 ? '+ — se muestran las primeras 60' : ''})</summary><div class="table-wrap" style="max-height:280px; overflow:auto;"><table class="data-table"><thead><tr><th>Área</th><th>Pospre</th><th>Matrícula</th><th>Descripción</th>${extra ? '<th>' + extra.label + '</th>' : ''}</tr></thead><tbody>` +
+    filas.map(f => `<tr><td>${escapeHtml(f.area)}</td><td>${escapeHtml(pacCodigoPospre(f.pospre))}</td><td class="mono">${escapeHtml(f.matricula)}</td><td class="td-truncate" title="${escapeHtml(f.descripcion)}">${escapeHtml(f.descripcion)}</td>${extra ? '<td>' + escapeHtml(f[extra.key] || '') + '</td>' : ''}</tr>`).join('') +
+    '</tbody></table></div></details>';
+}
+function pacRenderPreview(res, stats, archivo) {
+  const r = res.resumen;
+  const card = (l, v, warn) => `<div class="pac-diff-card ${warn && v ? 'warn' : ''}"><small>${l}</small><b>${v}</b></div>`;
+  const box = document.getElementById('pacPreview');
+  box.innerHTML =
+    `<h4 style="margin:16px 0 4px;">${res.primeraCarga ? 'Primera carga del PAC' : 'Cambios respecto del PAC vigente'} — ${escapeHtml(archivo)}</h4>` +
+    `<p class="table-note" style="margin:0;">Hoja leída: <b>${escapeHtml(stats.hoja)}</b> · ${stats.filasLeidas} fila(s) del Excel agrupadas en <b>${r.totalLineas}</b> matrícula(s)` +
+    (stats.filasIgnoradas ? ' · ' + stats.filasIgnoradas + ' fila(s) sin matrícula ignoradas' : '') +
+    (stats.sinPospre ? ' · <b>' + stats.sinPospre + ' fila(s) sin Pospre</b>' : '') +
+    (stats.sinPrecio ? ' · <b>' + stats.sinPrecio + ' fila(s) con cantidad pero sin precio en el Excel (quedan en $0)</b>' : '') + '</p>' +
+    '<div class="pac-diff-grid">' +
+      card('$ Plan vigente (sin IVA)', formatMoney(r.montoVigente)) +
+      (res.primeraCarga ? card('Líneas a cargar', r.totalLineas) : card('Nuevas', r.nuevas) + card('Modificadas', r.modificadas) + card('Salieron del plan', r.salieron) + card('Reincorporadas', r.reincorporadas) + card('Sin cambios', r.sinCambios)) +
+      card('Excluidas (Ajuste = 1)', r.excluidas) +
+      card('A revisar ⚠', r.conflictos, true) +
+    '</div>' +
+    (res.primeraCarga ? '<p class="table-note">Todas las matrículas van a quedar como <b>Pendiente</b> hasta que les asignes trámites.</p>' : '') +
+    pacDetalleHtml('A revisar: ya tramitadas y afectadas por esta revisión', res.detalle.conflictos, { key: 'motivo', label: 'Motivo' }) +
+    pacDetalleHtml('Modificadas', res.detalle.modificadas, { key: 'cambio', label: 'Cambio' }) +
+    pacDetalleHtml('Salieron del plan', res.detalle.salieron) +
+    pacDetalleHtml('Reincorporadas', res.detalle.reincorporadas) +
+    pacDetalleHtml('Nuevas', res.detalle.nuevas) +
+    '<div class="form-actions" style="justify-content:flex-start; gap:10px; margin-top:12px;"><button type="button" class="btn btn-primary" id="pacConfirmarImport">Confirmar y aplicar esta revisión</button><button type="button" class="btn btn-ghost" id="pacCancelarImport">Descartar</button></div>';
+  box.hidden = false;
+  document.getElementById('pacCancelarImport').addEventListener('click', () => { pacImportPendiente = null; box.hidden = true; document.getElementById('pacArchivoMsg').textContent = ''; });
+  document.getElementById('pacConfirmarImport').addEventListener('click', pacAplicarImportacion);
+}
+
+document.getElementById('pacArchivo').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById('pacArchivoMsg');
+  const box = document.getElementById('pacPreview');
+  box.hidden = true; pacImportPendiente = null;
+  msg.textContent = 'Leyendo el archivo...';
+  try {
+    const buf = await file.arrayBuffer();
+    const { lineas, stats } = pacParsearExcel(buf);
+    if (!lineas.length) throw new Error('El archivo no tiene matrículas para importar.');
+    msg.textContent = 'Comparando contra el PAC vigente...';
+    const data = await apiCall('pac_importar', { lineas: lineas, archivo: file.name, simular: true });
+    pacImportPendiente = { lineas: lineas, archivo: file.name, stats: stats };
+    msg.textContent = '';
+    pacRenderPreview(data.resultado, stats, file.name);
+  } catch (err) {
+    msg.textContent = 'Error: ' + err.message;
+  }
+  e.target.value = '';
+});
+
+async function pacAplicarImportacion() {
+  if (!pacImportPendiente) return;
+  if (!confirm('Se va a aplicar esta revisión del PAC. Las líneas ya tramitadas no se borran. ¿Confirmás?')) return;
+  const btn = document.getElementById('pacConfirmarImport');
+  btn.disabled = true;
+  const msg = document.getElementById('pacArchivoMsg');
+  msg.textContent = 'Aplicando la revisión...';
+  try {
+    const data = await apiCall('pac_importar', { lineas: pacImportPendiente.lineas, archivo: pacImportPendiente.archivo, simular: false });
+    const r = data.resultado;
+    pacImportPendiente = null;
+    document.getElementById('pacPreview').hidden = true;
+    await cargarPac(true);
+    msg.textContent = 'Listo — revisión ' + r.revision + ' aplicada: ' + r.resumen.totalLineas + ' matrícula(s)' + (r.primeraCarga ? '' : ' (' + r.resumen.nuevas + ' nuevas, ' + r.resumen.modificadas + ' modificadas, ' + r.resumen.salieron + ' salieron del plan)') + '.';
+    renderPacRevisiones();
+  } catch (err) {
+    msg.textContent = 'Error al aplicar: ' + err.message;
+    btn.disabled = false;
+  }
+}
